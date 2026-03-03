@@ -4,10 +4,11 @@ import { AuthContext } from '../../context/AuthContext';
 import { theme } from '../../theme';
 import { Ionicons } from '@expo/vector-icons';
 import api from '../../services/api';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useCallback, useState } from 'react';
 
 export default function DashboardScreen() {
+    const navigation = useNavigation<any>();
     const { user, signOut } = useContext(AuthContext);
     const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -48,17 +49,17 @@ export default function DashboardScreen() {
                     <ActivityIndicator size="large" color={theme.colors.primary} style={{ marginTop: 24 }} />
                 ) : stats && (
                     <View style={styles.statsGrid}>
-                        <View style={styles.statCard}>
+                        <TouchableOpacity style={styles.statCard} activeOpacity={0.8} onPress={() => navigation.navigate('Students')}>
                             <Ionicons name="people-outline" size={32} color={theme.colors.primary} />
                             <Text style={styles.statValue}>{stats.totalMembers}</Text>
                             <Text style={styles.statLabel}>Students</Text>
-                        </View>
-                        <View style={styles.statCard}>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.statCard} activeOpacity={0.8} onPress={() => navigation.navigate('FeeGroups')}>
                             <Ionicons name="albums-outline" size={32} color={theme.colors.primary} />
                             <Text style={styles.statValue}>{stats.totalFeeGroups}</Text>
                             <Text style={styles.statLabel}>Groups</Text>
-                        </View>
-                        <View style={styles.wideStatCard}>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.wideStatCard} activeOpacity={0.8} onPress={() => navigation.navigate('Students', { filter: 'pendingFees' })}>
                             <View>
                                 <Text style={styles.wideStatLabel}>Pending Collection</Text>
                                 <Text style={[styles.wideStatValue, { color: theme.colors.danger }]}>
@@ -66,7 +67,7 @@ export default function DashboardScreen() {
                                 </Text>
                             </View>
                             <Ionicons name="alert-circle-outline" size={40} color={theme.colors.danger} />
-                        </View>
+                        </TouchableOpacity>
                         <View style={styles.wideStatCard}>
                             <View>
                                 <Text style={styles.wideStatLabel}>Total Received</Text>

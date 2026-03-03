@@ -63,23 +63,30 @@ export default function MemberDetailsScreen() {
     };
 
     const handleDeleteMember = () => {
-        Alert.alert(
-            "Delete Student",
-            "Are you sure you want to completely remove this student?",
-            [
-                { text: "Cancel", style: "cancel" },
-                {
-                    text: "Delete", style: "destructive", onPress: async () => {
-                        try {
-                            await api.delete(`/members/${member._id}`);
-                            navigation.goBack();
-                        } catch (e) {
-                            alert('Error deleting member');
-                        }
-                    }
-                }
-            ]
-        );
+        const executeDelete = async () => {
+            try {
+                await api.delete(`/members/${member._id}`);
+                navigation.goBack();
+            } catch (e: any) {
+                const msg = e?.response?.data?.message || 'Error deleting member';
+                Platform.OS === 'web' ? alert(msg) : Alert.alert('Error', msg);
+            }
+        };
+
+        if (Platform.OS === 'web') {
+            if (window.confirm("Are you sure you want to completely remove this student?")) {
+                executeDelete();
+            }
+        } else {
+            Alert.alert(
+                "Delete Student",
+                "Are you sure you want to completely remove this student?",
+                [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Delete", style: "destructive", onPress: executeDelete }
+                ]
+            );
+        }
     };
 
     return (
@@ -99,37 +106,6 @@ export default function MemberDetailsScreen() {
                 </View>
             </View>
 
-            <View style={styles.profileCard}>
-                <Ionicons name="person-circle-outline" size={64} color={theme.colors.primary} />
-                <Text style={styles.name}>{member.firstName} {member.lastName}</Text>
-                <Text style={styles.info}>Roll: {member.knownId}</Text>
-                <Text style={styles.info}>Contact: {member.contact || 'N/A'}</Text>
-
-                <View style={styles.feeStats}>
-                    <View style={styles.feeStatBox}>
-                        <Text style={styles.feeStatLabel}>Total Fee</Text>
-                        <Text style={styles.feeStatValue}>₹{member.totalFee || 0}</Text>
-                    </View>
-                    <View style={styles.feeStatBox}>
-                        <Text style={styles.feeStatLabel}>Paid</Text>
-                        <Text style={styles.feeStatValue}>₹{payments.reduce((acc, p) => acc + p.amount, 0)}</Text>
-                    </View>
-                    <View style={styles.feeStatBox}>
-                        <Text style={styles.feeStatLabel}>Pending</Text>
-                        <Text style={[styles.feeStatValue, { color: theme.colors.danger }]}>
-                            ₹{Math.max(0, (member.totalFee || 0) - payments.reduce((acc, p) => acc + p.amount, 0))}
-                        </Text>
-                    </View>
-                </View>
-            </View>
-
-            <View style={styles.paymentSectionHeader}>
-                <Text style={styles.sectionTitle}>Payment History</Text>
-                <TouchableOpacity style={styles.collectButton} onPress={() => setFeeModalVisible(true)}>
-                    <Text style={styles.collectButtonText}>Collect Fee</Text>
-                </TouchableOpacity>
-            </View>
-
             {loading ? (
                 <View style={globalStyles.centerMode}>
                     <ActivityIndicator size="large" color={theme.colors.primary} />
@@ -139,6 +115,63 @@ export default function MemberDetailsScreen() {
                     data={payments}
                     keyExtractor={item => item._id}
                     contentContainerStyle={globalStyles.listContainer}
+                    ListHeaderComponent={
+                        <>
+                            <View style={styles.profileCard}>
+                                <Ionicons name="person-circle-outline" size={64} color={theme.colors.primary} />
+                                <Text style={styles.name}>{member.firstName} {member.lastName}</Text>
+
+                                <View style={{ width: '100%', marginTop: theme.spacing.m, backgroundColor: theme.colors.background, padding: theme.spacing.m, borderRadius: theme.borderRadius.m }}>
+                                    <Text style={{ fontSize: 16, fontWeight: '600', color: theme.colors.textPrimary, marginBottom: 8 }}>Personal Details</Text>
+
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                                        <Text style={styles.info}><Text style={{ fontWeight: '600' }}>Roll No:</Text> {member.knownId}</Text>
+                                        {member.groupName && <Text style={styles.info}><Text style={{ fontWeight: '600' }}>Group:</Text> {member.groupName}</Text>}
+                                    </View>
+
+                                    {member.dob && <Text style={styles.info}><Text style={{ fontWeight: '600' }}>DOB:</Text> {new Date(member.dob).toLocaleDateString()}</Text>}
+                                    {member.contact && <Text style={styles.info}><Text style={{ fontWeight: '600' }}>Contact:</Text> {member.contact}</Text>}
+                                    {member.address && <Text style={styles.info}><Text style={{ fontWeight: '600' }}>Address:</Text> {member.address}</Text>}
+
+                                    {(member.fatherOccupation || member.motherOccupation) && (
+                                        <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: theme.colors.border }}>
+                                            <Text style={{ fontSize: 14, fontWeight: '600', color: theme.colors.textPrimary, marginBottom: 4 }}>Parents</Text>
+                                            {member.fatherOccupation && !['no', 'none', 'n/a', 'na', '-', 'nil'].includes(member.fatherOccupation.toLowerCase().trim()) && (
+                                                <Text style={styles.info}><Text style={{ fontWeight: '600' }}>Father Occupation:</Text> {member.fatherOccupation}</Text>
+                                            )}
+                                            {member.motherOccupation && !['no', 'none', 'n/a', 'na', '-', 'nil'].includes(member.motherOccupation.toLowerCase().trim()) && (
+                                                <Text style={styles.info}><Text style={{ fontWeight: '600' }}>Mother Occupation:</Text> {member.motherOccupation}</Text>
+                                            )}
+                                        </View>
+                                    )}
+                                </View>
+
+                                <View style={styles.feeStats}>
+                                    <View style={styles.feeStatBox}>
+                                        <Text style={styles.feeStatLabel}>Total Fee</Text>
+                                        <Text style={styles.feeStatValue}>₹{member.totalFee || 0}</Text>
+                                    </View>
+                                    <View style={styles.feeStatBox}>
+                                        <Text style={styles.feeStatLabel}>Paid</Text>
+                                        <Text style={styles.feeStatValue}>₹{payments.reduce((acc, p) => acc + p.amount, 0)}</Text>
+                                    </View>
+                                    <View style={styles.feeStatBox}>
+                                        <Text style={styles.feeStatLabel}>Pending</Text>
+                                        <Text style={[styles.feeStatValue, { color: theme.colors.danger }]}>
+                                            ₹{Math.max(0, (member.totalFee || 0) - payments.reduce((acc, p) => acc + p.amount, 0))}
+                                        </Text>
+                                    </View>
+                                </View>
+                            </View>
+
+                            <View style={styles.paymentSectionHeader}>
+                                <Text style={styles.sectionTitle}>Payment History</Text>
+                                <TouchableOpacity style={styles.collectButton} onPress={() => setFeeModalVisible(true)}>
+                                    <Text style={styles.collectButtonText}>Collect Fee</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </>
+                    }
                     ListEmptyComponent={<Text style={globalStyles.emptyText}>No payments found.</Text>}
                     renderItem={({ item }) => (
                         <View style={globalStyles.card}>

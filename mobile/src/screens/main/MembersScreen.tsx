@@ -6,11 +6,12 @@ import {
 import api from '../../services/api';
 import { theme, globalStyles } from '../../theme';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { useCallback } from 'react';
+import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
+import { useCallback, useMemo } from 'react';
 
 export default function MembersScreen() {
     const navigation = useNavigation<any>();
+    const route = useRoute<any>();
     const [members, setMembers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -38,6 +39,15 @@ export default function MembersScreen() {
         loadMembers();
     };
 
+    const displayedMembers = useMemo(() => {
+        if (route.params?.filter === 'pendingFees') {
+            return members
+                .filter((m: any) => (m.pendingAmount || 0) > 0)
+                .sort((a: any, b: any) => (b.pendingAmount || 0) - (a.pendingAmount || 0));
+        }
+        return members;
+    }, [members, route.params?.filter]);
+
     const renderItem = ({ item }: { item: any }) => (
         <TouchableOpacity style={globalStyles.card} onPress={() => navigation.navigate('MemberDetails', { member: item })}>
             <View style={styles.cardInfo}>
@@ -46,7 +56,12 @@ export default function MembersScreen() {
                 <Text style={styles.details}>Roll No: {item.knownId}</Text>
                 {item.contact && <Text style={styles.details}>Contact: {item.contact}</Text>}
             </View>
-            <Ionicons name="chevron-forward" size={24} color={theme.colors.border} />
+            {route.params?.filter === 'pendingFees' && (
+                <View style={{ justifyContent: 'center', alignItems: 'flex-end', paddingLeft: 8 }}>
+                    <Text style={{ fontSize: 12, color: theme.colors.textSecondary, marginBottom: 4 }}>Pending</Text>
+                    <Text style={{ fontSize: 16, fontWeight: 'bold', color: theme.colors.danger }}>₹{item.pendingAmount}</Text>
+                </View>
+            )}
         </TouchableOpacity>
     );
 
@@ -58,7 +73,7 @@ export default function MembersScreen() {
                 </View>
             ) : (
                 <FlatList
-                    data={members}
+                    data={displayedMembers}
                     keyExtractor={(item) => item._id}
                     renderItem={renderItem}
                     contentContainerStyle={globalStyles.listContainer}

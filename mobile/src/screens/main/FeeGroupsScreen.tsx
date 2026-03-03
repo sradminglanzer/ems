@@ -76,7 +76,6 @@ export default function FeeGroupsScreen() {
                 <Text style={styles.groupName}>{item.name}</Text>
                 <Text style={styles.groupParams}>{item.description || 'No description'}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={24} color={theme.colors.border} />
         </TouchableOpacity>
     );
 

@@ -4,6 +4,7 @@ import memberService from '../services/member.service';
 import { Member } from '../models/member.model';
 import { AppError } from '../utils/AppError';
 import { HTTP_STATUS } from '../utils/constants';
+import { ObjectId } from 'mongodb';
 
 import feeGroupService from '../services/fee-group.service';
 import feeStructureService from '../services/fee-structure.service';
@@ -79,7 +80,6 @@ export const createMember = async (req: AuthRequest, res: Response, next: NextFu
 export const updateMember = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
         const id = req.params.id;
-        const { ObjectId } = require('mongodb');
         if (req.body.entityId) delete req.body.entityId;
 
         // Validation for partial update
@@ -96,7 +96,7 @@ export const updateMember = async (req: AuthRequest, res: Response, next: NextFu
         }
 
         const result = await memberService.update(
-            { _id: new ObjectId(id), entityId: new ObjectId(req.user!.entityId) },
+            { _id: new ObjectId(id as string), entityId: new ObjectId(req.user!.entityId) },
             updateData
         );
 
@@ -109,8 +109,7 @@ export const updateMember = async (req: AuthRequest, res: Response, next: NextFu
 export const deleteMember = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
         const id = req.params.id;
-        const { ObjectId } = require('mongodb');
-        const result = await memberService.delete({ _id: new ObjectId(id), entityId: new ObjectId(req.user!.entityId) });
+        const result = await memberService.delete({ _id: new ObjectId(id as string), entityId: new ObjectId(req.user!.entityId) });
 
         if (result) {
             res.status(HTTP_STATUS.OK).json({ message: 'Member deleted' });

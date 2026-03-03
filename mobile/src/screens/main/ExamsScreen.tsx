@@ -52,7 +52,6 @@ export default function ExamsScreen() {
                 <Text style={styles.examDates}>{item.startDate} to {item.endDate}</Text>
                 <Text style={styles.subjectsCount}>{item.subjects?.length || 0} Subjects</Text>
             </View>
-            <Ionicons name="chevron-forward" size={24} color={theme.colors.border} />
         </TouchableOpacity>
     );
 
