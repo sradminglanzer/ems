@@ -2,6 +2,7 @@ import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import memberService from '../services/member.service';
 import { Member } from '../models/member.model';
+import { User } from '../models/user.model';
 import { AppError } from '../utils/AppError';
 import { HTTP_STATUS } from '../utils/constants';
 import { ObjectId } from 'mongodb';
@@ -9,11 +10,21 @@ import { ObjectId } from 'mongodb';
 import feeGroupService from '../services/fee-group.service';
 import feeStructureService from '../services/fee-structure.service';
 import feePaymentService from '../services/fee-payment.service';
+import userService from '../services/user.service';
 
 export const getMembers = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
         const entityId = req.user!.entityId.toString();
-        const members = await memberService.getByEntity(entityId);
+
+        let members = await memberService.getByEntity(entityId);
+        if (req.user!.role === 'parent') {
+            const parentUser = await userService.getOne({ _id: new ObjectId(req.user!.userId) });
+            if (parentUser && parentUser.contactNumber) {
+                members = members.filter(m => m.contact === parentUser.contactNumber || m.altContact === parentUser.contactNumber);
+            } else {
+                members = [];
+            }
+        }
 
         const [feeGroups, feeStructures, feePayments] = await Promise.all([
             feeGroupService.getByEntity(entityId),
@@ -71,6 +82,29 @@ export const createMember = async (req: AuthRequest, res: Response, next: NextFu
         }
 
         const result = await memberService.insert(member);
+
+        // Ensure a parent user exists for this contact number
+        try {
+            if (member.contact) {
+                const existingParent = await userService.getOne({
+                    entityId: new ObjectId(req.user!.entityId),
+                    contactNumber: member.contact
+                });
+                if (!existingParent) {
+                    const newUser = new User({
+                        entityId: new ObjectId(req.user!.entityId),
+                        name: `Parent of ${member.firstName}`,
+                        contactNumber: member.contact,
+                        role: 'parent',
+                        mpin: '' // Require setup
+                    });
+                    await userService.insert(newUser);
+                }
+            }
+        } catch (e: any) {
+            console.error('Error auto-creating parent user:', e);
+        }
+
         res.status(HTTP_STATUS.CREATED).json(result);
     } catch (error) {
         next(error);

@@ -47,7 +47,7 @@ export default function DashboardScreen() {
             <ScrollView style={styles.contentArea}>
                 {loading ? (
                     <ActivityIndicator size="large" color={theme.colors.primary} style={{ marginTop: 24 }} />
-                ) : stats && (
+                ) : stats ? (
                     <View style={styles.statsGrid}>
                         <TouchableOpacity style={styles.statCard} activeOpacity={0.8} onPress={() => navigation.navigate('Students')}>
                             <Ionicons name="people-outline" size={32} color={theme.colors.primary} />
@@ -82,7 +82,7 @@ export default function DashboardScreen() {
                             </>
                         )}
                     </View>
-                )}
+                ) : null}
             </ScrollView>
 
             <TouchableOpacity style={styles.logoutButton} onPress={signOut}>

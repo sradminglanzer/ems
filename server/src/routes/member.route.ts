@@ -5,7 +5,7 @@ import { authenticateToken, requireRole } from '../middleware/auth.middleware';
 const router = Router();
 
 router.use(authenticateToken);
-router.get('/', requireRole(['owner', 'admin', 'staff', 'teacher']), getMembers);
+router.get('/', requireRole(['owner', 'admin', 'staff', 'teacher', 'parent']), getMembers);
 router.post('/', requireRole(['owner', 'admin', 'staff']), createMember);
 router.put('/:id', requireRole(['owner', 'admin', 'staff']), updateMember);
 router.delete('/:id', requireRole(['owner', 'admin', 'staff']), deleteMember);

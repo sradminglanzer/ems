@@ -5,6 +5,7 @@ import examResultService from '../services/exam-result.service';
 import { Exam } from '../models/exam.model';
 import { AppError } from '../utils/AppError';
 import { HTTP_STATUS } from '../utils/constants';
+import { ObjectId } from 'mongodb';
 
 export const getExams = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
@@ -35,6 +36,26 @@ export const getResults = async (req: AuthRequest, res: Response, next: NextFunc
         const examId = req.params.examId as string;
         const results = await examResultService.getByExam(examId);
         res.status(HTTP_STATUS.OK).json(results);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getMemberResults = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const memberId = req.params.memberId as string;
+        const results = await examResultService.getByMember(memberId);
+
+        // Also fetch exam headers so frontend has the exam names
+        const examIds = [...new Set(results.map(r => r.examId.toString()))];
+        const exams = await examService.get({ _id: { $in: examIds.map(id => new ObjectId(id)) } });
+
+        const enrichedResults = results.map(r => {
+            const exam = exams.find(e => e._id!.toString() === r.examId.toString());
+            return { ...r, examName: exam?.name };
+        });
+
+        res.status(HTTP_STATUS.OK).json(enrichedResults);
     } catch (error) {
         next(error);
     }

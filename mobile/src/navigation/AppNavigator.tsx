@@ -12,6 +12,7 @@ import FeeGroupDetailsScreen from '../screens/main/FeeGroupDetailsScreen';
 import MemberDetailsScreen from '../screens/main/MemberDetailsScreen';
 import CreateExamScreen from '../screens/main/CreateExamScreen';
 import ExamDetailsScreen from '../screens/main/ExamDetailsScreen';
+import ParentDashboardScreen from '../screens/main/ParentDashboardScreen';
 
 type RootStackParamList = {
     Login: undefined;
@@ -22,6 +23,7 @@ type RootStackParamList = {
     MemberDetails: { member: any };
     CreateExam: undefined;
     ExamDetails: { exam: any };
+    ParentMain: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -46,8 +48,14 @@ export default function AppNavigator() {
                         <Stack.Screen name="Login" component={LoginScreen} />
                         <Stack.Screen name="SetupMpin" component={SetupMpinScreen} />
                     </>
+                ) : user?.role?.toLowerCase().trim() === 'parent' ? (
+                    // Parent strictly scoped screens
+                    <>
+                        <Stack.Screen name="ParentMain" component={ParentDashboardScreen} />
+                        <Stack.Screen name="MemberDetails" component={MemberDetailsScreen} />
+                    </>
                 ) : (
-                    // User is signed in
+                    // Staff/Teacher/Owner screens
                     <>
                         <Stack.Screen name="Main" component={MainDrawerNavigator} />
                         <Stack.Screen name="AddMember" component={AddMemberScreen} />

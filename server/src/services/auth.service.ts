@@ -58,10 +58,27 @@ class AuthService extends BaseService<User> {
         }
 
         const token = this.generateToken(user as User);
+
+        let settings = undefined;
+        try {
+            const { BaseService } = require('../services/base.service');
+            const db = BaseService.getDb();
+            // In a better architecture we'd have EntityService. Get directly for now.
+            if (db) {
+                const entityCol = db.collection('entities');
+                const entity = await entityCol.findOne({ _id: user.entityId });
+                if (entity && entity.settings) {
+                    settings = entity.settings;
+                }
+            }
+        } catch (e) {
+            console.error('Error fetching entity settings during login', e)
+        }
+
         return {
             message: MESSAGES.SUCCESS.LOGIN_SUCCESS,
             token,
-            user: this.formatUserResponse(user as User)
+            user: this.formatUserResponse(user as User, settings)
         };
     }
 
@@ -69,8 +86,13 @@ class AuthService extends BaseService<User> {
         return jwt.sign({ userId: user._id, role: user.role, entityId: user.entityId }, JWT_SECRET, { expiresIn: '7d' });
     }
 
-    private formatUserResponse(user: User) {
-        return { id: user._id, name: user.name, role: user.role };
+    private formatUserResponse(user: User, settings?: any) {
+        return {
+            id: user._id,
+            name: user.name,
+            role: user.role,
+            settings: settings
+        };
     }
 }
 

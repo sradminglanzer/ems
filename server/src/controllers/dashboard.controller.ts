@@ -4,11 +4,24 @@ import memberService from '../services/member.service';
 import feeGroupService from '../services/fee-group.service';
 import feeStructureService from '../services/fee-structure.service';
 import feePaymentService from '../services/fee-payment.service';
+import userService from '../services/user.service';
 import { HTTP_STATUS } from '../utils/constants';
+import { ObjectId } from 'mongodb';
 
 export const getDashboardStats = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
         const entityId = req.user!.entityId.toString();
+
+        if (req.user!.role === 'parent') {
+            const parentUser = await userService.getOne({ _id: new ObjectId(req.user!.userId) });
+            let members = await memberService.getByEntity(entityId);
+            if (parentUser && parentUser.contactNumber) {
+                members = members.filter(m => m.contact === parentUser.contactNumber || m.altContact === parentUser.contactNumber);
+            } else {
+                members = [];
+            }
+            return res.status(HTTP_STATUS.OK).json({ isParent: true, children: members, totalMembers: members.length });
+        }
 
         const [members, feeGroups, feeStructures, feePayments] = await Promise.all([
             memberService.getByEntity(entityId),

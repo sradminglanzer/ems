@@ -17,6 +17,7 @@ export default function MemberDetailsScreen() {
     const { member } = route.params;
 
     const [payments, setPayments] = useState<any[]>([]);
+    const [results, setResults] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
     // Collect Fee Modal
@@ -26,15 +27,19 @@ export default function MemberDetailsScreen() {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
-        loadPayments();
+        loadData();
     }, []);
 
-    const loadPayments = async () => {
+    const loadData = async () => {
         try {
-            const response = await api.get(`/fee-payments?memberId=${member._id}`);
-            setPayments(response.data);
+            const [payRes, resRes] = await Promise.all([
+                api.get(`/fee-payments?memberId=${member._id}`),
+                api.get(`/exams/member/${member._id}/results`)
+            ]);
+            setPayments(payRes.data);
+            setResults(resRes.data);
         } catch (error) {
-            console.error('Error loading payments:', error);
+            console.error('Error loading member data:', error);
         } finally {
             setLoading(false);
         }
@@ -52,7 +57,7 @@ export default function MemberDetailsScreen() {
             setFeeModalVisible(false);
             setFeeAmount('');
             setFeeNotes('');
-            loadPayments();
+            loadData();
         } catch (error) {
             console.error(error);
             alert('Failed to record payment');
@@ -99,14 +104,16 @@ export default function MemberDetailsScreen() {
                     <Ionicons name="arrow-back" size={24} color={theme.colors.textPrimary} />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Student Details</Text>
-                <View style={{ flexDirection: 'row', gap: 12 }}>
-                    <TouchableOpacity onPress={handleUpdateMember}>
-                        <Ionicons name="create-outline" size={24} color={theme.colors.primary} />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={handleDeleteMember}>
-                        <Ionicons name="trash-outline" size={24} color="red" />
-                    </TouchableOpacity>
-                </View>
+                {user?.role !== 'parent' && (
+                    <View style={{ flexDirection: 'row', gap: 12 }}>
+                        <TouchableOpacity onPress={handleUpdateMember}>
+                            <Ionicons name="create-outline" size={24} color={theme.colors.primary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={handleDeleteMember}>
+                            <Ionicons name="trash-outline" size={24} color="red" />
+                        </TouchableOpacity>
+                    </View>
+                )}
             </View>
 
             {loading ? (
@@ -169,12 +176,40 @@ export default function MemberDetailsScreen() {
                                 )}
                             </View>
 
+                            {results.length > 0 && (
+                                <View style={{ width: '100%', marginTop: theme.spacing.m, backgroundColor: theme.colors.background, padding: theme.spacing.m, borderRadius: theme.borderRadius.m }}>
+                                    <Text style={{ fontSize: 16, fontWeight: '600', color: theme.colors.textPrimary, marginBottom: 8 }}>Exam Results</Text>
+                                    {results.map(r => (
+                                        <View key={r._id} style={{ paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: theme.colors.border }}>
+                                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                                                <Text style={{ fontWeight: 'bold', fontSize: 14, color: theme.colors.textPrimary }}>{r.examName || 'Exam'}</Text>
+                                                {r.remarks && <Text style={{ color: theme.colors.textMuted, fontStyle: 'italic', fontSize: 12 }}>{r.remarks}</Text>}
+                                            </View>
+                                            {Array.isArray(r.marks) ? (
+                                                r.marks.map((m: any, i: number) => (
+                                                    <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingLeft: 8, marginBottom: 2 }}>
+                                                        <Text style={{ fontSize: 13, color: theme.colors.textSecondary }}>{m.subjectName}</Text>
+                                                        <Text style={{ fontSize: 13, fontWeight: '500', color: theme.colors.textPrimary }}>
+                                                            {m.score !== null && m.score !== undefined ? m.score : '-'}/{m.maxScore}
+                                                        </Text>
+                                                    </View>
+                                                ))
+                                            ) : (
+                                                <Text style={styles.info}>Score: {r.marks !== null && r.marks !== undefined ? String(r.marks) : 'N/A'}</Text>
+                                            )}
+                                        </View>
+                                    ))}
+                                </View>
+                            )}
+
                             {user?.role !== 'teacher' && (
                                 <View style={styles.paymentSectionHeader}>
                                     <Text style={styles.sectionTitle}>Payment History</Text>
-                                    <TouchableOpacity style={styles.collectButton} onPress={() => setFeeModalVisible(true)}>
-                                        <Text style={styles.collectButtonText}>Collect Fee</Text>
-                                    </TouchableOpacity>
+                                    {user?.role !== 'parent' && (
+                                        <TouchableOpacity style={styles.collectButton} onPress={() => setFeeModalVisible(true)}>
+                                            <Text style={styles.collectButtonText}>Collect Fee</Text>
+                                        </TouchableOpacity>
+                                    )}
                                 </View>
                             )}
                         </>

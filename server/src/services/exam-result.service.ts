@@ -11,6 +11,10 @@ class ExamResultService extends BaseService<ExamResult> {
         return await this.get({ examId: new ObjectId(examId) });
     }
 
+    async getByMember(memberId: string) {
+        return await this.get({ memberId: new ObjectId(memberId) });
+    }
+
     async saveBulk(examId: string, entityId: string, results: any[]) {
         const bulkOps = results.map(r => {
             const payload = new ExamResult({ examId, entityId, memberId: r.memberId, marks: r.marks, remarks: r.remarks });
