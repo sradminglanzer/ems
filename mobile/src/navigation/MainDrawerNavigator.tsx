@@ -25,6 +25,8 @@ type DrawerParamList = {
 const Drawer = createDrawerNavigator<DrawerParamList>();
 
 function CustomDrawerContent(props: any) {
+    const { signOut } = React.useContext(AuthContext);
+
     return (
         <View style={{ flex: 1, backgroundColor: theme.colors.surface }}>
             <DrawerContentScrollView {...props} contentContainerStyle={{ backgroundColor: theme.colors.primary, paddingTop: 0 }}>
@@ -38,6 +40,10 @@ function CustomDrawerContent(props: any) {
                 </View>
             </DrawerContentScrollView>
             <View style={styles.footer}>
+                <TouchableOpacity style={styles.logoutButton} onPress={signOut}>
+                    <Ionicons name="log-out-outline" size={22} color={theme.colors.danger} />
+                    <Text style={styles.logoutText}>Sign Out</Text>
+                </TouchableOpacity>
                 <Text style={styles.footerText}>Version 1.0.0</Text>
             </View>
         </View>
@@ -168,5 +174,21 @@ const styles = StyleSheet.create({
     footerText: {
         color: theme.colors.textMuted,
         fontSize: 12,
-    }
+    },
+    logoutButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 12,
+        width: '100%',
+        justifyContent: 'center',
+        marginBottom: 12,
+        backgroundColor: theme.colors.danger + '10',
+        borderRadius: 8,
+    },
+    logoutText: {
+        color: theme.colors.danger,
+        fontSize: 16,
+        fontWeight: '600',
+        marginLeft: 8,
+    },
 });
