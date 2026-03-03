@@ -4,6 +4,7 @@ import userService from '../services/user.service';
 import { User } from '../models/user.model';
 import { AppError } from '../utils/AppError';
 import { HTTP_STATUS, MESSAGES } from '../utils/constants';
+import { ObjectId } from 'mongodb';
 
 export const getUsers = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
@@ -27,6 +28,30 @@ export const createUser = async (req: AuthRequest, res: Response, next: NextFunc
         const result = await userService.insert(user);
 
         res.status(HTTP_STATUS.CREATED).json(result);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const deleteUser = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const userId = req.params.id;
+
+        if (userId === req.user!.userId) {
+            throw new AppError('Cannot delete your own account', HTTP_STATUS.BAD_REQUEST);
+        }
+
+        const user = await userService.getOne({ _id: new ObjectId(userId as string) });
+        if (!user || user.entityId.toString() !== req.user!.entityId.toString()) {
+            throw new AppError('User not found', HTTP_STATUS.NOT_FOUND);
+        }
+
+        if (user.role === 'owner') {
+            throw new AppError('Cannot delete an owner account', HTTP_STATUS.FORBIDDEN);
+        }
+
+        await userService.delete({ _id: new ObjectId(userId as string) });
+        res.status(HTTP_STATUS.OK).json({ message: 'User deleted successfully' });
     } catch (error) {
         next(error);
     }

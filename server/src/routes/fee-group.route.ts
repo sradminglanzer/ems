@@ -5,12 +5,12 @@ import { authenticateToken, requireRole } from '../middleware/auth.middleware';
 const router = Router();
 
 router.use(authenticateToken);
-// Assuming owner, admin and staff can manage groups
-router.use(requireRole(['owner', 'admin', 'staff']));
+// Assuming owner, admin, staff, and teacher can view groups
+router.get('/', requireRole(['owner', 'admin', 'staff', 'teacher']), getFeeGroups);
 
-router.get('/', getFeeGroups);
-router.post('/', createFeeGroup);
-router.put('/:id', updateFeeGroup);
-router.delete('/:id', deleteFeeGroup);
+// Only owner, admin and staff can manage groups
+router.post('/', requireRole(['owner', 'admin', 'staff']), createFeeGroup);
+router.put('/:id', requireRole(['owner', 'admin', 'staff']), updateFeeGroup);
+router.delete('/:id', requireRole(['owner', 'admin', 'staff']), deleteFeeGroup);
 
 export default router;

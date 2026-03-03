@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getUsers, createUser } from '../controllers/user.controller';
+import { getUsers, createUser, deleteUser } from '../controllers/user.controller';
 import { authenticateToken, requireRole } from '../middleware/auth.middleware';
 import { validateRequest } from '../middleware/validate.middleware';
 import { createUserSchema } from '../validations/user.validation';
@@ -12,5 +12,6 @@ router.use(requireRole(['owner', 'admin']));
 
 router.get('/', getUsers);
 router.post('/', validateRequest(createUserSchema), createUser);
+router.delete('/:id', deleteUser);
 
 export default router;

@@ -64,9 +64,36 @@ export default function StaffScreen() {
             setNewRole('staff');
         } catch (error: any) {
             const message = error.response?.data?.message || 'Failed to create user';
-            Alert.alert('Error', message);
+            Platform.OS === 'web' ? alert(message) : Alert.alert('Error', message);
         } finally {
             setIsSubmitting(false);
+        }
+    };
+
+    const handleDeleteStaff = (id: string) => {
+        const executeDelete = async () => {
+            try {
+                await api.delete(`/users/${id}`);
+                fetchStaff();
+            } catch (error: any) {
+                const message = error.response?.data?.message || 'Failed to delete user';
+                Platform.OS === 'web' ? alert(message) : Alert.alert('Error', message);
+            }
+        };
+
+        if (Platform.OS === 'web') {
+            if (window.confirm("Are you sure you want to completely remove this staff member?")) {
+                executeDelete();
+            }
+        } else {
+            Alert.alert(
+                "Delete Staff",
+                "Are you sure you want to completely remove this staff member?",
+                [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Delete", style: "destructive", onPress: executeDelete }
+                ]
+            );
         }
     };
 
@@ -76,8 +103,13 @@ export default function StaffScreen() {
                 <Text style={styles.staffName}>{item.name}</Text>
                 <Text style={styles.staffContact}>{item.contactNumber}</Text>
             </View>
-            <View style={styles.badgeContainer}>
-                <Text style={styles.roleBadge}>{item.role}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <View style={styles.badgeContainer}>
+                    <Text style={styles.roleBadge}>{item.role}</Text>
+                </View>
+                <TouchableOpacity onPress={() => handleDeleteStaff(item._id)} style={{ padding: 4 }}>
+                    <Ionicons name="trash-outline" size={24} color={theme.colors.danger} />
+                </TouchableOpacity>
             </View>
         </View>
     );

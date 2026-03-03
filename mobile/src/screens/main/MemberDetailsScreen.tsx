@@ -7,8 +7,11 @@ import api from '../../services/api';
 import { theme, globalStyles } from '../../theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { AuthContext } from '../../context/AuthContext';
+import { useContext } from 'react';
 
 export default function MemberDetailsScreen() {
+    const { user } = useContext(AuthContext);
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
     const { member } = route.params;
@@ -146,33 +149,37 @@ export default function MemberDetailsScreen() {
                                     )}
                                 </View>
 
-                                <View style={styles.feeStats}>
-                                    <View style={styles.feeStatBox}>
-                                        <Text style={styles.feeStatLabel}>Total Fee</Text>
-                                        <Text style={styles.feeStatValue}>₹{member.totalFee || 0}</Text>
+                                {user?.role !== 'teacher' && (
+                                    <View style={styles.feeStats}>
+                                        <View style={styles.feeStatBox}>
+                                            <Text style={styles.feeStatLabel}>Total Fee</Text>
+                                            <Text style={styles.feeStatValue}>₹{member.totalFee || 0}</Text>
+                                        </View>
+                                        <View style={styles.feeStatBox}>
+                                            <Text style={styles.feeStatLabel}>Paid</Text>
+                                            <Text style={styles.feeStatValue}>₹{payments.reduce((acc, p) => acc + p.amount, 0)}</Text>
+                                        </View>
+                                        <View style={styles.feeStatBox}>
+                                            <Text style={styles.feeStatLabel}>Pending</Text>
+                                            <Text style={[styles.feeStatValue, { color: theme.colors.danger }]}>
+                                                ₹{Math.max(0, (member.totalFee || 0) - payments.reduce((acc, p) => acc + p.amount, 0))}
+                                            </Text>
+                                        </View>
                                     </View>
-                                    <View style={styles.feeStatBox}>
-                                        <Text style={styles.feeStatLabel}>Paid</Text>
-                                        <Text style={styles.feeStatValue}>₹{payments.reduce((acc, p) => acc + p.amount, 0)}</Text>
-                                    </View>
-                                    <View style={styles.feeStatBox}>
-                                        <Text style={styles.feeStatLabel}>Pending</Text>
-                                        <Text style={[styles.feeStatValue, { color: theme.colors.danger }]}>
-                                            ₹{Math.max(0, (member.totalFee || 0) - payments.reduce((acc, p) => acc + p.amount, 0))}
-                                        </Text>
-                                    </View>
-                                </View>
+                                )}
                             </View>
 
-                            <View style={styles.paymentSectionHeader}>
-                                <Text style={styles.sectionTitle}>Payment History</Text>
-                                <TouchableOpacity style={styles.collectButton} onPress={() => setFeeModalVisible(true)}>
-                                    <Text style={styles.collectButtonText}>Collect Fee</Text>
-                                </TouchableOpacity>
-                            </View>
+                            {user?.role !== 'teacher' && (
+                                <View style={styles.paymentSectionHeader}>
+                                    <Text style={styles.sectionTitle}>Payment History</Text>
+                                    <TouchableOpacity style={styles.collectButton} onPress={() => setFeeModalVisible(true)}>
+                                        <Text style={styles.collectButtonText}>Collect Fee</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
                         </>
                     }
-                    ListEmptyComponent={<Text style={globalStyles.emptyText}>No payments found.</Text>}
+                    ListEmptyComponent={user?.role !== 'teacher' ? <Text style={globalStyles.emptyText}>No payments found.</Text> : null}
                     renderItem={({ item }) => (
                         <View style={globalStyles.card}>
                             <View style={{ flex: 1 }}>

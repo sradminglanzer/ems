@@ -11,6 +11,7 @@ import { theme } from '../theme';
 import { Ionicons } from '@expo/vector-icons';
 import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
 import { DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
+import { AuthContext } from '../context/AuthContext';
 
 type DrawerParamList = {
     DashboardHome: undefined;
@@ -44,6 +45,8 @@ function CustomDrawerContent(props: any) {
 }
 
 export default function MainDrawerNavigator() {
+    const { user } = React.useContext(AuthContext);
+
     return (
         <Drawer.Navigator
             initialRouteName="DashboardHome"
@@ -90,14 +93,16 @@ export default function MainDrawerNavigator() {
                     drawerIcon: ({ color, size }) => <Ionicons name="people-outline" size={size} color={color} />
                 }}
             />
-            <Drawer.Screen
-                name="Staff"
-                component={StaffScreen}
-                options={{
-                    title: 'Staff Management',
-                    drawerIcon: ({ color, size }) => <Ionicons name="people-outline" size={size} color={color} />
-                }}
-            />
+            {user?.role !== 'teacher' && (
+                <Drawer.Screen
+                    name="Staff"
+                    component={StaffScreen}
+                    options={{
+                        title: 'Staff Management',
+                        drawerIcon: ({ color, size }) => <Ionicons name="people-outline" size={size} color={color} />
+                    }}
+                />
+            )}
             <Drawer.Screen
                 name="FeeGroups"
                 component={FeeGroupsScreen}
@@ -106,14 +111,16 @@ export default function MainDrawerNavigator() {
                     drawerIcon: ({ color }) => <Ionicons name="layers-outline" size={22} color={color} />
                 }}
             />
-            <Drawer.Screen
-                name="FeeStructures"
-                component={FeeStructureScreen}
-                options={{
-                    title: 'Fee Structures',
-                    drawerIcon: ({ color, size }) => <Ionicons name="card-outline" size={size} color={color} />
-                }}
-            />
+            {user?.role !== 'teacher' && (
+                <Drawer.Screen
+                    name="FeeStructures"
+                    component={FeeStructureScreen}
+                    options={{
+                        title: 'Fee Structures',
+                        drawerIcon: ({ color, size }) => <Ionicons name="card-outline" size={size} color={color} />
+                    }}
+                />
+            )}
             <Drawer.Screen
                 name="Exams"
                 component={ExamsScreen}

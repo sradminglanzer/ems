@@ -59,24 +59,28 @@ export default function DashboardScreen() {
                             <Text style={styles.statValue}>{stats.totalFeeGroups}</Text>
                             <Text style={styles.statLabel}>Groups</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity style={styles.wideStatCard} activeOpacity={0.8} onPress={() => navigation.navigate('Students', { filter: 'pendingFees' })}>
-                            <View>
-                                <Text style={styles.wideStatLabel}>Pending Collection</Text>
-                                <Text style={[styles.wideStatValue, { color: theme.colors.danger }]}>
-                                    ₹{Math.max(0, stats.totalPendingAmount)}
-                                </Text>
-                            </View>
-                            <Ionicons name="alert-circle-outline" size={40} color={theme.colors.danger} />
-                        </TouchableOpacity>
-                        <View style={styles.wideStatCard}>
-                            <View>
-                                <Text style={styles.wideStatLabel}>Total Received</Text>
-                                <Text style={[styles.wideStatValue, { color: theme.colors.primary }]}>
-                                    ₹{Math.max(0, stats.totalCollectedAmount)}
-                                </Text>
-                            </View>
-                            <Ionicons name="checkmark-circle-outline" size={40} color={theme.colors.primary} />
-                        </View>
+                        {user?.role !== 'teacher' && (
+                            <>
+                                <TouchableOpacity style={styles.wideStatCard} activeOpacity={0.8} onPress={() => navigation.navigate('Students', { filter: 'pendingFees' })}>
+                                    <View>
+                                        <Text style={styles.wideStatLabel}>Pending Collection</Text>
+                                        <Text style={[styles.wideStatValue, { color: theme.colors.danger }]}>
+                                            ₹{Math.max(0, stats.totalPendingAmount)}
+                                        </Text>
+                                    </View>
+                                    <Ionicons name="alert-circle-outline" size={40} color={theme.colors.danger} />
+                                </TouchableOpacity>
+                                <View style={styles.wideStatCard}>
+                                    <View>
+                                        <Text style={styles.wideStatLabel}>Total Received</Text>
+                                        <Text style={[styles.wideStatValue, { color: theme.colors.primary }]}>
+                                            ₹{Math.max(0, stats.totalCollectedAmount)}
+                                        </Text>
+                                    </View>
+                                    <Ionicons name="checkmark-circle-outline" size={40} color={theme.colors.primary} />
+                                </View>
+                            </>
+                        )}
                     </View>
                 )}
             </ScrollView>
