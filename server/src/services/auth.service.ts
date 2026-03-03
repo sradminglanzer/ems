@@ -4,6 +4,7 @@ import { AppError } from '../utils/AppError';
 import { HTTP_STATUS, MESSAGES } from '../utils/constants';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import { ObjectId } from 'mongodb';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'ems_secure_jwt_key';
 
@@ -12,8 +13,15 @@ class AuthService extends BaseService<User> {
         super('users');
     }
 
-    async handleLoginOrSetup(contactNumber: string, mpin?: string) {
-        const user = await this.getOne({ contactNumber });
+    async handleLoginOrSetup(contactNumber: string, entityId: string, mpin?: string) {
+        let objectId;
+        try {
+            objectId = new ObjectId(entityId);
+        } catch (error) {
+            throw new AppError('Invalid Entity ID format', HTTP_STATUS.BAD_REQUEST);
+        }
+
+        const user = await this.getOne({ contactNumber, entityId: objectId });
 
         if (!user) {
             throw new AppError(MESSAGES.ERROR.USER_NOT_FOUND, HTTP_STATUS.NOT_FOUND);

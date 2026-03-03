@@ -20,6 +20,7 @@ export default function LoginScreen({ navigation }: any) {
         setLoading(true);
         try {
             const response = await api.post('/auth/login', {
+                entityId: process.env.EXPO_PUBLIC_ENTITY_ID,
                 contactNumber,
                 mpin: mpin || undefined // If mpin is empty, send undefined so backend triggers setup logic
             });

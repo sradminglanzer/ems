@@ -27,10 +27,8 @@ export default function SetupMpinScreen({ route, navigation }: any) {
 
         setLoading(true);
         try {
-            // NOTE: The 'api' import was removed as per the instruction's import list.
-            // This line will cause an error if 'api' is not re-imported or the logic is changed.
-            // Assuming this is a placeholder or will be addressed in a subsequent edit.
             const response = await api.post('/auth/login', {
+                entityId: process.env.EXPO_PUBLIC_ENTITY_ID,
                 contactNumber,
                 mpin: mpin
             });

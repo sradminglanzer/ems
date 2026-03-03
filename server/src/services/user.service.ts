@@ -18,7 +18,7 @@ class UserService extends BaseService<User> {
 
     async insert(user: OptionalUnlessRequiredId<User>) {
         // Enforce business logic rules before utilizing the generic insert
-        const existing = await this.getOne({ contactNumber: user.contactNumber });
+        const existing = await this.getOne({ contactNumber: user.contactNumber, entityId: user.entityId });
         if (existing) {
             throw new AppError(MESSAGES.ERROR.CONTACT_ALREADY_REGISTERED, HTTP_STATUS.BAD_REQUEST);
         }
