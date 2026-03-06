@@ -182,22 +182,49 @@ export default function MemberDetailsScreen() {
                                 <View style={{ width: '100%', marginTop: theme.spacing.m, backgroundColor: theme.colors.background, padding: theme.spacing.m, borderRadius: theme.borderRadius.m }}>
                                     <Text style={{ fontSize: 16, fontWeight: '600', color: theme.colors.textPrimary, marginBottom: 8 }}>Exam Results</Text>
                                     {results.map(r => (
-                                        <View key={r._id} style={{ paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: theme.colors.border }}>
-                                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                                                <Text style={{ fontWeight: 'bold', fontSize: 14, color: theme.colors.textPrimary }}>{r.examName || 'Exam'}</Text>
-                                                {r.remarks && <Text style={{ color: theme.colors.textMuted, fontStyle: 'italic', fontSize: 12 }}>{r.remarks}</Text>}
+                                        <View key={r._id} style={{ marginBottom: 16 }}>
+                                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, alignItems: 'flex-end' }}>
+                                                <Text style={{ fontWeight: 'bold', fontSize: 15, color: theme.colors.textPrimary }}>{r.examName || 'Exam'}</Text>
+                                                {r.remarks && <Text style={{ color: theme.colors.primary, fontStyle: 'italic', fontSize: 12 }}>{r.remarks}</Text>}
                                             </View>
-                                            {Array.isArray(r.marks) ? (
-                                                r.marks.map((m: any, i: number) => (
-                                                    <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingLeft: 8, marginBottom: 2 }}>
-                                                        <Text style={{ fontSize: 13, color: theme.colors.textSecondary }}>{m.subjectName}</Text>
-                                                        <Text style={{ fontSize: 13, fontWeight: '500', color: theme.colors.textPrimary }}>
-                                                            {m.score !== null && m.score !== undefined ? m.score : '-'}/{m.maxScore}
+
+                                            {Array.isArray(r.marks) && r.marks.length > 0 ? (
+                                                <View style={styles.tableContainer}>
+                                                    {/* Table Header */}
+                                                    <View style={styles.tableHeaderRow}>
+                                                        <Text style={[styles.tableHeaderText, { flex: 2 }]} numberOfLines={1}>Subject</Text>
+                                                        <Text style={[styles.tableHeaderText, { flex: 1, textAlign: 'center' }]}>Score</Text>
+                                                        <Text style={[styles.tableHeaderText, { flex: 1, textAlign: 'center' }]}>Max</Text>
+                                                    </View>
+
+                                                    {/* Table Body */}
+                                                    {r.marks.map((m: any, i: number) => (
+                                                        <View key={i} style={[styles.tableRow, i === r.marks.length - 1 && { borderBottomWidth: 0 }]}>
+                                                            <Text style={[styles.tableCell, { flex: 2, fontWeight: '500' }]} numberOfLines={1}>{m.subjectName}</Text>
+                                                            <Text style={[styles.tableCell, { flex: 1, textAlign: 'center', color: theme.colors.textPrimary, fontWeight: '600' }]}>
+                                                                {m.score !== null && m.score !== undefined ? m.score : '-'}
+                                                            </Text>
+                                                            <Text style={[styles.tableCell, { flex: 1, textAlign: 'center', color: theme.colors.textSecondary }]}>
+                                                                {m.maxScore}
+                                                            </Text>
+                                                        </View>
+                                                    ))}
+
+                                                    {/* Table Footer: Totals */}
+                                                    <View style={styles.tableFooterRow}>
+                                                        <Text style={[styles.tableFooterText, { flex: 2 }]}>Total</Text>
+                                                        <Text style={[styles.tableFooterText, { flex: 1, textAlign: 'center', color: theme.colors.primary }]}>
+                                                            {r.marks.reduce((sum: number, m: any) => sum + (Number(m.score) || 0), 0)}
+                                                        </Text>
+                                                        <Text style={[styles.tableFooterText, { flex: 1, textAlign: 'center' }]}>
+                                                            {r.marks.reduce((sum: number, m: any) => sum + (Number(m.maxScore) || 0), 0)}
                                                         </Text>
                                                     </View>
-                                                ))
+                                                </View>
                                             ) : (
-                                                <Text style={styles.info}>Score: {r.marks !== null && r.marks !== undefined ? String(r.marks) : 'N/A'}</Text>
+                                                <View style={styles.tableContainer}>
+                                                    <Text style={[styles.info, { padding: 12 }]}>Overall Score: {r.marks !== null && r.marks !== undefined ? String(r.marks) : 'N/A'}</Text>
+                                                </View>
                                             )}
                                         </View>
                                     ))}
@@ -323,5 +350,52 @@ const styles = StyleSheet.create({
     collectButtonText: { color: theme.colors.surface, fontWeight: '600', fontSize: 12, textTransform: 'uppercase' },
     paymentAmount: { fontSize: 18, fontWeight: '600', color: theme.colors.primary },
     paymentDate: { fontSize: 12, color: theme.colors.textSecondary, marginTop: 4 },
-    notesText: { fontSize: 12, color: theme.colors.textMuted, fontStyle: 'italic', maxWidth: '40%' }
+    notesText: { fontSize: 12, color: theme.colors.textMuted, fontStyle: 'italic', maxWidth: '40%' },
+
+    // Table Styles
+    tableContainer: {
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        borderRadius: theme.borderRadius.s,
+        overflow: 'hidden',
+        backgroundColor: theme.colors.surface
+    },
+    tableHeaderRow: {
+        flexDirection: 'row',
+        backgroundColor: theme.colors.primaryLight + '20',
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colors.border
+    },
+    tableHeaderText: {
+        fontSize: 12,
+        fontWeight: 'bold',
+        color: theme.colors.textPrimary,
+        textTransform: 'uppercase'
+    },
+    tableRow: {
+        flexDirection: 'row',
+        paddingVertical: 12,
+        paddingHorizontal: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colors.border + '50'
+    },
+    tableCell: {
+        fontSize: 14,
+        color: theme.colors.textSecondary
+    },
+    tableFooterRow: {
+        flexDirection: 'row',
+        backgroundColor: theme.colors.background,
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderTopWidth: 1,
+        borderTopColor: theme.colors.border
+    },
+    tableFooterText: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        color: theme.colors.textPrimary
+    }
 });
