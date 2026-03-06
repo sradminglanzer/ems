@@ -4,10 +4,14 @@ import api from '../../services/api';
 import { theme, globalStyles } from '../../theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { AuthContext } from '../../context/AuthContext';
+import { useContext } from 'react';
+import HeaderActions from '../../components/HeaderActions';
 
 const { width } = Dimensions.get('window');
 
 export default function ExamDetailsScreen() {
+    const { selectedAcademicYearId } = useContext(AuthContext);
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
     const { exam } = route.params;
@@ -62,9 +66,22 @@ export default function ExamDetailsScreen() {
             setLoadingMembers(true);
             try {
                 const group = feeGroups.find(g => g._id === selectedGroupId);
-                if (group && group.members?.length > 0) {
+
+                let groupMemberIds: string[] = [];
+                if (group && group.yearlyRosters) {
+                    const targetYearId = selectedAcademicYearId || exam.academicYearId;
+                    const roster = group.yearlyRosters.find((r: any) => r.academicYearId === targetYearId);
+                    if (roster && roster.members) {
+                        groupMemberIds = roster.members;
+                    }
+                } else if (group && group.members) {
+                    // Legacy fallback
+                    groupMemberIds = group.members;
+                }
+
+                if (groupMemberIds.length > 0) {
                     const membersRes = await api.get('/members');
-                    const matchedMembers = membersRes.data.filter((m: any) => group.members.includes(m._id));
+                    const matchedMembers = membersRes.data.filter((m: any) => groupMemberIds.includes(m._id));
                     setMembers(matchedMembers);
                 } else {
                     setMembers([]);
@@ -76,7 +93,7 @@ export default function ExamDetailsScreen() {
             }
         };
         loadMembersForGroup();
-    }, [selectedGroupId, feeGroups]);
+    }, [selectedGroupId, feeGroups, selectedAcademicYearId, exam.academicYearId]);
 
     const handleUpdateMark = (memberId: string, subjectName: string, field: 'score' | 'maxScore', value: string) => {
         setResultsMap((prev: any) => {
@@ -230,7 +247,7 @@ export default function ExamDetailsScreen() {
                     <Ionicons name="arrow-back" size={24} color={theme.colors.textPrimary} />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>{exam.name}</Text>
-                <View style={{ width: 40 }} />
+                <HeaderActions />
             </View>
 
             <View style={styles.selectorsBlock}>

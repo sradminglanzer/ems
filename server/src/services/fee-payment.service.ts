@@ -7,13 +7,20 @@ class FeePaymentService extends BaseService<FeePayment> {
         super('fee_payments');
     }
 
-    async getByEntity(entityId: string) {
-        return await this.get({ entityId: new ObjectId(entityId) });
+    async getByEntity(entityId: string | ObjectId, academicYearId?: string) {
+        const query: any = { entityId: new ObjectId(entityId) };
+        if (academicYearId) {
+            query.academicYearId = new ObjectId(academicYearId);
+        }
+        return this.get(query);
     }
 
-    async getByMember(memberId: string, entityId: string) {
-        // Sort by paymentDate descending
-        return await this.get({ memberId: new ObjectId(memberId), entityId: new ObjectId(entityId) }, { sort: { paymentDate: -1 } });
+    async getByMember(memberId: string | ObjectId, entityId: string | ObjectId, academicYearId?: string) {
+        const query: any = { memberId: new ObjectId(memberId), entityId: new ObjectId(entityId) };
+        if (academicYearId) {
+            query.academicYearId = new ObjectId(academicYearId);
+        }
+        return this.get(query, { sort: { paymentDate: -1 } });
     }
 }
 

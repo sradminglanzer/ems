@@ -7,8 +7,12 @@ class ExamService extends BaseService<Exam> {
         super('exams');
     }
 
-    async getByEntity(entityId: string) {
-        return await this.get({ entityId: new ObjectId(entityId) });
+    async getByEntity(entityId: string | ObjectId, academicYearId?: string) {
+        const query: any = { entityId: new ObjectId(entityId) };
+        if (academicYearId) {
+            query.academicYearId = new ObjectId(academicYearId);
+        }
+        return this.get(query);
     }
 }
 

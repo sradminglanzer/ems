@@ -11,6 +11,7 @@ import { ObjectId } from 'mongodb';
 export const getDashboardStats = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
         const entityId = req.user!.entityId.toString();
+        const academicYearId = req.query.academicYearId as string | undefined;
 
         if (req.user!.role === 'parent') {
             const parentUser = await userService.getOne({ _id: new ObjectId(req.user!.userId) });
@@ -20,14 +21,62 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
             } else {
                 members = [];
             }
-            return res.status(HTTP_STATUS.OK).json({ isParent: true, children: members, totalMembers: members.length });
+
+            // Enrich with payment stats for this academic year
+            const feePayments = await feePaymentService.getByEntity(entityId, academicYearId);
+            const feeGroups = await feeGroupService.getByEntity(entityId);
+            const feeStructures = await feeStructureService.getByEntity(entityId);
+
+            const groupTotalFees: Record<string, number> = {};
+            feeGroups.forEach(g => {
+                const groupStructures = feeStructures.filter(s => s.feeGroupId.toString() === g._id!.toString());
+                const totalFee = groupStructures.reduce((sum, s) => sum + s.amount, 0);
+                groupTotalFees[g._id!.toString()] = totalFee;
+            });
+
+            const childrenWithStats = members.map(m => {
+                const mId = m._id!.toString();
+
+                let group;
+                if (academicYearId) {
+                    group = feeGroups.find(g => {
+                        const roster = g.yearlyRosters?.find((r: any) => r.academicYearId.toString() === academicYearId);
+                        return roster && roster.members && roster.members.some((id: any) => id.toString() === mId);
+                    });
+                } else {
+                    group = feeGroups.find(g => {
+                        return g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId));
+                    });
+                }
+
+                let totalFee = 0;
+                let groupName = 'Unassigned';
+
+                if (group) {
+                    totalFee = groupTotalFees[group._id!.toString()] || 0;
+                    groupName = group.name;
+                }
+
+                const memberPayments = feePayments.filter(p => p.memberId.toString() === mId);
+                const totalPaid = memberPayments.reduce((sum, p) => sum + p.amount, 0);
+
+                return {
+                    ...m,
+                    groupName,
+                    totalFee,
+                    totalPaid,
+                    pendingAmount: totalFee - totalPaid
+                };
+            });
+
+            return res.status(HTTP_STATUS.OK).json({ isParent: true, children: childrenWithStats, totalMembers: members.length });
         }
 
         const [members, feeGroups, feeStructures, feePayments] = await Promise.all([
             memberService.getByEntity(entityId),
             feeGroupService.getByEntity(entityId),
             feeStructureService.getByEntity(entityId),
-            feePaymentService.getByEntity(entityId)
+            feePaymentService.getByEntity(entityId, academicYearId)
         ]);
 
         const groupTotalFees: Record<string, number> = {};
@@ -40,7 +89,19 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
         let systemTotalFees = 0;
         members.forEach(m => {
             const mId = m._id!.toString();
-            const group = feeGroups.find(g => g.members && g.members.some((id: any) => id.toString() === mId));
+
+            let group;
+            if (academicYearId) {
+                group = feeGroups.find(g => {
+                    const roster = g.yearlyRosters?.find((r: any) => r.academicYearId.toString() === academicYearId);
+                    return roster && roster.members && roster.members.some((id: any) => id.toString() === mId);
+                });
+            } else {
+                group = feeGroups.find(g => {
+                    return g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId));
+                });
+            }
+
             if (group) {
                 systemTotalFees += (groupTotalFees[group._id!.toString()] || 0);
             }

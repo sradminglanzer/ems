@@ -6,8 +6,12 @@ class ExamService extends base_service_1.BaseService {
     constructor() {
         super('exams');
     }
-    async getByEntity(entityId) {
-        return await this.get({ entityId: new mongodb_1.ObjectId(entityId) });
+    async getByEntity(entityId, academicYearId) {
+        const query = { entityId: new mongodb_1.ObjectId(entityId) };
+        if (academicYearId) {
+            query.academicYearId = new mongodb_1.ObjectId(academicYearId);
+        }
+        return this.get(query);
     }
 }
 exports.default = new ExamService();

@@ -5,8 +5,12 @@ export interface Entity {
     address: string;
     createdAt?: Date;
     updatedAt?: Date;
+    settings?: {
+        feeGroupLabel?: string;
+        memberLabel?: string;
+    };
 }
-export type UserRole = 'owner' | 'admin' | 'staff' | 'teacher';
+export type UserRole = 'owner' | 'admin' | 'staff' | 'teacher' | 'parent';
 export interface User {
     _id?: ObjectId;
     entityId: ObjectId;

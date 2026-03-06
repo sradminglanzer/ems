@@ -6,7 +6,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { useCallback } from 'react';
 
+import { AuthContext } from '../../context/AuthContext';
+import { useContext } from 'react';
+import HeaderActions from '../../components/HeaderActions';
+
 export default function FeeGroupDetailsScreen() {
+    const { selectedAcademicYearId } = useContext(AuthContext);
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
     const { group } = route.params;
@@ -14,6 +19,14 @@ export default function FeeGroupDetailsScreen() {
     const [members, setMembers] = useState<any[]>([]);
     const [structures, setStructures] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+
+    // Promote Students Modal
+    const [promoteModalVisible, setPromoteModalVisible] = useState(false);
+    const [academicYears, setAcademicYears] = useState<any[]>([]);
+    const [allGroups, setAllGroups] = useState<any[]>([]);
+    const [selectedTargetYearId, setSelectedTargetYearId] = useState<string>('');
+    const [selectedTargetGroupId, setSelectedTargetGroupId] = useState<string>('');
+    const [isPromoting, setIsPromoting] = useState(false);
 
     // Fee Structure Modal
     const [feeModalVisible, setFeeModalVisible] = useState(false);
@@ -39,10 +52,18 @@ export default function FeeGroupDetailsScreen() {
 
             if (currentGroup) {
                 setCurrentGroupData(currentGroup);
-                if (currentGroup.members?.length > 0) {
+                let currentRosterMembers: string[] = [];
+                if (currentGroup.yearlyRosters && Array.isArray(currentGroup.yearlyRosters)) {
+                    const roster = currentGroup.yearlyRosters.find((r: any) => r.academicYearId === selectedAcademicYearId);
+                    if (roster && roster.members) {
+                        currentRosterMembers = roster.members;
+                    }
+                }
+
+                if (currentRosterMembers.length > 0) {
                     // Fetch all members
                     const membersResp = await api.get('/members');
-                    const matchedMembers = membersResp.data.filter((m: any) => currentGroup.members.includes(m._id));
+                    const matchedMembers = membersResp.data.filter((m: any) => currentRosterMembers.includes(m._id));
                     setMembers(matchedMembers);
                 } else {
                     setMembers([]);
@@ -54,6 +75,14 @@ export default function FeeGroupDetailsScreen() {
             const matchedStructs = structResp.data.filter((s: any) => s.feeGroupId === group._id);
             setStructures(matchedStructs);
 
+            // Fetch dropdown data for promotion
+            const [yearsResp, groupsResp] = await Promise.all([
+                api.get('/academic-years'),
+                api.get('/fee-groups')
+            ]);
+            setAcademicYears(yearsResp.data.filter((y: any) => y._id !== selectedAcademicYearId));
+            setAllGroups(groupsResp.data);
+
         } catch (error) {
             console.error('Error loading members or structures:', error);
         } finally {
@@ -64,7 +93,7 @@ export default function FeeGroupDetailsScreen() {
     useFocusEffect(
         useCallback(() => {
             loadGroupMembers();
-        }, [])
+        }, [selectedAcademicYearId])
     );
 
     const handleUpdateGroup = async () => {
@@ -97,22 +126,59 @@ export default function FeeGroupDetailsScreen() {
         ]);
     };
 
-    const handleRemoveMember = (memberId: string) => {
-        Alert.alert("Remove Student", "Remove student from this fee group?", [
-            { text: "Cancel", style: "cancel" },
-            {
-                text: "Remove", style: "destructive", onPress: async () => {
-                    try {
-                        const updatedMembers = currentGroupData.members.filter((id: string) => id !== memberId);
-                        await api.put(`/fee-groups/${group._id}`, { members: updatedMembers });
-                        loadGroupMembers();
-                    } catch (e) {
-                        alert('Error removing student');
-                    }
+    const handlePromoteStudents = async () => {
+        if (!selectedTargetYearId || !selectedTargetGroupId) {
+            Alert.alert('Validation Error', 'Please select both a target year and target group.');
+            return;
+        }
+
+        if (members.length === 0) {
+            Alert.alert('No Students', 'There are no students to promote from this class year.');
+            return;
+        }
+
+        setIsPromoting(true);
+        try {
+            // Get the target group
+            const targetGroup = allGroups.find(g => g._id === selectedTargetGroupId);
+            if (!targetGroup) throw new Error('Target group not found');
+
+            // Find its existing roster for the target year
+            let existingTargetMembers: string[] = [];
+            if (targetGroup.yearlyRosters && Array.isArray(targetGroup.yearlyRosters)) {
+                const roster = targetGroup.yearlyRosters.find((r: any) => r.academicYearId === selectedTargetYearId);
+                if (roster && roster.members) {
+                    existingTargetMembers = roster.members;
                 }
             }
-        ]);
+
+            // Extract the IDs of the current members we want to promote
+            const currentMemberIdsToPromote = members.map(m => m._id);
+
+            // Merge arrays uniquely
+            const mergedMembersSet = new Set([...existingTargetMembers, ...currentMemberIdsToPromote]);
+            const nextYearMembers = Array.from(mergedMembersSet);
+
+            // Put the update
+            await api.put(`/fee-groups/${selectedTargetGroupId}`, {
+                academicYearId: selectedTargetYearId,
+                members: nextYearMembers
+            });
+
+            Alert.alert('Success', `Successfully promoted ${currentMemberIdsToPromote.length} students.`);
+            setPromoteModalVisible(false);
+            setSelectedTargetYearId('');
+            setSelectedTargetGroupId('');
+
+        } catch (error: any) {
+            console.error('Promotion error:', error);
+            Alert.alert('Error', 'Failed to promote students.');
+        } finally {
+            setIsPromoting(false);
+        }
     };
+
+
 
     const handleCreateFeeStructure = async () => {
         if (!feeName || !feeAmount) return alert('Name and Amount are required');
@@ -142,9 +208,6 @@ export default function FeeGroupDetailsScreen() {
                 <Text style={styles.details}>Roll No: {item.knownId}</Text>
                 {item.contact && <Text style={styles.details}>Contact: {item.contact}</Text>}
             </View>
-            <TouchableOpacity onPress={() => handleRemoveMember(item._id)} style={styles.removeIcon}>
-                <Ionicons name="close-circle" size={24} color={theme.colors.danger} />
-            </TouchableOpacity>
         </TouchableOpacity>
     );
 
@@ -155,7 +218,8 @@ export default function FeeGroupDetailsScreen() {
                     <Ionicons name="arrow-back" size={24} color={theme.colors.textPrimary} />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>{currentGroupData.name}</Text>
-                <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+                    <HeaderActions />
                     <TouchableOpacity onPress={() => setModalVisible(true)}>
                         <Ionicons name="create-outline" size={24} color={theme.colors.primary} />
                     </TouchableOpacity>
@@ -170,6 +234,13 @@ export default function FeeGroupDetailsScreen() {
                     <Text style={styles.statsText}>{members.length} Students Enrolled</Text>
                     <Text style={styles.statsText}>Total Fees: ₹{structures.reduce((sum, s) => sum + s.amount, 0)}</Text>
                 </View>
+
+                {members.length > 0 && (
+                    <TouchableOpacity style={[styles.addFeeButton, { backgroundColor: theme.colors.primary, marginBottom: 12 }]} onPress={() => setPromoteModalVisible(true)}>
+                        <Ionicons name="arrow-up-circle-outline" size={20} color={theme.colors.surface} />
+                        <Text style={[styles.addFeeText, { color: theme.colors.surface }]}>Promote Students</Text>
+                    </TouchableOpacity>
+                )}
 
                 {structures.length > 0 ? (
                     structures.map((s, idx) => (
@@ -256,6 +327,54 @@ export default function FeeGroupDetailsScreen() {
                     </View>
                 </KeyboardAvoidingView>
             </Modal>
+
+            {/* Promote Students Modal */}
+            <Modal animationType="slide" transparent={true} visible={promoteModalVisible} onRequestClose={() => setPromoteModalVisible(false)}>
+                <KeyboardAvoidingView style={globalStyles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+                    <View style={globalStyles.modalContent}>
+                        <View style={globalStyles.modalHeader}>
+                            <Text style={globalStyles.modalTitle}>Bulk Promote Students</Text>
+                            <TouchableOpacity onPress={() => setPromoteModalVisible(false)} style={globalStyles.closeButton}>
+                                <Ionicons name="close" size={24} color={theme.colors.textSecondary} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <Text style={{ fontSize: 14, color: theme.colors.textSecondary, marginBottom: 16 }}>
+                            This will copy all {members.length} current students from this year's roster into the target group and year you select below.
+                        </Text>
+
+                        <Text style={globalStyles.label}>Target Academic Year</Text>
+                        <View style={styles.pickerContainer}>
+                            {academicYears.map(y => (
+                                <TouchableOpacity
+                                    key={y._id}
+                                    style={[styles.pill, selectedTargetYearId === y._id && styles.pillActive]}
+                                    onPress={() => setSelectedTargetYearId(y._id)}
+                                >
+                                    <Text style={[styles.pillText, selectedTargetYearId === y._id && styles.pillTextActive]}>{y.name}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+
+                        <Text style={globalStyles.label}>Target Fee Group</Text>
+                        <View style={styles.pickerContainer}>
+                            {allGroups.map(g => (
+                                <TouchableOpacity
+                                    key={g._id}
+                                    style={[styles.pill, selectedTargetGroupId === g._id && styles.pillActive]}
+                                    onPress={() => setSelectedTargetGroupId(g._id)}
+                                >
+                                    <Text style={[styles.pillText, selectedTargetGroupId === g._id && styles.pillTextActive]}>{g.name}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+
+                        <TouchableOpacity style={[globalStyles.submitButton, isPromoting && globalStyles.disabledButton]} onPress={handlePromoteStudents} disabled={isPromoting}>
+                            {isPromoting ? <ActivityIndicator color="#fff" /> : <Text style={globalStyles.submitButtonText}>Promote Students</Text>}
+                        </TouchableOpacity>
+                    </View>
+                </KeyboardAvoidingView>
+            </Modal>
         </View>
     );
 }
@@ -309,5 +428,31 @@ const styles = StyleSheet.create({
         backgroundColor: theme.colors.primary + '10',
         borderRadius: theme.borderRadius.s
     },
-    addFeeText: { color: theme.colors.primary, fontWeight: '600', marginLeft: 8 }
+    addFeeText: { color: theme.colors.primary, fontWeight: '600', marginLeft: 8 },
+    pickerContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+        marginBottom: 16
+    },
+    pill: {
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: theme.borderRadius.round,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        backgroundColor: theme.colors.background
+    },
+    pillActive: {
+        borderColor: theme.colors.primary,
+        backgroundColor: theme.colors.primary + '10'
+    },
+    pillText: {
+        fontSize: 14,
+        color: theme.colors.textSecondary
+    },
+    pillTextActive: {
+        color: theme.colors.primary,
+        fontWeight: '600'
+    }
 });

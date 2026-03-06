@@ -6,6 +6,7 @@ class FeePayment {
     _id;
     entityId;
     memberId;
+    academicYearId;
     feeGroupId;
     amount;
     notes;
@@ -17,6 +18,8 @@ class FeePayment {
             this._id = new mongodb_1.ObjectId(data._id);
         this.entityId = new mongodb_1.ObjectId(data.entityId);
         this.memberId = new mongodb_1.ObjectId(data.memberId);
+        if (data.academicYearId)
+            this.academicYearId = new mongodb_1.ObjectId(data.academicYearId);
         if (data.feeGroupId)
             this.feeGroupId = new mongodb_1.ObjectId(data.feeGroupId);
         this.amount = Number(data.amount);

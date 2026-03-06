@@ -11,7 +11,7 @@ import { AuthContext } from '../../context/AuthContext';
 import { useContext } from 'react';
 
 export default function MemberDetailsScreen() {
-    const { user } = useContext(AuthContext);
+    const { user, selectedAcademicYearId } = useContext(AuthContext);
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
     const { member } = route.params;
@@ -28,13 +28,14 @@ export default function MemberDetailsScreen() {
 
     useEffect(() => {
         loadData();
-    }, []);
+    }, [selectedAcademicYearId]);
 
     const loadData = async () => {
         try {
+            const params = selectedAcademicYearId ? { academicYearId: selectedAcademicYearId } : {};
             const [payRes, resRes] = await Promise.all([
-                api.get(`/fee-payments?memberId=${member._id}`),
-                api.get(`/exams/member/${member._id}/results`)
+                api.get(`/fee-payments?memberId=${member._id}`, { params }),
+                api.get(`/exams/member/${member._id}/results`, { params })
             ]);
             setPayments(payRes.data);
             setResults(resRes.data);
@@ -52,7 +53,8 @@ export default function MemberDetailsScreen() {
             await api.post('/fee-payments', {
                 memberId: member._id,
                 amount: parseFloat(feeAmount),
-                notes: feeNotes
+                notes: feeNotes,
+                academicYearId: selectedAcademicYearId
             });
             setFeeModalVisible(false);
             setFeeAmount('');

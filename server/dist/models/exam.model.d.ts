@@ -8,7 +8,7 @@ export interface ExamSubject {
 export declare class Exam {
     _id?: ObjectId;
     entityId: ObjectId;
-    feeGroupId: ObjectId;
+    feeGroupId?: ObjectId;
     name: string;
     startDate: string;
     endDate: string;

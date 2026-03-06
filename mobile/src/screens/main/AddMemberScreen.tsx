@@ -7,8 +7,11 @@ import api from '../../services/api';
 import { theme, globalStyles } from '../../theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { AuthContext } from '../../context/AuthContext';
+import { useContext } from 'react';
 
 export default function AddMemberScreen() {
+    const { selectedAcademicYearId } = useContext(AuthContext);
     const navigation = useNavigation();
     const route = useRoute<any>();
 
@@ -51,12 +54,19 @@ export default function AddMemberScreen() {
                 const newMemberId = response.data.insertedId;
 
                 // If feeGroupId is passed, we also need to push the member id to the fee group
-                if (feeGroupId && newMemberId) {
+                if (feeGroupId && newMemberId && selectedAcademicYearId) {
                     const groupResp = await api.get('/fee-groups');
                     const group = groupResp.data.find((g: any) => g._id === feeGroupId);
                     if (group) {
-                        const updatedMembers = [...(group.members || []), newMemberId];
-                        await api.put(`/fee-groups/${feeGroupId}`, { members: updatedMembers });
+                        let currentRosterMembers: string[] = [];
+                        if (group.yearlyRosters && Array.isArray(group.yearlyRosters)) {
+                            const roster = group.yearlyRosters.find((r: any) => r.academicYearId === selectedAcademicYearId);
+                            if (roster && roster.members) {
+                                currentRosterMembers = roster.members;
+                            }
+                        }
+                        const updatedMembers = [...currentRosterMembers, newMemberId];
+                        await api.put(`/fee-groups/${feeGroupId}`, { members: updatedMembers, academicYearId: selectedAcademicYearId });
                     }
                 }
             }

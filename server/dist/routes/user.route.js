@@ -11,5 +11,6 @@ router.use(auth_middleware_1.authenticateToken);
 router.use((0, auth_middleware_1.requireRole)(['owner', 'admin']));
 router.get('/', user_controller_1.getUsers);
 router.post('/', (0, validate_middleware_1.validateRequest)(user_validation_1.createUserSchema), user_controller_1.createUser);
+router.delete('/:id', user_controller_1.deleteUser);
 exports.default = router;
 //# sourceMappingURL=user.route.js.map

@@ -14,6 +14,7 @@ const fee_structure_route_1 = __importDefault(require("./routes/fee-structure.ro
 const member_route_1 = __importDefault(require("./routes/member.route"));
 const fee_payment_route_1 = __importDefault(require("./routes/fee-payment.route"));
 const dashboard_route_1 = __importDefault(require("./routes/dashboard.route"));
+const academic_year_route_1 = __importDefault(require("./routes/academic-year.route"));
 const error_middleware_1 = require("./middleware/error.middleware");
 const app = (0, express_1.default)();
 app.use((0, cors_1.default)());
@@ -31,6 +32,7 @@ app.use('/api/fee-structures', fee_structure_route_1.default);
 app.use('/api/members', member_route_1.default);
 app.use('/api/fee-payments', fee_payment_route_1.default);
 app.use('/api/dashboard', dashboard_route_1.default);
+app.use('/api/academic-years', academic_year_route_1.default);
 // Catch-all route for undefined API endpoints
 app.use((req, res, next) => {
     next(new AppError_1.AppError(`Can't find ${req.originalUrl} on this server`, 404));

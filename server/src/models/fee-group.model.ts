@@ -1,11 +1,16 @@
 import { ObjectId } from 'mongodb';
 
+export interface YearlyRoster {
+    academicYearId: ObjectId;
+    members: ObjectId[];
+}
+
 export class FeeGroup {
     _id?: ObjectId;
     entityId: ObjectId;
     name: string;
     description?: string;
-    members: ObjectId[];
+    yearlyRosters: YearlyRoster[];
     createdAt?: Date;
     updatedAt?: Date;
 
@@ -14,7 +19,19 @@ export class FeeGroup {
         this.entityId = new ObjectId(data.entityId);
         this.name = data.name;
         this.description = data.description;
-        this.members = Array.isArray(data.members) ? data.members.map((id: any) => new ObjectId(id)) : [];
+
+        // Handle migration from old 'members' array or newly constructed 'yearlyRosters'
+        this.yearlyRosters = [];
+        if (Array.isArray(data.yearlyRosters)) {
+            this.yearlyRosters = data.yearlyRosters.map((r: any) => ({
+                academicYearId: new ObjectId(r.academicYearId),
+                members: Array.isArray(r.members) ? r.members.map((id: any) => new ObjectId(id)) : []
+            }));
+        } else if (Array.isArray(data.members)) {
+            // If old data struct is passed, we can't magically know the academic year here without context.
+            // Leaving it empty so the migration script handles the actual database records.
+        }
+
         this.createdAt = data.createdAt || new Date();
         this.updatedAt = data.updatedAt || new Date();
     }

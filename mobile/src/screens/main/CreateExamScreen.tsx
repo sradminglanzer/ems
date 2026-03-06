@@ -4,9 +4,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import api from '../../services/api';
+import { AuthContext } from '../../context/AuthContext';
+import { useContext } from 'react';
 import { theme, globalStyles } from '../../theme';
 
 export default function CreateExamScreen() {
+    const { selectedAcademicYearId } = useContext(AuthContext);
     const navigation = useNavigation<any>();
     const [name, setName] = useState('');
     const [startDate, setStartDate] = useState(new Date());
@@ -16,6 +19,7 @@ export default function CreateExamScreen() {
     const [showEndDatePicker, setShowEndDatePicker] = useState(false);
 
     const [subjects, setSubjects] = useState<any[]>([]);
+    const [activeYearName, setActiveYearName] = useState<string>('');
 
     // Subject Form Additions
     const [subName, setSubName] = useState('');
@@ -31,6 +35,23 @@ export default function CreateExamScreen() {
 
     const formatDate = (date: Date) => date.toISOString().split('T')[0];
     const formatTime = (date: Date) => date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    React.useEffect(() => {
+        const fetchYearName = async () => {
+            if (selectedAcademicYearId) {
+                try {
+                    const res = await api.get('/academic-years');
+                    const yearObj = res.data.find((y: any) => y._id === selectedAcademicYearId);
+                    if (yearObj) {
+                        setActiveYearName(yearObj.name);
+                    }
+                } catch (e) {
+                    console.error("Failed to fetch academic year details in CreateExam", e);
+                }
+            }
+        };
+        fetchYearName();
+    }, [selectedAcademicYearId]);
 
     const handleAddSubject = () => {
         if (!subName.trim()) {
@@ -60,6 +81,9 @@ export default function CreateExamScreen() {
         if (subjects.length === 0) {
             return Alert.alert('Validation Error', 'Please add at least one subject to the timetable.');
         }
+        if (!selectedAcademicYearId) {
+            return Alert.alert('State Error', 'No active academic year found. Please select one from the settings menu or try re-logging.');
+        }
 
         setIsSubmitting(true);
         try {
@@ -67,7 +91,8 @@ export default function CreateExamScreen() {
                 name,
                 startDate: formatDate(startDate),
                 endDate: formatDate(endDate),
-                subjects
+                subjects,
+                academicYearId: selectedAcademicYearId
             });
             Alert.alert('Success', 'Exam created successfully');
             navigation.goBack();
@@ -89,6 +114,15 @@ export default function CreateExamScreen() {
             </View>
 
             <ScrollView contentContainerStyle={{ padding: theme.spacing.m }}>
+                {activeYearName ? (
+                    <View style={styles.yearAlert}>
+                        <Ionicons name="information-circle" size={20} color={theme.colors.primary} />
+                        <Text style={styles.yearAlertText}>
+                            Exam will be created for academic year: <Text style={{ fontWeight: 'bold' }}>{activeYearName}</Text>
+                        </Text>
+                    </View>
+                ) : null}
+
                 <Text style={globalStyles.label}>Exam Name</Text>
                 <TextInput style={globalStyles.input} placeholder="e.g. Term 1 Finals" value={name} onChangeText={setName} />
 
@@ -229,5 +263,21 @@ const styles = StyleSheet.create({
     subjectInfo: { flex: 1 },
     subjectName: { fontSize: 16, fontWeight: '600', color: theme.colors.textPrimary },
     subjectTimeText: { fontSize: 13, color: theme.colors.textSecondary },
-    removeAction: { padding: 8 }
+    removeAction: { padding: 8 },
+    yearAlert: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: theme.colors.primary + '15',
+        padding: 12,
+        borderRadius: theme.borderRadius.m,
+        marginBottom: 16,
+        gap: 8,
+        borderWidth: 1,
+        borderColor: theme.colors.primary + '30'
+    },
+    yearAlertText: {
+        flex: 1,
+        color: theme.colors.primary,
+        fontSize: 14,
+    }
 });

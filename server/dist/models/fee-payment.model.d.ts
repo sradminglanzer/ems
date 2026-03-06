@@ -3,6 +3,7 @@ export declare class FeePayment {
     _id?: ObjectId;
     entityId: ObjectId;
     memberId: ObjectId;
+    academicYearId?: ObjectId;
     feeGroupId?: ObjectId;
     amount: number;
     notes?: string;

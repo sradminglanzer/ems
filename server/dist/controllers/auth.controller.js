@@ -8,9 +8,12 @@ const auth_service_1 = __importDefault(require("../services/auth.service"));
 const constants_1 = require("../utils/constants");
 const loginOrSetup = async (req, res, next) => {
     try {
-        const { contactNumber, mpin } = req.body;
+        const { contactNumber, mpin, entityId } = req.body;
+        if (!entityId) {
+            return res.status(constants_1.HTTP_STATUS.BAD_REQUEST).json({ message: 'Entity ID is missing' });
+        }
         // Call the service layer
-        const result = await auth_service_1.default.handleLoginOrSetup(contactNumber, mpin);
+        const result = await auth_service_1.default.handleLoginOrSetup(contactNumber, entityId, mpin);
         // Only return 200s or expected workflow states here, errors are thrown and caught
         return res.status(constants_1.HTTP_STATUS.OK).json(result);
     }

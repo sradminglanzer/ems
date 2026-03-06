@@ -5,6 +5,8 @@ const exam_controller_1 = require("../controllers/exam.controller");
 const auth_middleware_1 = require("../middleware/auth.middleware");
 const router = (0, express_1.Router)();
 router.use(auth_middleware_1.authenticateToken);
+// public to parent for specific member
+router.get('/member/:memberId/results', (0, auth_middleware_1.requireRole)(['owner', 'admin', 'teacher', 'parent']), exam_controller_1.getMemberResults);
 // owner, admin, and teachers can manage exams
 router.use((0, auth_middleware_1.requireRole)(['owner', 'admin', 'teacher']));
 router.get('/', exam_controller_1.getExams);

@@ -6,6 +6,8 @@ export type UserContextType = {
     id: string;
     name: string;
     role: string;
+    activeAcademicYearId?: string;
+    activeAcademicYearName?: string;
 } | null;
 
 type AuthContextType = {
@@ -13,6 +15,8 @@ type AuthContextType = {
     loading: boolean;
     signIn: (token: string, userData: UserContextType) => Promise<void>;
     signOut: () => Promise<void>;
+    selectedAcademicYearId: string | null;
+    setSelectedAcademicYearId: (id: string | null) => void;
 };
 
 export const AuthContext = createContext<AuthContextType>({
@@ -20,11 +24,14 @@ export const AuthContext = createContext<AuthContextType>({
     loading: true,
     signIn: async () => { },
     signOut: async () => { },
+    selectedAcademicYearId: null,
+    setSelectedAcademicYearId: () => { },
 });
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<UserContextType>(null);
     const [loading, setLoading] = useState(true);
+    const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<string | null>(null);
 
     useEffect(() => {
         // Check for token on app load
@@ -34,7 +41,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 const storedUser = await AsyncStorage.getItem('userData');
 
                 if (token && storedUser) {
-                    setUser(JSON.parse(storedUser));
+                    const parsedUser = JSON.parse(storedUser);
+                    setUser(parsedUser);
+                    if (parsedUser.activeAcademicYearId) {
+                        setSelectedAcademicYearId(parsedUser.activeAcademicYearId);
+                    }
                 }
             } catch (e) {
                 console.error('Failed to load user', e);
@@ -51,6 +62,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             await AsyncStorage.setItem('userToken', token);
             await AsyncStorage.setItem('userData', JSON.stringify(userData));
             setUser(userData);
+            if (userData?.activeAcademicYearId) {
+                setSelectedAcademicYearId(userData.activeAcademicYearId);
+            }
         } catch (e) {
             console.error('Failed to store auth data', e);
         }
@@ -67,7 +81,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, loading, signIn, signOut }}>
+        <AuthContext.Provider value={{ user, loading, signIn, signOut, selectedAcademicYearId, setSelectedAcademicYearId }}>
             {children}
         </AuthContext.Provider>
     );

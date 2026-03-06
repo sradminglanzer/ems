@@ -22,7 +22,11 @@ async function seed() {
             name: "Springfield High School",
             address: "123 Education Lane",
             createdAt: new Date(),
-            updatedAt: new Date()
+            updatedAt: new Date(),
+            settings: {
+                feeGroupLabel: "Class",
+                memberLabel: "Student"
+            }
         });
         const schoolId = schoolResult.insertedId;
         // 2. Create the Owner for the school

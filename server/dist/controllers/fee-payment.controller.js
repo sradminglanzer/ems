@@ -11,12 +11,13 @@ const constants_1 = require("../utils/constants");
 const getFeePayments = async (req, res, next) => {
     try {
         const memberId = req.query.memberId;
+        const academicYearId = req.query.academicYearId;
         let payments;
         if (memberId) {
-            payments = await fee_payment_service_1.default.getByMember(memberId, req.user.entityId.toString());
+            payments = await fee_payment_service_1.default.getByMember(memberId, req.user.entityId, academicYearId);
         }
         else {
-            payments = await fee_payment_service_1.default.getByEntity(req.user.entityId.toString());
+            payments = await fee_payment_service_1.default.getByEntity(req.user.entityId, academicYearId);
         }
         res.status(constants_1.HTTP_STATUS.OK).json(payments);
     }

@@ -6,15 +6,27 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteMember = exports.updateMember = exports.createMember = exports.getMembers = void 0;
 const member_service_1 = __importDefault(require("../services/member.service"));
 const member_model_1 = require("../models/member.model");
+const user_model_1 = require("../models/user.model");
 const AppError_1 = require("../utils/AppError");
 const constants_1 = require("../utils/constants");
+const mongodb_1 = require("mongodb");
 const fee_group_service_1 = __importDefault(require("../services/fee-group.service"));
 const fee_structure_service_1 = __importDefault(require("../services/fee-structure.service"));
 const fee_payment_service_1 = __importDefault(require("../services/fee-payment.service"));
+const user_service_1 = __importDefault(require("../services/user.service"));
 const getMembers = async (req, res, next) => {
     try {
         const entityId = req.user.entityId.toString();
-        const members = await member_service_1.default.getByEntity(entityId);
+        let members = await member_service_1.default.getByEntity(entityId);
+        if (req.user.role === 'parent') {
+            const parentUser = await user_service_1.default.getOne({ _id: new mongodb_1.ObjectId(req.user.userId) });
+            if (parentUser && parentUser.contactNumber) {
+                members = members.filter(m => m.contact === parentUser.contactNumber || m.altContact === parentUser.contactNumber);
+            }
+            else {
+                members = [];
+            }
+        }
         const [feeGroups, feeStructures, feePayments] = await Promise.all([
             fee_group_service_1.default.getByEntity(entityId),
             fee_structure_service_1.default.getByEntity(entityId),
@@ -63,6 +75,28 @@ const createMember = async (req, res, next) => {
             throw new AppError_1.AppError('Invalid member data. First Name, Last Name and Known ID are required.', constants_1.HTTP_STATUS.BAD_REQUEST);
         }
         const result = await member_service_1.default.insert(member);
+        // Ensure a parent user exists for this contact number
+        try {
+            if (member.contact) {
+                const existingParent = await user_service_1.default.getOne({
+                    entityId: new mongodb_1.ObjectId(req.user.entityId),
+                    contactNumber: member.contact
+                });
+                if (!existingParent) {
+                    const newUser = new user_model_1.User({
+                        entityId: new mongodb_1.ObjectId(req.user.entityId),
+                        name: `Parent of ${member.firstName}`,
+                        contactNumber: member.contact,
+                        role: 'parent',
+                        mpin: '' // Require setup
+                    });
+                    await user_service_1.default.insert(newUser);
+                }
+            }
+        }
+        catch (e) {
+            console.error('Error auto-creating parent user:', e);
+        }
         res.status(constants_1.HTTP_STATUS.CREATED).json(result);
     }
     catch (error) {
@@ -73,7 +107,6 @@ exports.createMember = createMember;
 const updateMember = async (req, res, next) => {
     try {
         const id = req.params.id;
-        const { ObjectId } = require('mongodb');
         if (req.body.entityId)
             delete req.body.entityId;
         // Validation for partial update
@@ -87,7 +120,7 @@ const updateMember = async (req, res, next) => {
         if (Object.keys(updateData.$set).length === 0) {
             delete updateData.$set;
         }
-        const result = await member_service_1.default.update({ _id: new ObjectId(id), entityId: new ObjectId(req.user.entityId) }, updateData);
+        const result = await member_service_1.default.update({ _id: new mongodb_1.ObjectId(id), entityId: new mongodb_1.ObjectId(req.user.entityId) }, updateData);
         res.status(constants_1.HTTP_STATUS.OK).json({ success: true });
     }
     catch (error) {
@@ -98,8 +131,7 @@ exports.updateMember = updateMember;
 const deleteMember = async (req, res, next) => {
     try {
         const id = req.params.id;
-        const { ObjectId } = require('mongodb');
-        const result = await member_service_1.default.delete({ _id: new ObjectId(id), entityId: new ObjectId(req.user.entityId) });
+        const result = await member_service_1.default.delete({ _id: new mongodb_1.ObjectId(id), entityId: new mongodb_1.ObjectId(req.user.entityId) });
         if (result) {
             res.status(constants_1.HTTP_STATUS.OK).json({ message: 'Member deleted' });
         }

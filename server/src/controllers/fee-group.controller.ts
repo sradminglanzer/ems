@@ -41,20 +41,50 @@ export const updateFeeGroup = async (req: AuthRequest, res: Response, next: Next
         if (req.body.name) updateData.$set.name = req.body.name;
         if (req.body.description !== undefined) updateData.$set.description = req.body.description;
 
-        if (req.body.members) {
-            updateData.$set.members = Array.isArray(req.body.members)
-                ? req.body.members.map((mId: string) => new ObjectId(mId))
-                : [];
-        }
-
+        // Extract updateData keys properly to pass directly if only name/description updated
         if (Object.keys(updateData.$set).length === 0) {
             delete updateData.$set;
         }
 
-        const result = await feeGroupService.update(
-            { _id: new ObjectId(id), entityId: new ObjectId(req.user!.entityId) },
-            updateData
-        );
+        // If trying to update members, we must handle it via yearlyRosters
+        if (req.body.members && req.body.academicYearId) {
+            const academicYearIdStr = req.body.academicYearId as string;
+            const newMembers = Array.isArray(req.body.members)
+                ? req.body.members.map((mId: string) => new ObjectId(mId))
+                : [];
+
+            // We need to fetch the document first to properly upsert the roster array
+            const group = await feeGroupService.getOne({ _id: new ObjectId(id), entityId: new ObjectId(req.user!.entityId) });
+            if (!group) throw new AppError('Fee group not found', HTTP_STATUS.NOT_FOUND);
+
+            let rosters = group.yearlyRosters || [];
+            const rosterIdx = rosters.findIndex((r: any) => r.academicYearId.toString() === academicYearIdStr);
+
+            if (rosterIdx > -1 && rosters[rosterIdx]) {
+                // Update existing roster
+                rosters[rosterIdx].members = newMembers;
+            } else {
+                // Add new roster for this year
+                rosters.push({
+                    academicYearId: new ObjectId(academicYearIdStr),
+                    members: newMembers
+                });
+            }
+
+            if (!updateData.$set) {
+                updateData.$set = {};
+            }
+            updateData.$set.yearlyRosters = rosters;
+        } else if (req.body.members && !req.body.academicYearId) {
+            throw new AppError('academicYearId is required when updating members', HTTP_STATUS.BAD_REQUEST);
+        }
+
+        if (updateData && updateData.$set && Object.keys(updateData.$set).length > 0) {
+            await feeGroupService.update(
+                { _id: new ObjectId(id), entityId: new ObjectId(req.user!.entityId) },
+                updateData
+            );
+        }
 
         res.status(HTTP_STATUS.OK).json({ success: true });
     } catch (error) {

@@ -10,6 +10,7 @@ export interface ExamSubject {
 export class Exam {
     _id?: ObjectId;
     entityId: ObjectId;
+    academicYearId?: ObjectId;
     feeGroupId?: ObjectId;
     name: string;
     startDate: string;
@@ -21,6 +22,7 @@ export class Exam {
     constructor(data: any) {
         if (data._id) this._id = new ObjectId(data._id);
         this.entityId = new ObjectId(data.entityId);
+        if (data.academicYearId) this.academicYearId = new ObjectId(data.academicYearId);
         if (data.feeGroupId) this.feeGroupId = new ObjectId(data.feeGroupId);
         this.name = data.name;
         this.startDate = data.startDate;
@@ -31,6 +33,6 @@ export class Exam {
     }
 
     get valid() {
-        return !!(this.entityId && this.name && this.startDate && this.endDate && this.subjects.length > 0);
+        return !!(this.entityId && this.academicYearId && this.name && this.startDate && this.endDate && this.subjects.length > 0);
     }
 }

@@ -1,8 +1,9 @@
 import { BaseService } from './base.service';
 import { User } from '../models/types';
+import { ObjectId } from 'mongodb';
 declare class AuthService extends BaseService<User> {
     constructor();
-    handleLoginOrSetup(contactNumber: string, mpin?: string): Promise<{
+    handleLoginOrSetup(contactNumber: string, entityId: string, mpin?: string): Promise<{
         requiresSetup: boolean;
         message: "MPIN setup required";
         token?: never;
@@ -11,18 +12,26 @@ declare class AuthService extends BaseService<User> {
         message: "MPIN setup successful";
         token: string;
         user: {
-            id: import("bson").ObjectId | undefined;
+            id: ObjectId | undefined;
+            entityId: ObjectId;
             name: string;
             role: import("../models/types").UserRole;
+            contactNumber: string;
+            activeAcademicYearId: any;
+            activeAcademicYearName: any;
         };
         requiresSetup?: never;
     } | {
         message: "Login successful";
         token: string;
         user: {
-            id: import("bson").ObjectId | undefined;
+            id: ObjectId | undefined;
+            entityId: ObjectId;
             name: string;
             role: import("../models/types").UserRole;
+            contactNumber: string;
+            activeAcademicYearId: any;
+            activeAcademicYearName: any;
         };
         requiresSetup?: never;
     }>;

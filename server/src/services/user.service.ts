@@ -11,7 +11,7 @@ class UserService extends BaseService<User> {
 
     async getUsersByEntity(entityId: string) {
         return await this.get(
-            { entityId: new ObjectId(entityId), role: { $ne: 'owner' } },
+            { entityId: new ObjectId(entityId), role: { $nin: ['owner', 'parent'] } },
             { projection: { mpin: 0 } }
         );
     }

@@ -28,6 +28,11 @@ class BaseService {
         const result = await this.getCollection().deleteOne(filter);
         return result.deletedCount > 0;
     }
+    async updateMany(filter, update) {
+        const collection = await this.getCollection();
+        const result = await collection.updateMany(filter, update);
+        return result.modifiedCount > 0;
+    }
 }
 exports.BaseService = BaseService;
 //# sourceMappingURL=base.service.js.map

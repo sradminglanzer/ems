@@ -32,6 +32,12 @@ export class BaseService<T extends Document> {
 
     async delete(filter: Filter<T>): Promise<boolean> {
         const result = await this.getCollection().deleteOne(filter);
-        return result.deletedCount > 0;
+        return result.deletedCount! > 0;
+    }
+
+    async updateMany(filter: Filter<T>, update: UpdateFilter<T>): Promise<boolean> {
+        const collection = await this.getCollection();
+        const result = await collection.updateMany(filter, update);
+        return result.modifiedCount > 0;
     }
 }

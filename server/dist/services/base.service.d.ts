@@ -8,5 +8,6 @@ export declare class BaseService<T extends Document> {
     insert(doc: OptionalUnlessRequiredId<T>): Promise<InsertOneResult<T>>;
     update(filter: Filter<T>, updateData: UpdateFilter<T>): Promise<boolean>;
     delete(filter: Filter<T>): Promise<boolean>;
+    updateMany(filter: Filter<T>, update: UpdateFilter<T>): Promise<boolean>;
 }
 //# sourceMappingURL=base.service.d.ts.map

@@ -10,6 +10,9 @@ class ExamResultService extends base_service_1.BaseService {
     async getByExam(examId) {
         return await this.get({ examId: new mongodb_1.ObjectId(examId) });
     }
+    async getByMember(memberId) {
+        return await this.get({ memberId: new mongodb_1.ObjectId(memberId) });
+    }
     async saveBulk(examId, entityId, results) {
         const bulkOps = results.map(r => {
             const payload = new exam_result_model_1.ExamResult({ examId, entityId, memberId: r.memberId, marks: r.marks, remarks: r.remarks });

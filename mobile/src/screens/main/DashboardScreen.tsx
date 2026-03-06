@@ -9,7 +9,7 @@ import { useCallback, useState } from 'react';
 
 export default function DashboardScreen() {
     const navigation = useNavigation<any>();
-    const { user, signOut } = useContext(AuthContext);
+    const { user, signOut, selectedAcademicYearId } = useContext(AuthContext);
     const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
@@ -17,7 +17,8 @@ export default function DashboardScreen() {
         useCallback(() => {
             const fetchStats = async () => {
                 try {
-                    const response = await api.get('/dashboard/stats');
+                    const params = selectedAcademicYearId ? { academicYearId: selectedAcademicYearId } : {};
+                    const response = await api.get('/dashboard/stats', { params });
                     setStats(response.data);
                 } catch (e) {
                     console.error('Failed to load stats', e);
@@ -26,7 +27,7 @@ export default function DashboardScreen() {
                 }
             };
             fetchStats();
-        }, [])
+        }, [selectedAcademicYearId])
     );
 
     return (

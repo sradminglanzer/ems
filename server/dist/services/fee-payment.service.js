@@ -6,12 +6,19 @@ class FeePaymentService extends base_service_1.BaseService {
     constructor() {
         super('fee_payments');
     }
-    async getByEntity(entityId) {
-        return await this.get({ entityId: new mongodb_1.ObjectId(entityId) });
+    async getByEntity(entityId, academicYearId) {
+        const query = { entityId: new mongodb_1.ObjectId(entityId) };
+        if (academicYearId) {
+            query.academicYearId = new mongodb_1.ObjectId(academicYearId);
+        }
+        return this.get(query);
     }
-    async getByMember(memberId, entityId) {
-        // Sort by paymentDate descending
-        return await this.get({ memberId: new mongodb_1.ObjectId(memberId), entityId: new mongodb_1.ObjectId(entityId) }, { sort: { paymentDate: -1 } });
+    async getByMember(memberId, entityId, academicYearId) {
+        const query = { memberId: new mongodb_1.ObjectId(memberId), entityId: new mongodb_1.ObjectId(entityId) };
+        if (academicYearId) {
+            query.academicYearId = new mongodb_1.ObjectId(academicYearId);
+        }
+        return this.get(query, { sort: { paymentDate: -1 } });
     }
 }
 exports.default = new FeePaymentService();

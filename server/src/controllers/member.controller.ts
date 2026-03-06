@@ -32,6 +32,8 @@ export const getMembers = async (req: AuthRequest, res: Response, next: NextFunc
             feePaymentService.getByEntity(entityId)
         ]);
 
+        const academicYearIdStr = req.query.academicYearId as string;
+
         // Calculate total structural fees per group
         const groupTotalFees: Record<string, number> = {};
         feeGroups.forEach(g => {
@@ -43,8 +45,20 @@ export const getMembers = async (req: AuthRequest, res: Response, next: NextFunc
         // Enrich members with group and fee stats
         const memberStats = members.map(m => {
             const mId = m._id!.toString();
-            // find group
-            const group = feeGroups.find(g => g.members && g.members.some((id: any) => id.toString() === mId));
+
+            // find group based on the requested academic year
+            let group;
+            if (academicYearIdStr) {
+                group = feeGroups.find(g => {
+                    const roster = g.yearlyRosters?.find((r: any) => r.academicYearId.toString() === academicYearIdStr);
+                    return roster && roster.members && roster.members.some((id: any) => id.toString() === mId);
+                });
+            } else {
+                // Fallback if no year passed: check all rosters 
+                group = feeGroups.find(g => {
+                    return g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId));
+                });
+            }
 
             let totalFee = 0;
             let groupName = 'Unassigned';

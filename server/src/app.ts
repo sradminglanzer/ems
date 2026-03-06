@@ -9,6 +9,7 @@ import feeStructureRoutes from './routes/fee-structure.route';
 import memberRoutes from './routes/member.route';
 import feePaymentRoutes from './routes/fee-payment.route';
 import dashboardRoutes from './routes/dashboard.route';
+import academicYearRoutes from './routes/academic-year.route';
 import { errorHandler } from './middleware/error.middleware';
 
 const app = express();
@@ -30,6 +31,7 @@ app.use('/api/fee-structures', feeStructureRoutes);
 app.use('/api/members', memberRoutes);
 app.use('/api/fee-payments', feePaymentRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/academic-years', academicYearRoutes);
 
 // Catch-all route for undefined API endpoints
 app.use((req, res, next) => {

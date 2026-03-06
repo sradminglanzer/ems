@@ -5,10 +5,11 @@ import { theme, globalStyles } from '../../theme';
 import { Ionicons } from '@expo/vector-icons';
 import api from '../../services/api';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import HeaderActions from '../../components/HeaderActions';
 
 export default function ParentDashboardScreen() {
     const navigation = useNavigation<any>();
-    const { user, signOut } = useContext(AuthContext);
+    const { user, signOut, selectedAcademicYearId } = useContext(AuthContext);
     const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
@@ -16,7 +17,8 @@ export default function ParentDashboardScreen() {
         useCallback(() => {
             const fetchStats = async () => {
                 try {
-                    const response = await api.get('/dashboard/stats');
+                    const params = selectedAcademicYearId ? { academicYearId: selectedAcademicYearId } : {};
+                    const response = await api.get('/dashboard/stats', { params });
                     setStats(response.data);
                 } catch (e) {
                     console.error('Failed to load stats', e);
@@ -25,7 +27,7 @@ export default function ParentDashboardScreen() {
                 }
             };
             fetchStats();
-        }, [])
+        }, [selectedAcademicYearId])
     );
 
     return (
@@ -35,9 +37,12 @@ export default function ParentDashboardScreen() {
                     <Ionicons name="school" size={28} color={theme.colors.primary} />
                     <Text style={styles.headerTitle}>Parent Portal</Text>
                 </View>
-                <TouchableOpacity onPress={signOut} style={styles.logoutIcon}>
-                    <Ionicons name="log-out-outline" size={24} color={theme.colors.danger} />
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <HeaderActions />
+                    <TouchableOpacity onPress={signOut} style={styles.logoutIcon}>
+                        <Ionicons name="log-out-outline" size={24} color={theme.colors.danger} />
+                    </TouchableOpacity>
+                </View>
             </View>
 
             <View style={styles.headerCard}>

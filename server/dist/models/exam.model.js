@@ -16,7 +16,8 @@ class Exam {
         if (data._id)
             this._id = new mongodb_1.ObjectId(data._id);
         this.entityId = new mongodb_1.ObjectId(data.entityId);
-        this.feeGroupId = new mongodb_1.ObjectId(data.feeGroupId);
+        if (data.feeGroupId)
+            this.feeGroupId = new mongodb_1.ObjectId(data.feeGroupId);
         this.name = data.name;
         this.startDate = data.startDate;
         this.endDate = data.endDate;
@@ -25,7 +26,7 @@ class Exam {
         this.updatedAt = data.updatedAt || new Date();
     }
     get valid() {
-        return !!(this.entityId && this.feeGroupId && this.name && this.startDate && this.endDate && this.subjects.length > 0);
+        return !!(this.entityId && this.name && this.startDate && this.endDate && this.subjects.length > 0);
     }
 }
 exports.Exam = Exam;

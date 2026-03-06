@@ -7,6 +7,9 @@ import FeeGroupsScreen from '../screens/main/FeeGroupsScreen';
 import FeeStructureScreen from '../screens/main/FeeStructureScreen';
 import ExamsScreen from '../screens/main/ExamsScreen';
 import MembersScreen from '../screens/main/MembersScreen';
+import CreateExamScreen from '../screens/main/CreateExamScreen';
+import AcademicYearsScreen from '../screens/main/AcademicYearsScreen';
+import HeaderActions from '../components/HeaderActions';
 import { theme } from '../theme';
 import { Ionicons } from '@expo/vector-icons';
 import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
@@ -20,6 +23,7 @@ type DrawerParamList = {
     FeeGroups: undefined;
     FeeStructures: undefined;
     Exams: undefined;
+    AcademicYears: undefined;
 };
 
 const Drawer = createDrawerNavigator<DrawerParamList>();
@@ -89,7 +93,8 @@ export default function MainDrawerNavigator() {
                 component={DashboardScreen}
                 options={{
                     title: 'Dashboard',
-                    drawerIcon: ({ color, size }) => <Ionicons name="home-outline" size={size} color={color} />
+                    drawerIcon: ({ color, size }) => <Ionicons name="home-outline" size={size} color={color} />,
+                    headerRight: () => <HeaderActions />
                 }}
             />
             <Drawer.Screen
@@ -114,7 +119,8 @@ export default function MainDrawerNavigator() {
                 component={FeeGroupsScreen}
                 options={{
                     title: 'Fee Groups',
-                    drawerIcon: ({ color }) => <Ionicons name="layers-outline" size={22} color={color} />
+                    drawerIcon: ({ color }) => <Ionicons name="layers-outline" size={22} color={color} />,
+                    headerRight: () => <HeaderActions />
                 }}
             />
             {user?.role !== 'teacher' && (
@@ -132,9 +138,21 @@ export default function MainDrawerNavigator() {
                 component={ExamsScreen}
                 options={{
                     title: 'Exams & Results',
-                    drawerIcon: ({ color }) => <Ionicons name="document-text-outline" size={24} color={color} />
+                    drawerIcon: ({ color }) => <Ionicons name="document-text-outline" size={24} color={color} />,
+                    headerRight: () => <HeaderActions />
                 }}
             />
+            {(user?.role === 'admin' || user?.role === 'owner') && (
+                <Drawer.Screen
+                    name="AcademicYears"
+                    component={AcademicYearsScreen}
+                    options={{
+                        drawerIcon: ({ color, size }) => <Ionicons name="calendar-outline" size={size} color={color} />,
+                        title: 'Academic Years',
+                        drawerItemStyle: { marginTop: 16, borderTopWidth: 1, borderTopColor: theme.colors.border, paddingTop: 16 }
+                    }}
+                />
+            )}
         </Drawer.Navigator>
     );
 }

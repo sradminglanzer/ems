@@ -2,8 +2,10 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import api from '../../services/api';
 import { theme, globalStyles } from '../../theme';
-import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { AuthContext } from '../../context/AuthContext';
+import { Ionicons } from '@expo/vector-icons';
+import { useContext } from 'react';
 
 export default function ExamsScreen() {
     const navigation = useNavigation<any>();
@@ -11,11 +13,13 @@ export default function ExamsScreen() {
     const [feeGroups, setFeeGroups] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const { selectedAcademicYearId } = useContext(AuthContext);
 
     const fetchData = async () => {
         try {
+            const params = selectedAcademicYearId ? { academicYearId: selectedAcademicYearId } : {};
             const [examsRes, groupsRes] = await Promise.all([
-                api.get('/exams'),
+                api.get('/exams', { params }),
                 api.get('/fee-groups')
             ]);
             setExamsList(examsRes.data);
@@ -32,7 +36,7 @@ export default function ExamsScreen() {
     useFocusEffect(
         useCallback(() => {
             fetchData();
-        }, [])
+        }, [selectedAcademicYearId])
     );
 
     const onRefresh = () => {

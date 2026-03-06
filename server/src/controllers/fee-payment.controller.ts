@@ -7,12 +7,14 @@ import { HTTP_STATUS } from '../utils/constants';
 
 export const getFeePayments = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-        const memberId = req.query.memberId as string;
+        const memberId = req.query.memberId as string | undefined;
+        const academicYearId = req.query.academicYearId as string | undefined;
         let payments;
+
         if (memberId) {
-            payments = await feePaymentService.getByMember(memberId, req.user!.entityId.toString());
+            payments = await feePaymentService.getByMember(memberId, req.user!.entityId, academicYearId);
         } else {
-            payments = await feePaymentService.getByEntity(req.user!.entityId.toString());
+            payments = await feePaymentService.getByEntity(req.user!.entityId, academicYearId);
         }
         res.status(HTTP_STATUS.OK).json(payments);
     } catch (error) {

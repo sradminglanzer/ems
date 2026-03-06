@@ -13,7 +13,7 @@ class UserService extends base_service_1.BaseService {
     }
     async insert(user) {
         // Enforce business logic rules before utilizing the generic insert
-        const existing = await this.getOne({ contactNumber: user.contactNumber });
+        const existing = await this.getOne({ contactNumber: user.contactNumber, entityId: user.entityId });
         if (existing) {
             throw new AppError_1.AppError(constants_1.MESSAGES.ERROR.CONTACT_ALREADY_REGISTERED, constants_1.HTTP_STATUS.BAD_REQUEST);
         }

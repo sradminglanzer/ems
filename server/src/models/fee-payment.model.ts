@@ -4,6 +4,7 @@ export class FeePayment {
     _id?: ObjectId;
     entityId: ObjectId;
     memberId: ObjectId;
+    academicYearId?: ObjectId;
     feeGroupId?: ObjectId;
     amount: number;
     notes?: string;
@@ -15,6 +16,7 @@ export class FeePayment {
         if (data._id) this._id = new ObjectId(data._id);
         this.entityId = new ObjectId(data.entityId);
         this.memberId = new ObjectId(data.memberId);
+        if (data.academicYearId) this.academicYearId = new ObjectId(data.academicYearId);
         if (data.feeGroupId) this.feeGroupId = new ObjectId(data.feeGroupId);
         this.amount = Number(data.amount);
         this.notes = data.notes;

@@ -9,7 +9,8 @@ import { ObjectId } from 'mongodb';
 
 export const getExams = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-        const exams = await examService.getByEntity(req.user!.entityId);
+        const academicYearId = req.query.academicYearId as string | undefined;
+        const exams = await examService.getByEntity(req.user!.entityId, academicYearId);
         res.status(HTTP_STATUS.OK).json(exams);
     } catch (error) {
         next(error);
@@ -21,7 +22,7 @@ export const createExam = async (req: AuthRequest, res: Response, next: NextFunc
         const exam = new Exam({ ...req.body, entityId: req.user!.entityId });
 
         if (!exam.valid) {
-            throw new AppError('Invalid exam data. Make sure name, startDate, endDate, and subjects are provided.', HTTP_STATUS.BAD_REQUEST);
+            throw new AppError('Invalid exam data. Make sure name, startDate, endDate, academicYearId, and subjects are provided.', HTTP_STATUS.BAD_REQUEST);
         }
 
         const result = await examService.insert(exam);
