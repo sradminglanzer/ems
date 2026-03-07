@@ -2,18 +2,30 @@ import { StyleSheet } from 'react-native';
 
 export const theme = {
     colors: {
-        primary: '#10B981', // Emerald Green
-        primaryLight: '#34D399',
-        secondary: '#6366F1', // Indigo as secondary
-        background: '#F8FAFC', // Light Background
-        surface: '#FFFFFF', // White surface
-        textPrimary: '#0F172A', // Dark text
-        textSecondary: '#475569',
-        textMuted: '#94A3B8',
-        border: '#E2E8F0',
-        danger: '#EF4444',
-        success: '#10B981',
-        warning: '#F59E0B',
+        primary: '#14B8A6', // Lighter Ocean Teal / Turquoise
+        primaryLight: '#5EEAD4',
+        primaryDark: '#0D9488',
+        secondary: '#A78BFA', // Lighter Soft Violet
+        secondaryLight: '#C4B5FD',
+        background: '#F8FAFC',
+        surface: '#FFFFFF',
+        surfaceLight: '#F1F5F9', // Slate 100 for inputs
+        textPrimary: '#0F172A', // Slate 900
+        textSecondary: '#475569', // Slate 600
+        textMuted: '#94A3B8', // Slate 400
+        border: '#CBD5E1', // Slate 300
+        danger: '#E11D48',
+        dangerLight: '#FFE4E6',
+        success: '#059669',
+        successLight: '#D1FAE5',
+        warning: '#D97706',
+        warningLight: '#FEF3C7',
+    },
+    gradients: {
+        primary: ['#14B8A6', '#14B8A6'] as const, // Replaced high gradient with solid lighter primary color
+        success: ['#10B981', '#10B981'] as const,
+        danger: ['#F43F5E', '#F43F5E'] as const,
+        surface: ['#FFFFFF', '#FFFFFF'] as const,
     },
     spacing: {
         xs: 4,
@@ -25,25 +37,32 @@ export const theme = {
     },
     borderRadius: {
         s: 8,
-        m: 12,
-        l: 16,
+        m: 16,
+        l: 20,
         xl: 24,
         round: 9999,
     },
     shadows: {
         sm: {
-            shadowColor: '#000',
+            shadowColor: '#0F172A',
             shadowOffset: { width: 0, height: 1 },
             shadowOpacity: 0.05,
-            shadowRadius: 2,
-            elevation: 2,
+            shadowRadius: 3,
+            elevation: 1,
         },
         md: {
-            shadowColor: '#000',
+            shadowColor: '#0F172A',
             shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.05,
+            shadowRadius: 8,
+            elevation: 3,
+        },
+        lg: {
+            shadowColor: '#0284C7',
+            shadowOffset: { width: 0, height: 8 },
             shadowOpacity: 0.1,
-            shadowRadius: 6,
-            elevation: 4,
+            shadowRadius: 16,
+            elevation: 5,
         }
     }
 };
@@ -60,22 +79,24 @@ export const globalStyles = StyleSheet.create({
     },
     listContainer: {
         padding: theme.spacing.m,
+        paddingBottom: theme.spacing.xxl,
     },
     card: {
         backgroundColor: theme.colors.surface,
         padding: theme.spacing.m,
-        borderRadius: theme.borderRadius.l,
+        borderRadius: theme.borderRadius.m,
         marginBottom: theme.spacing.m,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
         ...theme.shadows.sm,
     },
     fab: {
         position: 'absolute',
         bottom: theme.spacing.xl,
         right: theme.spacing.xl,
-        backgroundColor: theme.colors.primary,
-        width: 64,
-        height: 64,
-        borderRadius: 32,
+        width: 56,
+        height: 56,
+        borderRadius: 28,
         justifyContent: 'center',
         alignItems: 'center',
         ...theme.shadows.md,
@@ -87,22 +108,22 @@ export const globalStyles = StyleSheet.create({
     },
     modalContent: {
         backgroundColor: theme.colors.surface,
-        borderTopLeftRadius: theme.borderRadius.xl,
-        borderTopRightRadius: theme.borderRadius.xl,
+        borderTopLeftRadius: theme.borderRadius.l,
+        borderTopRightRadius: theme.borderRadius.l,
         padding: theme.spacing.l,
-        paddingBottom: theme.spacing.xxl,
+        paddingBottom: theme.spacing.xl,
         maxHeight: '85%',
-        ...theme.shadows.md,
+        ...theme.shadows.lg,
     },
     modalHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: theme.spacing.l,
+        marginBottom: theme.spacing.m,
     },
     modalTitle: {
-        fontSize: 20,
-        fontWeight: '600',
+        fontSize: 18,
+        fontWeight: 'bold',
         color: theme.colors.textPrimary,
     },
     closeButton: {
@@ -111,40 +132,48 @@ export const globalStyles = StyleSheet.create({
         borderRadius: theme.borderRadius.round,
     },
     label: {
-        fontSize: 14,
-        fontWeight: '500',
-        color: theme.colors.textPrimary,
-        marginBottom: theme.spacing.s,
+        fontSize: 12,
+        fontWeight: '600',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+        color: theme.colors.textSecondary,
+        marginBottom: theme.spacing.xs,
     },
     input: {
-        borderWidth: 1.5,
+        borderWidth: 1,
         borderColor: theme.colors.border,
-        borderRadius: theme.borderRadius.m,
-        padding: theme.spacing.m,
+        borderRadius: theme.borderRadius.s,
+        padding: 14,
         fontSize: 16,
-        marginBottom: theme.spacing.l,
-        backgroundColor: theme.colors.background,
+        marginBottom: theme.spacing.m,
+        backgroundColor: theme.colors.surfaceLight,
         color: theme.colors.textPrimary,
     },
     submitButton: {
         backgroundColor: theme.colors.primary,
-        padding: theme.spacing.m,
-        borderRadius: theme.borderRadius.m,
+        padding: 14,
+        borderRadius: theme.borderRadius.s,
         alignItems: 'center',
         marginTop: theme.spacing.s,
+        flexDirection: 'row',
+        justifyContent: 'center',
+        gap: 8,
     },
     disabledButton: {
         backgroundColor: theme.colors.primaryLight,
+        opacity: 0.7,
     },
     submitButtonText: {
         color: theme.colors.surface,
-        fontSize: 16,
-        fontWeight: '600',
+        fontSize: 15,
+        fontWeight: 'bold',
+        letterSpacing: 0.5,
     },
     emptyText: {
         textAlign: 'center',
         color: theme.colors.textMuted,
-        marginTop: theme.spacing.xl,
-        fontSize: 16,
+        marginTop: theme.spacing.l,
+        fontSize: 14,
+        fontWeight: '500',
     }
 });

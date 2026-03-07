@@ -1,11 +1,13 @@
 import React, { useContext, useCallback, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, Platform, Animated } from 'react-native';
 import { AuthContext } from '../../context/AuthContext';
 import { theme, globalStyles } from '../../theme';
 import { Ionicons } from '@expo/vector-icons';
 import api from '../../services/api';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import HeaderActions from '../../components/HeaderActions';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useRef } from 'react';
 
 export default function ParentDashboardScreen() {
     const navigation = useNavigation<any>();
@@ -30,54 +32,108 @@ export default function ParentDashboardScreen() {
         }, [selectedAcademicYearId])
     );
 
+    const scrollY = useRef(new Animated.Value(0)).current;
+
+    const headerHeight = scrollY.interpolate({
+        inputRange: [0, 80],
+        outputRange: [Platform.OS === 'ios' ? 240 : 200, Platform.OS === 'ios' ? 100 : 80],
+        extrapolate: 'clamp',
+    });
+
+    const headerOpacity = scrollY.interpolate({
+        inputRange: [0, 60],
+        outputRange: [1, 0],
+        extrapolate: 'clamp',
+    });
+
+    const headerTitleOpacity = scrollY.interpolate({
+        inputRange: [40, 80],
+        outputRange: [0, 1],
+        extrapolate: 'clamp',
+    });
+
     return (
         <View style={styles.container}>
-            <View style={styles.header}>
-                <View style={styles.headerTitleContainer}>
-                    <Ionicons name="school" size={28} color={theme.colors.primary} />
-                    <Text style={styles.headerTitle}>Parent Portal</Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <HeaderActions />
-                    <TouchableOpacity onPress={signOut} style={styles.logoutIcon}>
-                        <Ionicons name="log-out-outline" size={24} color={theme.colors.danger} />
-                    </TouchableOpacity>
-                </View>
-            </View>
+            {/* Animated Sticky Header */}
+            <Animated.View style={[styles.animatedHeader, { height: headerHeight }]}>
+                <LinearGradient
+                    colors={theme.gradients.primary}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFill}
+                />
 
-            <View style={styles.headerCard}>
-                <View style={styles.avatar}>
-                    <Ionicons name="person" size={24} color={theme.colors.primary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                    <Text style={styles.welcome}>Welcome back,</Text>
-                    <Text style={styles.greeting}>{user?.name}</Text>
-                    <View style={styles.roleBadge}>
-                        <Text style={styles.roleText}>{user?.role}</Text>
+                {/* Top Nav Bar */}
+                <View style={styles.topNav}>
+                    <View style={styles.headerTitleContainer}>
+                        <Ionicons name="school" size={24} color={theme.colors.surface} />
+                        <Animated.Text style={[styles.headerTitle, { opacity: headerTitleOpacity }]}>Parent Portal</Animated.Text>
+                    </View>
+                    <View style={styles.headerActionsWrapper}>
+                        <HeaderActions />
                     </View>
                 </View>
-            </View>
 
-            <ScrollView style={styles.contentArea}>
-                <Text style={styles.sectionHeader}>Your Enrolled Children</Text>
+                {/* Hero Profile */}
+                <Animated.View style={[styles.heroContent, { opacity: headerOpacity }]}>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.welcomeText}>Welcome back,</Text>
+                        <Text style={styles.greetingText}>{user?.name}</Text>
+                        <View style={styles.roleBadgeHero}>
+                            <Text style={styles.roleTextHero}>{user?.role}</Text>
+                        </View>
+                    </View>
+                    <View style={styles.avatarGlass}>
+                        <Ionicons name="person" size={32} color={theme.colors.surface} />
+                    </View>
+                </Animated.View>
+            </Animated.View>
+
+            <Animated.ScrollView
+                style={styles.contentArea}
+                showsVerticalScrollIndicator={false}
+                onScroll={Animated.event(
+                    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                    { useNativeDriver: false }
+                )}
+                scrollEventThrottle={16}
+                contentContainerStyle={{ paddingTop: Platform.OS === 'ios' ? 260 : 220, paddingBottom: 40 }}
+            >
+
+                <View style={styles.sectionHeaderBox}>
+                    <Text style={styles.sectionTitle}>Your Enrolled Children</Text>
+                </View>
+
                 {loading ? (
-                    <ActivityIndicator size="large" color={theme.colors.primary} style={{ marginTop: 24 }} />
+                    <ActivityIndicator size="large" color={theme.colors.primary} style={{ marginTop: 40 }} />
                 ) : stats && stats.isParent ? (
-                    <View style={styles.statsGrid}>
+                    <View style={styles.listContainer}>
                         {stats.children && stats.children.map((child: any) => (
-                            <TouchableOpacity key={child._id} style={styles.wideStatCard} activeOpacity={0.8} onPress={() => navigation.navigate('MemberDetails', { member: child })}>
-                                <View>
-                                    <Text style={styles.wideStatLabel}>{child.firstName} {child.lastName}</Text>
-                                    <Text style={[styles.statLabel, { color: theme.colors.primary }]}>
-                                        {child.groupName || 'Student'}
-                                    </Text>
-                                    {child.pendingAmount > 0 ? (
-                                        <Text style={{ color: theme.colors.danger, marginTop: 4, fontWeight: 'bold' }}>Pending Fee: ₹{child.pendingAmount}</Text>
-                                    ) : (
-                                        <Text style={{ color: theme.colors.primary, marginTop: 4, fontWeight: 'bold' }}>Fees Paid</Text>
-                                    )}
+                            <TouchableOpacity
+                                key={child._id}
+                                style={[styles.childCard, child.pendingAmount > 0 ? { borderColor: theme.colors.dangerLight } : { borderColor: theme.colors.border }]}
+                                activeOpacity={0.8}
+                                onPress={() => navigation.navigate('MemberDetails', { member: child })}
+                            >
+                                <View style={styles.childInfoContainer}>
+                                    <View style={[styles.avatarSmall, { backgroundColor: theme.colors.primaryLight + '20' }]}>
+                                        <Text style={styles.avatarText}>{child.firstName.charAt(0)}{child.lastName.charAt(0)}</Text>
+                                    </View>
+                                    <View style={styles.childTextContent}>
+                                        <Text style={styles.childName}>{child.firstName} {child.lastName}</Text>
+                                        <View style={styles.groupBadge}>
+                                            <Text style={[styles.groupBadgeText, { color: theme.colors.primary }]}>
+                                                {child.groupName || 'Student'}
+                                            </Text>
+                                        </View>
+                                        {child.pendingAmount > 0 ? (
+                                            <Text style={styles.pendingText}>Pending: ₹{child.pendingAmount.toLocaleString('en-IN')}</Text>
+                                        ) : (
+                                            <Text style={styles.paidText}>Fees Clear</Text>
+                                        )}
+                                    </View>
                                 </View>
-                                <Ionicons name="chevron-forward" size={24} color={theme.colors.textSecondary} />
+                                <Ionicons name="chevron-forward" size={24} color={theme.colors.textMuted} />
                             </TouchableOpacity>
                         ))}
                         {stats.children && stats.children.length === 0 && (
@@ -87,7 +143,13 @@ export default function ParentDashboardScreen() {
                         )}
                     </View>
                 ) : null}
-            </ScrollView>
+
+                <TouchableOpacity style={styles.glassLogoutBtn} onPress={signOut}>
+                    <Ionicons name="log-out-outline" size={20} color={theme.colors.danger} />
+                    <Text style={styles.logoutText}>Sign Out Securely</Text>
+                </TouchableOpacity>
+                <View style={{ height: 40 }} />
+            </Animated.ScrollView>
         </View>
     );
 }
@@ -97,16 +159,24 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: theme.colors.background,
     },
-    header: {
+    animatedHeader: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 10,
+        overflow: 'hidden',
+        borderBottomLeftRadius: 32,
+        borderBottomRightRadius: 32,
+        ...theme.shadows.lg,
+    },
+    topNav: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: theme.spacing.m,
-        paddingTop: Platform.OS === 'ios' ? 60 : 40,
-        paddingBottom: theme.spacing.m,
-        backgroundColor: theme.colors.surface,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.colors.border,
+        paddingHorizontal: theme.spacing.l,
+        height: Platform.OS === 'ios' ? 100 : 80,
+        paddingTop: Platform.OS === 'ios' ? 40 : 20,
     },
     headerTitleContainer: {
         flexDirection: 'row',
@@ -114,89 +184,158 @@ const styles = StyleSheet.create({
         gap: 8,
     },
     headerTitle: {
-        fontSize: 20,
+        fontSize: 18,
         fontWeight: 'bold',
-        color: theme.colors.textPrimary,
+        color: theme.colors.surface,
+        letterSpacing: 0.5,
     },
-    logoutIcon: {
+    headerActionsWrapper: {
+        backgroundColor: 'rgba(255,255,255,0.9)', // Wrap header actions to make dropdown visible against gradient
+        borderRadius: theme.borderRadius.s,
         padding: 4,
     },
-    headerCard: {
-        backgroundColor: theme.colors.surface,
-        borderRadius: theme.borderRadius.l,
-        padding: theme.spacing.l,
+    heroContent: {
         flexDirection: 'row',
         alignItems: 'center',
-        ...theme.shadows.md,
-        margin: theme.spacing.m,
-        marginBottom: 0,
-        textTransform: 'uppercase',
+        justifyContent: 'space-between',
+        paddingHorizontal: theme.spacing.l,
+        position: 'absolute',
+        bottom: 30,
+        left: 0,
+        right: 0,
     },
-    avatar: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
-        backgroundColor: theme.colors.primaryLight + '30', // Semi-transparent
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: theme.spacing.m,
-    },
-    welcome: {
+    welcomeText: {
         fontSize: 14,
-        color: theme.colors.textSecondary,
+        color: 'rgba(255,255,255,0.8)',
+        fontWeight: '500',
+        textTransform: 'uppercase',
+        letterSpacing: 1,
     },
-    greeting: {
+    greetingText: {
         fontSize: 24,
-        fontWeight: '600',
-        color: theme.colors.textPrimary,
-        marginBottom: 4,
+        fontWeight: 'bold',
+        color: theme.colors.surface,
+        marginTop: 2,
+        marginBottom: 8,
     },
-    roleBadge: {
-        backgroundColor: theme.colors.primary + '15',
+    roleBadgeHero: {
+        backgroundColor: 'rgba(255,255,255,0.2)',
         paddingHorizontal: 12,
-        paddingVertical: 4,
+        paddingVertical: 6,
         borderRadius: theme.borderRadius.round,
         alignSelf: 'flex-start',
     },
-    roleText: {
+    roleTextHero: {
         fontSize: 12,
-        fontWeight: '600',
+        fontWeight: 'bold',
         textTransform: 'uppercase',
-        color: theme.colors.primary,
+        color: theme.colors.surface,
+        letterSpacing: 0.5,
+    },
+    avatarGlass: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.4)',
     },
     contentArea: {
         flex: 1,
-        padding: theme.spacing.m,
     },
-    sectionHeader: {
-        fontSize: 18,
-        fontWeight: '600',
-        color: theme.colors.textPrimary,
+    sectionHeaderBox: {
+        paddingHorizontal: theme.spacing.l,
         marginBottom: theme.spacing.m,
     },
-    statsGrid: {
-        flexDirection: 'column',
-        gap: theme.spacing.m,
-        paddingBottom: theme.spacing.xl,
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: theme.colors.textPrimary,
+        letterSpacing: 0.5,
     },
-    wideStatCard: {
-        width: '100%',
+    listContainer: {
+        paddingHorizontal: theme.spacing.m,
+        gap: theme.spacing.m,
+    },
+    childCard: {
         backgroundColor: theme.colors.surface,
-        padding: theme.spacing.l,
+        padding: 12,
         borderRadius: theme.borderRadius.m,
+        borderWidth: 1,
         ...theme.shadows.sm,
         flexDirection: 'row',
         justifyContent: 'space-between',
-        alignItems: 'center'
+        alignItems: 'center',
     },
-    statLabel: {
+    childInfoContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
+    },
+    avatarSmall: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    avatarText: {
         fontSize: 14,
-        color: theme.colors.textSecondary,
-        marginTop: 4
-    },
-    wideStatLabel: {
-        fontSize: 18,
         fontWeight: 'bold',
-        color: theme.colors.textPrimary
+        color: theme.colors.primary,
+        letterSpacing: 1,
+    },
+    childTextContent: {
+        flex: 1,
+    },
+    childName: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: theme.colors.textPrimary,
+        marginBottom: 2,
+    },
+    groupBadge: {
+        backgroundColor: theme.colors.primaryLight + '15',
+        alignSelf: 'flex-start',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: theme.borderRadius.s,
+        marginBottom: 8,
+    },
+    groupBadgeText: {
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    pendingText: {
+        color: theme.colors.danger,
+        fontWeight: '700',
+        fontSize: 14,
+    },
+    paidText: {
+        color: theme.colors.success,
+        fontWeight: '600',
+        fontSize: 14,
+    },
+    glassLogoutBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: theme.colors.surface,
+        paddingVertical: 18,
+        marginHorizontal: theme.spacing.l,
+        marginTop: theme.spacing.xl,
+        borderRadius: theme.borderRadius.l,
+        borderWidth: 1,
+        borderColor: theme.colors.dangerLight,
+        ...theme.shadows.sm,
+    },
+    logoutText: {
+        color: theme.colors.danger,
+        fontSize: 16,
+        fontWeight: 'bold',
+        marginLeft: 10,
     }
 });

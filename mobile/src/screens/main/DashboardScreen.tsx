@@ -1,11 +1,15 @@
-import React, { useContext } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
+import React, { useContext, useCallback, useState, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, Dimensions, Platform, Animated } from 'react-native';
 import { AuthContext } from '../../context/AuthContext';
 import { theme } from '../../theme';
 import { Ionicons } from '@expo/vector-icons';
 import api from '../../services/api';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import { useCallback, useState } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
+import HeaderActions from '../../components/HeaderActions';
+
+const { width } = Dimensions.get('window');
+const CARD_WIDTH = width * 0.42;
 
 export default function DashboardScreen() {
     const navigation = useNavigation<any>();
@@ -30,66 +34,145 @@ export default function DashboardScreen() {
         }, [selectedAcademicYearId])
     );
 
+    const scrollY = useRef(new Animated.Value(0)).current;
+
+    const headerHeight = scrollY.interpolate({
+        inputRange: [0, 100],
+        outputRange: [Platform.OS === 'ios' ? 220 : 180, Platform.OS === 'ios' ? 100 : 80],
+        extrapolate: 'clamp',
+    });
+
+    const headerOpacity = scrollY.interpolate({
+        inputRange: [0, 80],
+        outputRange: [1, 0],
+        extrapolate: 'clamp',
+    });
+
+    const headerTitleOpacity = scrollY.interpolate({
+        inputRange: [60, 100],
+        outputRange: [0, 1],
+        extrapolate: 'clamp',
+    });
+
     return (
         <View style={styles.container}>
-            <View style={styles.headerCard}>
-                <View style={styles.avatar}>
-                    <Ionicons name="person" size={24} color={theme.colors.primary} />
+            {/* Animated Sticky Header */}
+            <Animated.View style={[styles.animatedHeader, { height: headerHeight }]}>
+                <LinearGradient
+                    colors={theme.gradients.primary}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFill}
+                />
+                <View style={styles.topNav}>
+                    <TouchableOpacity onPress={() => navigation.openDrawer()} style={styles.iconButton}>
+                        <Ionicons name="menu" size={24} color={theme.colors.surface} />
+                    </TouchableOpacity>
+                    <Animated.Text style={[styles.stickyTitle, { opacity: headerTitleOpacity }]}>
+                        Dashboard
+                    </Animated.Text>
+                    <HeaderActions />
                 </View>
-                <View style={{ flex: 1 }}>
-                    <Text style={styles.welcome}>Welcome back,</Text>
-                    <Text style={styles.greeting}>{user?.name}</Text>
-                    <View style={styles.roleBadge}>
-                        <Text style={styles.roleText}>{user?.role}</Text>
+                <Animated.View style={[styles.heroContent, { opacity: headerOpacity }]}>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.welcomeText}>Welcome back,</Text>
+                        <Text style={styles.greetingText}>{user?.name}</Text>
+                        <View style={styles.roleBadgeHero}>
+                            <Text style={styles.roleTextHero}>{user?.role}</Text>
+                        </View>
                     </View>
-                </View>
-            </View>
+                    <View style={styles.avatarGlass}>
+                        <Ionicons name="person" size={32} color={theme.colors.surface} />
+                    </View>
+                </Animated.View>
+            </Animated.View>
 
-            <ScrollView style={styles.contentArea}>
+            <Animated.ScrollView
+                style={styles.contentArea}
+                showsVerticalScrollIndicator={false}
+                onScroll={Animated.event(
+                    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                    { useNativeDriver: false }
+                )}
+                scrollEventThrottle={16}
+                contentContainerStyle={{ paddingTop: Platform.OS === 'ios' ? 240 : 200, paddingBottom: 40 }}
+            >
                 {loading ? (
-                    <ActivityIndicator size="large" color={theme.colors.primary} style={{ marginTop: 24 }} />
+                    <ActivityIndicator size="large" color={theme.colors.primary} style={{ marginTop: 40 }} />
                 ) : stats ? (
-                    <View style={styles.statsGrid}>
-                        <TouchableOpacity style={styles.statCard} activeOpacity={0.8} onPress={() => navigation.navigate('Students')}>
-                            <Ionicons name="people-outline" size={32} color={theme.colors.primary} />
-                            <Text style={styles.statValue}>{stats.totalMembers}</Text>
-                            <Text style={styles.statLabel}>Students</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.statCard} activeOpacity={0.8} onPress={() => navigation.navigate('FeeGroups')}>
-                            <Ionicons name="albums-outline" size={32} color={theme.colors.primary} />
-                            <Text style={styles.statValue}>{stats.totalFeeGroups}</Text>
-                            <Text style={styles.statLabel}>Groups</Text>
-                        </TouchableOpacity>
-                        {user?.role !== 'teacher' && (
-                            <>
-                                <TouchableOpacity style={styles.wideStatCard} activeOpacity={0.8} onPress={() => navigation.navigate('Students', { filter: 'pendingFees' })}>
-                                    <View>
-                                        <Text style={styles.wideStatLabel}>Pending Collection</Text>
-                                        <Text style={[styles.wideStatValue, { color: theme.colors.danger }]}>
-                                            ₹{Math.max(0, stats.totalPendingAmount)}
-                                        </Text>
-                                    </View>
-                                    <Ionicons name="alert-circle-outline" size={40} color={theme.colors.danger} />
-                                </TouchableOpacity>
-                                <View style={styles.wideStatCard}>
-                                    <View>
-                                        <Text style={styles.wideStatLabel}>Total Received</Text>
-                                        <Text style={[styles.wideStatValue, { color: theme.colors.primary }]}>
-                                            ₹{Math.max(0, stats.totalCollectedAmount)}
-                                        </Text>
-                                    </View>
-                                    <Ionicons name="checkmark-circle-outline" size={40} color={theme.colors.primary} />
+                    <View style={styles.dashboardBody}>
+
+                        <View style={styles.sectionHeaderBox}>
+                            <Text style={styles.sectionTitle}>Overview</Text>
+                        </View>
+
+                        {/* Horizontal Stat Carousel */}
+                        <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={styles.carouselContainer}
+                        >
+                            <TouchableOpacity style={styles.glassCardSmall} activeOpacity={0.8} onPress={() => navigation.navigate('Students')}>
+                                <View style={[styles.iconBox, { backgroundColor: theme.colors.primaryLight + '20' }]}>
+                                    <Ionicons name="people" size={24} color={theme.colors.primary} />
                                 </View>
-                            </>
+                                <Text style={styles.statValueSmall}>{stats.totalMembers}</Text>
+                                <Text style={styles.statLabelSmall}>Total Students</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity style={styles.glassCardSmall} activeOpacity={0.8} onPress={() => navigation.navigate('FeeGroups')}>
+                                <View style={[styles.iconBox, { backgroundColor: theme.colors.secondaryLight + '30' }]}>
+                                    <Ionicons name="school" size={24} color={theme.colors.secondary} />
+                                </View>
+                                <Text style={styles.statValueSmall}>{stats.totalFeeGroups}</Text>
+                                <Text style={styles.statLabelSmall}>Active Classes</Text>
+                            </TouchableOpacity>
+                        </ScrollView>
+
+                        {/* Financial Cards */}
+                        {user?.role !== 'teacher' && (
+                            <View style={styles.financeSection}>
+                                <Text style={styles.sectionTitle}>Financials</Text>
+
+                                <TouchableOpacity
+                                    style={[styles.financeCard, { borderColor: theme.colors.dangerLight, borderWidth: 1 }]}
+                                    activeOpacity={0.8}
+                                    onPress={() => navigation.navigate('Students', { filter: 'pendingFees' })}
+                                >
+                                    <View style={styles.financeInfo}>
+                                        <Text style={styles.financeLabel}>Pending Deficits</Text>
+                                        <Text style={[styles.financeValue, { color: theme.colors.danger }]}>
+                                            ₹{Math.max(0, stats.totalPendingAmount).toLocaleString('en-IN')}
+                                        </Text>
+                                    </View>
+                                    <View style={[styles.iconBoxLarge, { backgroundColor: theme.colors.dangerLight + '40' }]}>
+                                        <Ionicons name="alert-circle" size={32} color={theme.colors.danger} />
+                                    </View>
+                                </TouchableOpacity>
+
+                                <View style={[styles.financeCard, { borderColor: theme.colors.successLight, borderWidth: 1 }]}>
+                                    <View style={styles.financeInfo}>
+                                        <Text style={styles.financeLabel}>Total Collection</Text>
+                                        <Text style={[styles.financeValue, { color: theme.colors.success }]}>
+                                            ₹{Math.max(0, stats.totalCollectedAmount).toLocaleString('en-IN')}
+                                        </Text>
+                                    </View>
+                                    <View style={[styles.iconBoxLarge, { backgroundColor: theme.colors.successLight + '40' }]}>
+                                        <Ionicons name="wallet" size={32} color={theme.colors.success} />
+                                    </View>
+                                </View>
+                            </View>
                         )}
+
                     </View>
                 ) : null}
-            </ScrollView>
 
-            <TouchableOpacity style={styles.logoutButton} onPress={signOut}>
-                <Ionicons name="log-out-outline" size={20} color={theme.colors.danger} />
-                <Text style={styles.logoutText}>Sign Out</Text>
-            </TouchableOpacity>
+                <TouchableOpacity style={styles.glassLogoutBtn} onPress={signOut}>
+                    <Ionicons name="log-out-outline" size={20} color={theme.colors.danger} />
+                    <Text style={styles.logoutText}>Sign Out Securely</Text>
+                </TouchableOpacity>
+                <View style={{ height: 40 }} />
+            </Animated.ScrollView>
         </View>
     );
 }
@@ -98,117 +181,189 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: theme.colors.background,
-        padding: theme.spacing.m,
     },
-    headerCard: {
-        backgroundColor: theme.colors.surface,
-        borderRadius: theme.borderRadius.l,
-        padding: theme.spacing.l,
+    animatedHeader: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 10,
+        overflow: 'hidden',
+        borderBottomLeftRadius: 32,
+        borderBottomRightRadius: 32,
+        ...theme.shadows.lg,
+    },
+    topNav: {
         flexDirection: 'row',
         alignItems: 'center',
-        ...theme.shadows.md,
-        marginTop: theme.spacing.s,
-        fontWeight: '600',
-        textTransform: 'uppercase',
+        justifyContent: 'space-between',
+        height: Platform.OS === 'ios' ? 100 : 80,
+        paddingTop: Platform.OS === 'ios' ? 40 : 20,
+        paddingHorizontal: theme.spacing.m,
     },
-    avatar: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
-        backgroundColor: theme.colors.primaryLight + '30', // Semi-transparent
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: theme.spacing.m,
+    iconButton: {
+        width: 40, height: 40, borderRadius: 20,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        justifyContent: 'center', alignItems: 'center',
     },
-    headerTextContainer: {
+    stickyTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: theme.colors.surface,
         flex: 1,
+        textAlign: 'center',
     },
-    welcome: {
-        fontSize: 14,
-        color: theme.colors.textSecondary,
+    heroContent: {
+        flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: theme.spacing.l,
+        position: 'absolute',
+        bottom: 30,
+        left: 0,
+        right: 0,
     },
-    greeting: {
+    welcomeText: {
+        fontSize: 14,
+        color: 'rgba(255,255,255,0.8)',
+        fontWeight: '500',
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+    },
+    greetingText: {
         fontSize: 24,
-        fontWeight: '600',
-        color: theme.colors.textPrimary,
-        marginBottom: 4,
+        fontWeight: 'bold',
+        color: theme.colors.surface,
+        marginTop: 2,
+        marginBottom: 8,
     },
-    roleBadge: {
-        backgroundColor: theme.colors.primary + '15',
+    roleBadgeHero: {
+        backgroundColor: 'rgba(255,255,255,0.2)',
         paddingHorizontal: 12,
-        paddingVertical: 4,
+        paddingVertical: 6,
         borderRadius: theme.borderRadius.round,
         alignSelf: 'flex-start',
     },
-    roleText: {
+    roleTextHero: {
         fontSize: 12,
-        fontWeight: '600',
+        fontWeight: 'bold',
         textTransform: 'uppercase',
-        color: theme.colors.primary,
+        color: theme.colors.surface,
+        letterSpacing: 0.5,
+    },
+    avatarGlass: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.4)',
     },
     contentArea: {
         flex: 1,
-        marginTop: theme.spacing.l,
     },
-    statsGrid: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
+    dashboardBody: {
+        paddingHorizontal: theme.spacing.m,
+    },
+    sectionHeaderBox: {
+        paddingHorizontal: theme.spacing.s,
+        marginBottom: theme.spacing.s,
+    },
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: theme.colors.textPrimary,
+        letterSpacing: 0.5,
+    },
+    carouselContainer: {
+        paddingHorizontal: theme.spacing.s,
+        paddingBottom: theme.spacing.l,
         gap: theme.spacing.m,
-        justifyContent: 'space-between'
     },
-    statCard: {
-        width: '47%',
+    glassCardSmall: {
+        width: CARD_WIDTH,
         backgroundColor: theme.colors.surface,
         padding: theme.spacing.l,
-        borderRadius: theme.borderRadius.m,
-        ...theme.shadows.sm,
-        alignItems: 'center'
+        borderRadius: theme.borderRadius.l,
+        ...theme.shadows.md,
+        alignItems: 'flex-start',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.8)',
     },
-    wideStatCard: {
-        width: '100%',
+    iconBox: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    statValueSmall: {
+        fontSize: 26,
+        fontWeight: 'bold',
+        color: theme.colors.textPrimary,
+    },
+    statLabelSmall: {
+        fontSize: 13,
+        color: theme.colors.textSecondary,
+        fontWeight: '500',
+        marginTop: 4,
+    },
+    financeSection: {
+        marginTop: theme.spacing.m,
+        paddingHorizontal: theme.spacing.s,
+    },
+    financeCard: {
         backgroundColor: theme.colors.surface,
         padding: theme.spacing.l,
-        borderRadius: theme.borderRadius.m,
-        ...theme.shadows.sm,
+        borderRadius: theme.borderRadius.l,
+        ...theme.shadows.md,
         flexDirection: 'row',
         justifyContent: 'space-between',
-        alignItems: 'center'
+        alignItems: 'center',
+        marginTop: theme.spacing.m,
     },
-    statValue: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        color: theme.colors.textPrimary,
-        marginTop: 8
+    financeInfo: {
+        flex: 1,
     },
-    statLabel: {
+    financeLabel: {
         fontSize: 14,
+        fontWeight: '600',
         color: theme.colors.textSecondary,
-        marginTop: 4
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
     },
-    wideStatValue: {
-        fontSize: 32,
+    financeValue: {
+        fontSize: 26,
         fontWeight: 'bold',
-        color: theme.colors.textPrimary,
-        marginTop: 4
+        marginTop: 6,
     },
-    wideStatLabel: {
-        fontSize: 16,
-        color: theme.colors.textSecondary
+    iconBoxLarge: {
+        width: 52,
+        height: 52,
+        borderRadius: 26,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
-    logoutButton: {
+    glassLogoutBtn: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: theme.colors.danger + '10',
-        paddingVertical: 16,
-        borderRadius: theme.borderRadius.m,
-        marginBottom: theme.spacing.xl,
+        backgroundColor: theme.colors.surface,
+        paddingVertical: 18,
+        marginHorizontal: theme.spacing.l,
+        marginTop: theme.spacing.xl,
+        borderRadius: theme.borderRadius.l,
+        borderWidth: 1,
+        borderColor: theme.colors.dangerLight,
+        ...theme.shadows.sm,
     },
     logoutText: {
         color: theme.colors.danger,
         fontSize: 16,
-        fontWeight: '600',
-        marginLeft: 8,
+        fontWeight: 'bold',
+        marginLeft: 10,
     }
 });

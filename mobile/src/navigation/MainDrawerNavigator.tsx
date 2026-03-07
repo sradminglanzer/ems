@@ -62,6 +62,7 @@ export default function MainDrawerNavigator() {
             initialRouteName="DashboardHome"
             drawerContent={(props) => <CustomDrawerContent {...props} />}
             screenOptions={{
+                headerShown: false,
                 headerStyle: {
                     backgroundColor: theme.colors.surface,
                     elevation: 0, // Android shadow removal

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Platform, Alert, Modal, TextInput, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Platform, Alert, Modal, TextInput, KeyboardAvoidingView, Animated } from 'react-native';
 import api from '../../services/api';
 import { theme, globalStyles } from '../../theme';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,12 +9,15 @@ import { useCallback } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { useContext } from 'react';
 import HeaderActions from '../../components/HeaderActions';
+import { LinearGradient } from 'expo-linear-gradient';
 
 export default function FeeGroupDetailsScreen() {
     const { selectedAcademicYearId } = useContext(AuthContext);
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
     const { group } = route.params;
+
+    const scrollY = React.useRef(new Animated.Value(0)).current;
 
     const [members, setMembers] = useState<any[]>([]);
     const [structures, setStructures] = useState<any[]>([]);
@@ -111,7 +114,7 @@ export default function FeeGroupDetailsScreen() {
     };
 
     const handleDeleteGroup = () => {
-        Alert.alert("Delete Group", "Are you sure you want to delete this fee group?", [
+        Alert.alert("Delete Group", "Are you sure you want to delete this class group?", [
             { text: "Cancel", style: "cancel" },
             {
                 text: "Delete", style: "destructive", onPress: async () => {
@@ -178,8 +181,6 @@ export default function FeeGroupDetailsScreen() {
         }
     };
 
-
-
     const handleCreateFeeStructure = async () => {
         if (!feeName || !feeAmount) return alert('Name and Amount are required');
         setIsStructureSubmitting(true);
@@ -202,103 +203,197 @@ export default function FeeGroupDetailsScreen() {
     };
 
     const renderMember = ({ item }: { item: any }) => (
-        <TouchableOpacity style={globalStyles.card} onPress={() => navigation.navigate('MemberDetails', { member: item })}>
+        <TouchableOpacity style={styles.memberCard} activeOpacity={0.8} onPress={() => navigation.navigate('MemberDetails', { member: item })}>
+            <LinearGradient
+                colors={theme.gradients.primary}
+                style={styles.memberAvatarContainer}
+            >
+                <Text style={styles.memberAvatarText}>
+                    {item.firstName.charAt(0)}{item.lastName.charAt(0)}
+                </Text>
+            </LinearGradient>
             <View style={{ flex: 1 }}>
                 <Text style={styles.name}>{item.firstName} {item.lastName}</Text>
                 <Text style={styles.details}>Roll No: {item.knownId}</Text>
                 {item.contact && <Text style={styles.details}>Contact: {item.contact}</Text>}
             </View>
+            <Ionicons name="chevron-forward" size={24} color={theme.colors.border} />
         </TouchableOpacity>
     );
 
+    const totalFees = structures.reduce((sum, s) => sum + s.amount, 0);
+
+    const renderHeader = () => (
+        <View style={styles.statsContainer}>
+            <View style={styles.statCardsRow}>
+                <View style={styles.statCard}>
+                    <Text style={styles.statLabel}>Students Enrolled</Text>
+                    <Text style={styles.statValue}>{members.length}</Text>
+                </View>
+                <View style={styles.statCard}>
+                    <Text style={styles.statLabel}>Total Fees Generated</Text>
+                    <Text style={[styles.statValue, { color: theme.colors.primary }]}>₹{totalFees.toLocaleString('en-IN')}</Text>
+                </View>
+            </View>
+
+            {/* Actions */}
+            <View style={styles.actionsContainer}>
+                {members.length > 0 && (
+                    <TouchableOpacity style={styles.actionButtonPrimary} onPress={() => setPromoteModalVisible(true)} activeOpacity={0.8}>
+                        <Ionicons name="arrow-up-circle" size={20} color={theme.colors.surface} />
+                        <Text style={styles.actionButtonPrimaryText}>Promote Students</Text>
+                    </TouchableOpacity>
+                )}
+            </View>
+
+            {/* Fee Structures */}
+            <View style={styles.feeSectionHeader}>
+                <Text style={styles.sectionTitle}>Fee Structures</Text>
+                <TouchableOpacity onPress={() => setFeeModalVisible(true)} style={styles.addIconSmall}>
+                    <Ionicons name="add" size={20} color={theme.colors.primary} />
+                </TouchableOpacity>
+            </View>
+
+            {structures.length > 0 ? (
+                structures.map((s, idx) => (
+                    <View key={idx} style={styles.structureCard}>
+                        <View style={styles.structureInfo}>
+                            <View style={styles.structureIcon}>
+                                <Ionicons name="cash-outline" size={18} color={theme.colors.primary} />
+                            </View>
+                            <View>
+                                <Text style={styles.structureName}>{s.name}</Text>
+                                <View style={styles.frequencyBadge}>
+                                    <Text style={styles.frequencyText}>{s.frequency}</Text>
+                                </View>
+                            </View>
+                        </View>
+                        <Text style={styles.structureAmount}>₹{s.amount.toLocaleString('en-IN')}</Text>
+                    </View>
+                ))
+            ) : (
+                <View style={styles.emptyCardBox}>
+                    <Ionicons name="cash-outline" size={32} color={theme.colors.border} />
+                    <Text style={[globalStyles.emptyText, { marginTop: 8 }]}>No fee structures defined.</Text>
+                </View>
+            )}
+
+            <View style={[styles.feeSectionHeader, { marginTop: 24, marginBottom: 8 }]}>
+                <Text style={styles.sectionTitle}>Enrolled Students</Text>
+            </View>
+        </View>
+    );
+
+    const headerHeight = scrollY.interpolate({
+        inputRange: [0, 100],
+        outputRange: [Platform.OS === 'ios' ? 220 : 180, Platform.OS === 'ios' ? 100 : 80],
+        extrapolate: 'clamp',
+    });
+
+    const headerOpacity = scrollY.interpolate({
+        inputRange: [0, 80],
+        outputRange: [1, 0],
+        extrapolate: 'clamp',
+    });
+
+    const headerTitleOpacity = scrollY.interpolate({
+        inputRange: [60, 100],
+        outputRange: [0, 1],
+        extrapolate: 'clamp',
+    });
+
     return (
         <View style={globalStyles.container}>
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                    <Ionicons name="arrow-back" size={24} color={theme.colors.textPrimary} />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>{currentGroupData.name}</Text>
-                <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-                    <HeaderActions />
-                    <TouchableOpacity onPress={() => setModalVisible(true)}>
-                        <Ionicons name="create-outline" size={24} color={theme.colors.primary} />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={handleDeleteGroup}>
-                        <Ionicons name="trash-outline" size={24} color="red" />
-                    </TouchableOpacity>
-                </View>
-            </View>
-
-            <View style={styles.statsContainer}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <Text style={styles.statsText}>{members.length} Students Enrolled</Text>
-                    <Text style={styles.statsText}>Total Fees: ₹{structures.reduce((sum, s) => sum + s.amount, 0)}</Text>
-                </View>
-
-                {members.length > 0 && (
-                    <TouchableOpacity style={[styles.addFeeButton, { backgroundColor: theme.colors.primary, marginBottom: 12 }]} onPress={() => setPromoteModalVisible(true)}>
-                        <Ionicons name="arrow-up-circle-outline" size={20} color={theme.colors.surface} />
-                        <Text style={[styles.addFeeText, { color: theme.colors.surface }]}>Promote Students</Text>
-                    </TouchableOpacity>
-                )}
-
-                {structures.length > 0 ? (
-                    structures.map((s, idx) => (
-                        <View key={idx} style={styles.structureCard}>
-                            <Text style={styles.structureName}>{s.name} ({s.frequency})</Text>
-                            <Text style={styles.structureAmount}>₹{s.amount}</Text>
-                        </View>
-                    ))
-                ) : (
-                    <Text style={[globalStyles.emptyText, { marginTop: 8 }]}>No fee structures defined.</Text>
-                )}
-
-                <TouchableOpacity style={styles.addFeeButton} onPress={() => setFeeModalVisible(true)}>
-                    <Ionicons name="add-circle-outline" size={20} color={theme.colors.primary} />
-                    <Text style={styles.addFeeText}>Add Fee Structure</Text>
-                </TouchableOpacity>
-            </View>
-
-            {loading ? (
-                <View style={globalStyles.centerMode}>
-                    <ActivityIndicator size="large" color={theme.colors.primary} />
-                </View>
-            ) : (
-                <FlatList
-                    data={members}
-                    keyExtractor={(item) => item._id}
-                    renderItem={renderMember}
-                    contentContainerStyle={globalStyles.listContainer}
-                    ListEmptyComponent={<Text style={globalStyles.emptyText}>No students in this group.</Text>}
+            {/* Animated Sticky Header */}
+            <Animated.View style={[styles.animatedHeader, { height: headerHeight }]}>
+                <LinearGradient
+                    colors={theme.gradients.primary}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFill}
                 />
-            )}
+                <View style={styles.topNav}>
+                    <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconButton}>
+                        <Ionicons name="arrow-back" size={24} color={theme.colors.surface} />
+                    </TouchableOpacity>
+                    <Animated.Text style={[styles.stickyTitle, { opacity: headerTitleOpacity }]}>
+                        {currentGroupData.name}
+                    </Animated.Text>
+
+                    <View style={styles.headerActionsWrapper}>
+                        <HeaderActions />
+                        <TouchableOpacity onPress={() => setModalVisible(true)} style={styles.actionIcon}>
+                            <Ionicons name="pencil" size={18} color={theme.colors.primary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={handleDeleteGroup} style={styles.actionIcon}>
+                            <Ionicons name="trash" size={18} color={theme.colors.danger} />
+                        </TouchableOpacity>
+                    </View>
+                </View>
+
+                <Animated.View style={[styles.heroContent, { opacity: headerOpacity }]}>
+                    <View style={styles.heroAvatar}>
+                        <Text style={styles.heroAvatarText}>{currentGroupData.name.substring(0, 2).toUpperCase()}</Text>
+                    </View>
+                    <Text style={styles.heroTitle}>{currentGroupData.name}</Text>
+                    <Text style={styles.heroSubtitle}>{currentGroupData.description || 'Academic Class Group'}</Text>
+                </Animated.View>
+            </Animated.View>
+
+            <View style={styles.listWrapper}>
+                {loading ? (
+                    <View style={[globalStyles.centerMode, { marginTop: 40 }]}>
+                        <ActivityIndicator size="large" color={theme.colors.primary} />
+                    </View>
+                ) : (
+                    <Animated.FlatList
+                        data={members}
+                        keyExtractor={(item: any) => item._id}
+                        renderItem={renderMember}
+                        ListHeaderComponent={renderHeader}
+                        contentContainerStyle={styles.listContent}
+                        showsVerticalScrollIndicator={false}
+                        onScroll={Animated.event(
+                            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                            { useNativeDriver: false }
+                        )}
+                        scrollEventThrottle={16}
+                        ListEmptyComponent={<Text style={globalStyles.emptyText}>No students in this group.</Text>}
+                    />
+                )}
+            </View>
 
             <TouchableOpacity
                 style={globalStyles.fab}
                 onPress={() => navigation.navigate('AddMember', { feeGroupId: group._id })}
-                activeOpacity={0.8}
+                activeOpacity={0.9}
             >
-                <Ionicons name="person-add" size={28} color={theme.colors.surface} />
+                <LinearGradient
+                    colors={theme.gradients.primary}
+                    style={styles.fabGradient}
+                >
+                    <Ionicons name="person-add" size={28} color={theme.colors.surface} />
+                </LinearGradient>
             </TouchableOpacity>
 
             <Modal animationType="slide" transparent={true} visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
                 <KeyboardAvoidingView style={globalStyles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
                     <View style={globalStyles.modalContent}>
                         <View style={globalStyles.modalHeader}>
-                            <Text style={globalStyles.modalTitle}>Edit Fee Group</Text>
+                            <Text style={globalStyles.modalTitle}>Edit Class Group</Text>
                             <TouchableOpacity onPress={() => setModalVisible(false)} style={globalStyles.closeButton}>
                                 <Ionicons name="close" size={24} color={theme.colors.textSecondary} />
                             </TouchableOpacity>
                         </View>
 
-                        <Text style={globalStyles.label}>Group Name</Text>
+                        <Text style={globalStyles.label}>Class Name</Text>
                         <TextInput style={globalStyles.input} value={newName} onChangeText={setNewName} />
 
                         <Text style={globalStyles.label}>Description</Text>
                         <TextInput style={globalStyles.input} value={newDescription} onChangeText={setNewDescription} />
 
                         <TouchableOpacity style={[globalStyles.submitButton, isSubmitting && globalStyles.disabledButton]} onPress={handleUpdateGroup} disabled={isSubmitting}>
-                            {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={globalStyles.submitButtonText}>Update Group</Text>}
+                            {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={globalStyles.submitButtonText}>Update Class</Text>}
                         </TouchableOpacity>
                     </View>
                 </KeyboardAvoidingView>
@@ -321,8 +416,21 @@ export default function FeeGroupDetailsScreen() {
                         <Text style={globalStyles.label}>Amount (₹)</Text>
                         <TextInput style={globalStyles.input} placeholder="e.g. 10000" keyboardType="numeric" value={feeAmount} onChangeText={setFeeAmount} />
 
+                        <Text style={globalStyles.label}>Frequency</Text>
+                        <View style={styles.pickerContainer}>
+                            {['monthly', 'yearly', 'one-time'].map(freq => (
+                                <TouchableOpacity
+                                    key={freq}
+                                    style={[styles.pill, feeFrequency === freq && styles.pillActive]}
+                                    onPress={() => setFeeFrequency(freq)}
+                                >
+                                    <Text style={[styles.pillText, feeFrequency === freq && styles.pillTextActive]}>{freq}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+
                         <TouchableOpacity style={[globalStyles.submitButton, isStructureSubmitting && globalStyles.disabledButton]} onPress={handleCreateFeeStructure} disabled={isStructureSubmitting}>
-                            {isStructureSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={globalStyles.submitButtonText}>Create Fee</Text>}
+                            {isStructureSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={globalStyles.submitButtonText}>Create Fee Component</Text>}
                         </TouchableOpacity>
                     </View>
                 </KeyboardAvoidingView>
@@ -356,7 +464,7 @@ export default function FeeGroupDetailsScreen() {
                             ))}
                         </View>
 
-                        <Text style={globalStyles.label}>Target Fee Group</Text>
+                        <Text style={globalStyles.label}>Target Class</Text>
                         <View style={styles.pickerContainer}>
                             {allGroups.map(g => (
                                 <TouchableOpacity
@@ -380,55 +488,251 @@ export default function FeeGroupDetailsScreen() {
 }
 
 const styles = StyleSheet.create({
-    header: {
+    animatedHeader: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 10,
+        overflow: 'hidden',
+        borderBottomLeftRadius: 20,
+        borderBottomRightRadius: 20,
+        ...theme.shadows.sm,
+    },
+    topNav: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: theme.spacing.m,
-        paddingTop: Platform.OS === 'ios' ? 60 : 40,
-        paddingBottom: theme.spacing.m,
-        backgroundColor: theme.colors.surface,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.colors.border,
+        paddingHorizontal: theme.spacing.l,
+        paddingTop: Platform.OS === 'ios' ? 44 : 20,
+        height: Platform.OS === 'ios' ? 100 : 80,
     },
-    backButton: { padding: theme.spacing.xs },
-    headerTitle: { fontSize: 20, fontWeight: '600', color: theme.colors.textPrimary },
-    statsContainer: {
-        padding: theme.spacing.m,
-        backgroundColor: theme.colors.surface,
-        marginBottom: theme.spacing.s,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.colors.border,
+    iconButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        justifyContent: 'center',
+        alignItems: 'center',
     },
-    statsText: {
+    actionIcon: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: theme.colors.surface,
+        justifyContent: 'center',
+        alignItems: 'center',
+        ...theme.shadows.sm,
+    },
+    headerActionsWrapper: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        backgroundColor: 'rgba(255,255,255,0.9)',
+        borderRadius: theme.borderRadius.round,
+        padding: 4,
+    },
+    stickyTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: theme.colors.surface,
+        flex: 1,
+        textAlign: 'center',
+        marginLeft: 16,
+    },
+    heroContent: {
+        alignItems: 'center',
+        position: 'absolute',
+        top: Platform.OS === 'ios' ? 90 : 70,
+        left: 0,
+        right: 0,
+    },
+    heroAvatar: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.4)',
+    },
+    heroAvatarText: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: theme.colors.surface,
+        letterSpacing: 1,
+    },
+    heroTitle: {
+        fontSize: 22,
+        fontWeight: 'bold',
+        color: theme.colors.surface,
+        letterSpacing: 0.5,
+    },
+    heroSubtitle: {
         fontSize: 16,
-        fontWeight: '500',
-        color: theme.colors.textSecondary,
+        color: 'rgba(255,255,255,0.8)',
+        marginTop: 4,
     },
-    name: { fontSize: 16, fontWeight: '600', color: theme.colors.textPrimary, marginBottom: 4 },
-    details: { fontSize: 14, color: theme.colors.textSecondary, marginBottom: 2 },
-    removeIcon: { padding: 4 },
+    listWrapper: {
+        flex: 1,
+    },
+    listContent: {
+        paddingHorizontal: theme.spacing.m,
+        paddingTop: Platform.OS === 'ios' ? 240 : 200,
+        paddingBottom: 90,
+    },
+    statsContainer: {
+        marginBottom: theme.spacing.s,
+    },
+    statCardsRow: {
+        flexDirection: 'row',
+        gap: theme.spacing.s,
+        marginBottom: theme.spacing.s,
+    },
+    statCard: {
+        flex: 1,
+        backgroundColor: theme.colors.surface,
+        padding: 12,
+        borderRadius: theme.borderRadius.m,
+        ...theme.shadows.sm,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+    },
+    statLabel: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: theme.colors.textSecondary,
+        textTransform: 'uppercase',
+        marginBottom: 8,
+    },
+    statValue: {
+        fontSize: 22,
+        fontWeight: 'bold',
+        color: theme.colors.textPrimary,
+    },
+    actionsContainer: {
+        marginBottom: theme.spacing.xl,
+    },
+    actionButtonPrimary: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: theme.colors.primary,
+        paddingVertical: 14,
+        borderRadius: theme.borderRadius.m,
+        ...theme.shadows.sm,
+        gap: 8,
+    },
+    actionButtonPrimaryText: {
+        color: theme.colors.surface,
+        fontWeight: 'bold',
+        fontSize: 16,
+    },
+    feeSectionHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: theme.colors.textPrimary,
+    },
+    addIconSmall: {
+        backgroundColor: theme.colors.primaryLight + '20',
+        padding: 6,
+        borderRadius: theme.borderRadius.round,
+    },
     structureCard: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        backgroundColor: theme.colors.background,
-        padding: theme.spacing.s,
-        borderRadius: theme.borderRadius.s,
-        marginVertical: 4
+        backgroundColor: theme.colors.surface,
+        padding: theme.spacing.m,
+        borderRadius: theme.borderRadius.m,
+        marginBottom: theme.spacing.s,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        ...theme.shadows.sm,
     },
-    structureName: { fontSize: 14, color: theme.colors.textPrimary, fontWeight: '500' },
-    structureAmount: { fontSize: 14, color: theme.colors.primary, fontWeight: 'bold' },
-    addFeeButton: {
+    structureInfo: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
-        padding: 8,
-        marginTop: 8,
-        backgroundColor: theme.colors.primary + '10',
-        borderRadius: theme.borderRadius.s
+        gap: 12,
     },
-    addFeeText: { color: theme.colors.primary, fontWeight: '600', marginLeft: 8 },
+    structureIcon: {
+        backgroundColor: theme.colors.primaryLight + '15',
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    structureName: {
+        fontSize: 16,
+        color: theme.colors.textPrimary,
+        fontWeight: 'bold',
+        marginBottom: 4,
+    },
+    frequencyBadge: {
+        alignSelf: 'flex-start',
+        backgroundColor: theme.colors.secondary + '15',
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: theme.borderRadius.s,
+    },
+    frequencyText: {
+        color: theme.colors.secondary,
+        fontSize: 10,
+        fontWeight: 'bold',
+        textTransform: 'uppercase',
+    },
+    structureAmount: {
+        fontSize: 18,
+        color: theme.colors.primary,
+        fontWeight: 'bold'
+    },
+    emptyCardBox: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 30,
+        backgroundColor: theme.colors.surface,
+        borderRadius: theme.borderRadius.m,
+        borderStyle: 'dashed',
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        marginBottom: theme.spacing.s,
+    },
+    memberCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: theme.colors.surface,
+        borderRadius: theme.borderRadius.m,
+        padding: theme.spacing.m,
+        marginBottom: theme.spacing.s,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        ...theme.shadows.sm,
+    },
+    memberAvatarContainer: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: theme.spacing.m,
+    },
+    memberAvatarText: {
+        color: theme.colors.surface,
+        fontSize: 16,
+        fontWeight: 'bold',
+        letterSpacing: 1,
+    },
+    name: { fontSize: 16, fontWeight: 'bold', color: theme.colors.textPrimary, marginBottom: 4 },
+    details: { fontSize: 13, color: theme.colors.textSecondary, marginBottom: 2 },
     pickerContainer: {
         flexDirection: 'row',
         flexWrap: 'wrap',
@@ -436,8 +740,8 @@ const styles = StyleSheet.create({
         marginBottom: 16
     },
     pill: {
-        paddingHorizontal: 12,
-        paddingVertical: 8,
+        paddingHorizontal: 16,
+        paddingVertical: 10,
         borderRadius: theme.borderRadius.round,
         borderWidth: 1,
         borderColor: theme.colors.border,
@@ -449,10 +753,18 @@ const styles = StyleSheet.create({
     },
     pillText: {
         fontSize: 14,
-        color: theme.colors.textSecondary
+        color: theme.colors.textSecondary,
+        fontWeight: '500',
     },
     pillTextActive: {
         color: theme.colors.primary,
-        fontWeight: '600'
+        fontWeight: 'bold'
+    },
+    fabGradient: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        justifyContent: 'center',
+        alignItems: 'center',
     }
 });

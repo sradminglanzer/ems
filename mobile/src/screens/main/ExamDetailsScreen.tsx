@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert, TextInput, KeyboardAvoidingView, Platform, ScrollView, Modal, Dimensions, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert, TextInput, KeyboardAvoidingView, Platform, ScrollView, Modal, Dimensions, SafeAreaView, Animated } from 'react-native';
 import api from '../../services/api';
 import { theme, globalStyles } from '../../theme';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,6 +7,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { AuthContext } from '../../context/AuthContext';
 import { useContext } from 'react';
 import HeaderActions from '../../components/HeaderActions';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const { width } = Dimensions.get('window');
 
@@ -58,6 +59,26 @@ export default function ExamDetailsScreen() {
         };
         fetchInitial();
     }, [exam]);
+
+    const scrollY = useRef(new Animated.Value(0)).current;
+
+    const headerHeight = scrollY.interpolate({
+        inputRange: [0, 100],
+        outputRange: [Platform.OS === 'ios' ? 340 : 300, Platform.OS === 'ios' ? 150 : 130],
+        extrapolate: 'clamp',
+    });
+
+    const headerOpacity = scrollY.interpolate({
+        inputRange: [0, 60],
+        outputRange: [1, 0],
+        extrapolate: 'clamp',
+    });
+
+    const headerTitleOpacity = scrollY.interpolate({
+        inputRange: [60, 100],
+        outputRange: [0, 1],
+        extrapolate: 'clamp',
+    });
 
     useEffect(() => {
         if (!selectedGroupId) return;
@@ -171,6 +192,9 @@ export default function ExamDetailsScreen() {
 
         return (
             <TouchableOpacity style={styles.memberCard} onPress={() => setGradingIndex(index)}>
+                <View style={styles.memberAvatar}>
+                    <Text style={styles.memberAvatarText}>{item.firstName.charAt(0)}{item.lastName.charAt(0)}</Text>
+                </View>
                 <View style={styles.memberInfo}>
                     <Text style={styles.memberName}>{item.firstName} {item.lastName}</Text>
                     <Text style={styles.memberId}>Roll No: {item.knownId}</Text>
@@ -181,11 +205,13 @@ export default function ExamDetailsScreen() {
                             {totalScore} <Text style={{ fontSize: 13, color: theme.colors.textSecondary }}>/ {totalMax}</Text>
                         </Text>
                     ) : (
-                        <Text style={{ color: theme.colors.danger, fontSize: 13, marginBottom: 4, fontWeight: '500' }}>Missing</Text>
+                        <View style={styles.missingBadge}>
+                            <Text style={styles.missingBadgeText}>Not Graded</Text>
+                        </View>
                     )}
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Text style={{ color: theme.colors.primary, marginRight: 4, fontWeight: '500', fontSize: 13 }}>Results</Text>
-                        <Ionicons name="chevron-forward" size={16} color={theme.colors.textSecondary} />
+                        <Text style={{ color: theme.colors.primary, marginRight: 4, fontWeight: '600', fontSize: 13 }}>Grade</Text>
+                        <Ionicons name="arrow-forward-circle" size={16} color={theme.colors.primary} />
                     </View>
                 </View>
             </TouchableOpacity>
@@ -193,68 +219,118 @@ export default function ExamDetailsScreen() {
     };
 
     const renderGradingForm = ({ item, index }: { item: any, index: number }) => {
+        const totalScore = resultsMap[item._id]?.marks?.reduce((sum: number, m: any) => sum + m.score, 0) || 0;
+        const totalMax = resultsMap[item._id]?.marks?.reduce((sum: number, m: any) => sum + m.maxScore, 0) || 0;
+
         return (
-            <ScrollView style={{ width }} contentContainerStyle={{ padding: 16 }}>
-                <View style={styles.gradingHeaderBox}>
+            <ScrollView style={{ width }} contentContainerStyle={{ paddingBottom: 40 }}>
+                <LinearGradient
+                    colors={theme.gradients.primary}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.gradingHeroHeader}
+                >
+                    <View style={styles.gradingAvatarBorder}>
+                        <View style={styles.gradingAvatarInner}>
+                            <Text style={styles.gradingAvatarText}>{item.firstName.charAt(0)}{item.lastName.charAt(0)}</Text>
+                        </View>
+                    </View>
                     <Text style={styles.gradingTitle}>{item.firstName} {item.lastName}</Text>
                     <Text style={styles.gradingSub}>Roll No: {item.knownId}</Text>
-                </View>
 
-                <View style={{ marginTop: 20 }}>
-                    <Text style={globalStyles.label}>Subjects</Text>
-                    {exam.subjects && exam.subjects.map((sub: any) => {
-                        const mark = getMarkForMember(item._id, sub.name);
-                        return (
-                            <View key={sub.name} style={styles.gradingSubjectRow}>
-                                <Text style={styles.gradingSubjectName}>{sub.name}</Text>
-                                <View style={styles.markInputBox}>
-                                    <TextInput
-                                        style={styles.markInput}
-                                        keyboardType="numeric"
-                                        placeholder="Marks"
-                                        value={mark.score}
-                                        onChangeText={(val) => handleUpdateMark(item._id, sub.name, 'score', val)}
-                                    />
-                                    <Text style={styles.slash}>/</Text>
-                                    <TextInput
-                                        style={styles.markInput}
-                                        keyboardType="numeric"
-                                        placeholder="Max"
-                                        value={mark.maxScore}
-                                        onChangeText={(val) => handleUpdateMark(item._id, sub.name, 'maxScore', val)}
-                                    />
+                    <View style={styles.gradingTotalBadge}>
+                        <Text style={styles.gradingTotalText}>Total: {totalScore} / {totalMax}</Text>
+                    </View>
+                </LinearGradient>
+
+                <View style={styles.gradingContent}>
+                    <View style={styles.glassCard}>
+                        <View style={styles.sectionHeader}>
+                            <Ionicons name="book-outline" size={20} color={theme.colors.primary} />
+                            <Text style={styles.sectionTitle}>Subject Marks</Text>
+                        </View>
+
+                        {exam.subjects && exam.subjects.map((sub: any) => {
+                            const mark = getMarkForMember(item._id, sub.name);
+                            return (
+                                <View key={sub.name} style={styles.gradingSubjectRow}>
+                                    <Text style={styles.gradingSubjectName}>{sub.name}</Text>
+                                    <View style={styles.markInputBox}>
+                                        <TextInput
+                                            style={styles.markInput}
+                                            keyboardType="numeric"
+                                            placeholder="Marks"
+                                            value={mark.score}
+                                            onChangeText={(val) => handleUpdateMark(item._id, sub.name, 'score', val)}
+                                        />
+                                        <Text style={styles.slash}>/</Text>
+                                        <TextInput
+                                            style={styles.markInput}
+                                            keyboardType="numeric"
+                                            placeholder="Max"
+                                            value={mark.maxScore}
+                                            onChangeText={(val) => handleUpdateMark(item._id, sub.name, 'maxScore', val)}
+                                        />
+                                    </View>
                                 </View>
-                            </View>
-                        );
-                    })}
-                </View>
+                            );
+                        })}
+                    </View>
 
-                <TouchableOpacity
-                    style={[globalStyles.submitButton, saving && globalStyles.disabledButton, { marginTop: 32 }]}
-                    onPress={() => handleSaveAndNext(index)}
-                    disabled={saving}
-                >
-                    {saving ? <ActivityIndicator color="#fff" /> : <Text style={globalStyles.submitButtonText}>{index < members.length - 1 ? 'Save & Next Student' : 'Save & Finish'}</Text>}
-                </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[globalStyles.submitButton, saving && globalStyles.disabledButton, { marginTop: 24 }]}
+                        onPress={() => handleSaveAndNext(index)}
+                        disabled={saving}
+                    >
+                        {saving ? <ActivityIndicator color="#fff" /> :
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <Text style={globalStyles.submitButtonText}>
+                                    {index < members.length - 1 ? 'Save & Next Student' : 'Save & Finish'}
+                                </Text>
+                                {index < members.length - 1 && <Ionicons name="arrow-forward" size={20} color={theme.colors.surface} />}
+                            </View>
+                        }
+                    </TouchableOpacity>
+                </View>
             </ScrollView>
         );
     };
 
     return (
         <View style={globalStyles.container}>
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                    <Ionicons name="arrow-back" size={24} color={theme.colors.textPrimary} />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>{exam.name}</Text>
-                <HeaderActions />
-            </View>
+            {/* Animated Sticky Header */}
+            <Animated.View style={[styles.animatedHeader, { height: headerHeight }]}>
+                <LinearGradient
+                    colors={theme.gradients.primary}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFill}
+                />
+                <View style={styles.topNav}>
+                    <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconButton}>
+                        <Ionicons name="arrow-back" size={24} color={theme.colors.surface} />
+                    </TouchableOpacity>
+                    <Animated.Text style={[styles.stickyTitle, { opacity: headerTitleOpacity }]} numberOfLines={1}>
+                        {exam.name}
+                    </Animated.Text>
+                    <HeaderActions />
+                </View>
 
-            <View style={styles.selectorsBlock}>
-                <View style={styles.selectorRowGroup}>
-                    <Text style={styles.selectorLabel}>Select Group for Results:</Text>
+                <Animated.View style={[styles.heroContent, { opacity: headerOpacity }]}>
+                    <View style={styles.examIconBg}>
+                        <Ionicons name="document-text" size={36} color={theme.colors.primary} />
+                    </View>
+                    <Text style={styles.heroTitle} numberOfLines={1}>{exam.name}</Text>
+                    <Text style={styles.heroSubtitle}>Class Exam Results & Grading</Text>
+                </Animated.View>
+
+                {/* Embedded Group Selector in Header */}
+                <View style={styles.selectorsBlock}>
+                    <Animated.Text style={[styles.selectorLabel, { opacity: headerOpacity, height: headerOpacity.interpolate({ inputRange: [0, 1], outputRange: [0, 24] }) }]}>
+                        Select Class for Grading:
+                    </Animated.Text>
                     {loadingGroups ? (
-                        <ActivityIndicator style={{ padding: 12 }} />
+                        <ActivityIndicator style={{ padding: 12 }} color={theme.colors.surface} />
                     ) : (
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectorRow}>
                             {feeGroups.map(group => (
@@ -269,30 +345,43 @@ export default function ExamDetailsScreen() {
                         </ScrollView>
                     )}
                 </View>
-            </View>
+            </Animated.View>
 
-            {loadingMembers ? (
-                <View style={globalStyles.centerMode}>
-                    <ActivityIndicator size="large" color={theme.colors.primary} />
-                </View>
-            ) : (
-                <FlatList
-                    data={sortedMembers}
-                    keyExtractor={(item) => item._id}
-                    renderItem={renderMemberListItem}
-                    contentContainerStyle={globalStyles.listContainer}
-                    ListEmptyComponent={<Text style={globalStyles.emptyText}>No students in this group.</Text>}
-                />
-            )}
+            <View style={styles.listWrapper}>
+                {loadingMembers ? (
+                    <View style={[globalStyles.centerMode, { marginTop: 40 }]}>
+                        <ActivityIndicator size="large" color={theme.colors.primary} />
+                    </View>
+                ) : (
+                    <Animated.FlatList
+                        data={sortedMembers}
+                        keyExtractor={(item: any) => item._id}
+                        renderItem={renderMemberListItem}
+                        contentContainerStyle={styles.listContent}
+                        showsVerticalScrollIndicator={false}
+                        onScroll={Animated.event(
+                            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                            { useNativeDriver: false }
+                        )}
+                        scrollEventThrottle={16}
+                        ListEmptyComponent={
+                            <View style={styles.emptyCardBox}>
+                                <Ionicons name="people-outline" size={32} color={theme.colors.border} />
+                                <Text style={[globalStyles.emptyText, { marginTop: 8 }]}>No students in this group.</Text>
+                            </View>
+                        }
+                    />
+                )}
+            </View>
 
             {/* Full Screen Grading Overlay Modal */}
             <Modal visible={gradingIndex !== null} animationType="slide" onRequestClose={() => setGradingIndex(null)}>
                 <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
-                    <View style={styles.header}>
-                        <TouchableOpacity onPress={() => setGradingIndex(null)} style={styles.backButton}>
-                            <Ionicons name="close" size={28} color={theme.colors.textPrimary} />
+                    <View style={styles.modalHeader}>
+                        <TouchableOpacity onPress={() => setGradingIndex(null)} style={styles.modalBackButton}>
+                            <Ionicons name="close" size={24} color={theme.colors.textPrimary} />
                         </TouchableOpacity>
-                        <Text style={styles.headerTitle}>Enter Grades</Text>
+                        <Text style={styles.modalHeaderTitle}>Grading: {exam.name}</Text>
                         <View style={{ width: 40 }} />
                     </View>
 
@@ -322,97 +411,279 @@ export default function ExamDetailsScreen() {
 }
 
 const styles = StyleSheet.create({
-    header: {
+    animatedHeader: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 10,
+        overflow: 'hidden',
+        borderBottomLeftRadius: 32,
+        borderBottomRightRadius: 32,
+        ...theme.shadows.lg,
+    },
+    topNav: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
+        paddingHorizontal: theme.spacing.l,
+        height: Platform.OS === 'ios' ? 100 : 80,
+        paddingTop: Platform.OS === 'ios' ? 40 : 20,
+    },
+    stickyTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: theme.colors.surface,
+        flex: 1,
+        textAlign: 'center',
+        marginHorizontal: 16,
+    },
+    iconButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    heroContent: {
+        alignItems: 'center',
+        position: 'absolute',
+        top: Platform.OS === 'ios' ? 100 : 80,
+        left: 0,
+        right: 0,
         paddingHorizontal: theme.spacing.m,
-        paddingTop: Platform.OS === 'ios' ? 60 : 20,
-        paddingBottom: theme.spacing.m,
-        backgroundColor: theme.colors.surface,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.colors.border,
     },
-    backButton: { padding: theme.spacing.xs },
-    headerTitle: { fontSize: 20, fontWeight: '600', color: theme.colors.textPrimary },
+    examIconBg: {
+        width: 72,
+        height: 72,
+        borderRadius: 36,
+        backgroundColor: theme.colors.surface,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 12,
+        ...theme.shadows.sm,
+    },
+    heroTitle: {
+        fontSize: 26,
+        fontWeight: 'bold',
+        color: theme.colors.surface,
+        letterSpacing: 0.5,
+        textAlign: 'center',
+    },
+    heroSubtitle: {
+        fontSize: 16,
+        color: 'rgba(255,255,255,0.8)',
+        marginTop: 4,
+        fontWeight: '500',
+    },
     selectorsBlock: {
-        backgroundColor: theme.colors.surface,
-        paddingVertical: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.colors.border,
+        position: 'absolute',
+        bottom: 20,
+        left: 0,
+        right: 0,
     },
-    selectorRowGroup: { marginBottom: 0 },
     selectorLabel: {
         fontSize: 14,
         fontWeight: '600',
-        color: theme.colors.textSecondary,
-        paddingHorizontal: theme.spacing.m,
-        marginBottom: 8
+        color: 'rgba(255,255,255,0.9)',
+        paddingHorizontal: theme.spacing.l,
+        marginBottom: 10
     },
     selectorRow: {
-        paddingHorizontal: theme.spacing.m,
-        flexDirection: 'row'
+        paddingHorizontal: theme.spacing.l,
+        flexDirection: 'row',
+        paddingBottom: 4,
     },
     chip: {
         paddingHorizontal: 16,
-        paddingVertical: 8,
+        paddingVertical: 10,
         borderRadius: 20,
-        backgroundColor: theme.colors.background,
+        backgroundColor: 'rgba(255,255,255,0.2)',
         borderWidth: 1,
-        borderColor: theme.colors.border,
+        borderColor: 'rgba(255,255,255,0.3)',
         marginRight: 10,
     },
     chipActive: {
-        backgroundColor: theme.colors.primary + '20',
-        borderColor: theme.colors.primary,
+        backgroundColor: theme.colors.surface,
+        borderColor: theme.colors.surface,
+        ...theme.shadows.sm,
     },
     chipText: {
-        color: theme.colors.textSecondary,
+        color: theme.colors.surface,
         fontWeight: '500'
     },
     chipTextActive: {
-        color: theme.colors.textPrimary,
+        color: theme.colors.primary,
         fontWeight: '700'
+    },
+    listWrapper: {
+        flex: 1,
+        marginTop: -20,
+    },
+    listContent: {
+        paddingHorizontal: theme.spacing.m,
+        paddingBottom: 40,
+        paddingTop: Platform.OS === 'ios' ? 360 : 320,
     },
     memberCard: {
         backgroundColor: theme.colors.surface,
         padding: 16,
         borderRadius: theme.borderRadius.m,
-        marginBottom: 8,
+        marginBottom: 12,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
         borderWidth: 1,
-        borderColor: theme.colors.border
+        borderColor: theme.colors.border,
+        ...theme.shadows.sm,
     },
-    memberInfo: { flex: 1, paddingRight: 12 },
-    memberName: { fontSize: 16, fontWeight: '600', color: theme.colors.textPrimary },
-    memberId: { fontSize: 14, color: theme.colors.textSecondary, marginTop: 4 },
+    memberAvatar: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: theme.colors.primaryLight + '20',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    memberAvatarText: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: theme.colors.primary,
+    },
+    memberInfo: { flex: 1, paddingRight: 8 },
+    memberName: { fontSize: 16, fontWeight: 'bold', color: theme.colors.textPrimary },
+    memberId: { fontSize: 13, color: theme.colors.textSecondary, marginTop: 4, fontWeight: '500' },
+    missingBadge: {
+        backgroundColor: theme.colors.danger + '15',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: theme.borderRadius.s,
+        marginBottom: 6,
+    },
+    missingBadgeText: {
+        color: theme.colors.danger,
+        fontSize: 11,
+        fontWeight: 'bold',
+        textTransform: 'uppercase'
+    },
+    emptyCardBox: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 30,
+        backgroundColor: theme.colors.surface,
+        borderRadius: theme.borderRadius.m,
+        borderStyle: 'dashed',
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        marginHorizontal: theme.spacing.xs,
+    },
 
     // Grading Modal Styles
-    gradingHeaderBox: {
+    modalHeader: {
+        flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 24,
+        justifyContent: 'space-between',
+        paddingHorizontal: theme.spacing.m,
+        paddingVertical: 12,
+        backgroundColor: theme.colors.surface,
         borderBottomWidth: 1,
         borderBottomColor: theme.colors.border,
-        marginBottom: 12
     },
-    gradingTitle: { fontSize: 24, fontWeight: '700', color: theme.colors.textPrimary },
-    gradingSub: { fontSize: 16, color: theme.colors.textSecondary, marginTop: 4 },
+    modalBackButton: {
+        width: 40, height: 40, borderRadius: 20,
+        backgroundColor: theme.colors.background,
+        justifyContent: 'center', alignItems: 'center'
+    },
+    modalHeaderTitle: { fontSize: 18, fontWeight: '600', color: theme.colors.textPrimary },
 
+    gradingHeroHeader: {
+        alignItems: 'center',
+        paddingVertical: 32,
+        paddingHorizontal: 20,
+        borderBottomLeftRadius: 32,
+        borderBottomRightRadius: 32,
+        ...theme.shadows.md,
+    },
+    gradingAvatarBorder: {
+        width: 88,
+        height: 88,
+        borderRadius: 44,
+        backgroundColor: 'rgba(255,255,255,0.3)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    gradingAvatarInner: {
+        width: 76,
+        height: 76,
+        borderRadius: 38,
+        backgroundColor: theme.colors.surface,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    gradingAvatarText: {
+        fontSize: 28,
+        fontWeight: 'bold',
+        color: theme.colors.primary,
+        letterSpacing: 1,
+    },
+    gradingTitle: { fontSize: 24, fontWeight: 'bold', color: theme.colors.surface, textAlign: 'center' },
+    gradingSub: { fontSize: 16, color: 'rgba(255,255,255,0.8)', marginTop: 4, fontWeight: '500' },
+
+    gradingTotalBadge: {
+        marginTop: 16,
+        backgroundColor: 'rgba(0,0,0,0.2)',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 20,
+    },
+    gradingTotalText: {
+        color: theme.colors.surface,
+        fontSize: 14,
+        fontWeight: 'bold',
+    },
+
+    gradingContent: {
+        padding: 16,
+        marginTop: 8,
+    },
+    glassCard: {
+        backgroundColor: theme.colors.surface,
+        borderRadius: theme.borderRadius.m,
+        padding: theme.spacing.m,
+        ...theme.shadows.sm,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+    },
+    sectionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colors.border + '50',
+        paddingBottom: 8,
+    },
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: theme.colors.textPrimary,
+    },
     gradingSubjectRow: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingVertical: 14,
+        paddingVertical: 12,
         borderBottomWidth: 1,
-        borderBottomColor: theme.colors.border + '50'
+        borderBottomColor: theme.colors.border + '30'
     },
-    gradingSubjectName: { fontSize: 16, fontWeight: '500', color: theme.colors.textPrimary, flex: 1 },
+    gradingSubjectName: { fontSize: 16, fontWeight: '600', color: theme.colors.textPrimary, flex: 1 },
     markInputBox: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: theme.colors.surface,
+        backgroundColor: theme.colors.background,
         borderRadius: 8,
         paddingHorizontal: 8,
         borderWidth: 1,
@@ -429,6 +700,6 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         fontSize: 16,
         color: theme.colors.textPrimary,
-        fontWeight: '600'
+        fontWeight: 'bold'
     }
 });
