@@ -15,8 +15,8 @@ export default function SetupMpinScreen({ route, navigation }: any) {
     const [loading, setLoading] = useState(false);
 
     const handleSetup = async () => {
-        if (!mpin || mpin.length < 4) {
-            Alert.alert('Error', 'MPIN must be at least 4 digits');
+        if (!mpin || mpin.length !== 4) {
+            Alert.alert('Error', 'MPIN must be exactly 4 digits');
             return;
         }
 
@@ -60,7 +60,7 @@ export default function SetupMpinScreen({ route, navigation }: any) {
                         <Ionicons name="shield-checkmark" size={48} color={theme.colors.primary} />
                     </View>
                     <Text style={styles.title}>Secure your account</Text>
-                    <Text style={styles.subtitle}>Set up a 4 to 6 digit MPIN</Text>
+                    <Text style={styles.subtitle}>Set up a 4-digit MPIN</Text>
                 </View>
 
                 <View style={styles.form}>
@@ -70,13 +70,13 @@ export default function SetupMpinScreen({ route, navigation }: any) {
                             <Ionicons name="keypad-outline" size={20} color={theme.colors.textMuted} style={styles.inputIcon} />
                             <TextInput
                                 style={styles.input}
-                                placeholder="Enter 4-6 digits"
+                                placeholder="Enter 4 digits"
                                 placeholderTextColor={theme.colors.textMuted}
                                 keyboardType="numeric"
                                 secureTextEntry
                                 value={mpin}
                                 onChangeText={setMpin}
-                                maxLength={6}
+                                maxLength={4}
                             />
                         </View>
                     </View>
@@ -87,13 +87,13 @@ export default function SetupMpinScreen({ route, navigation }: any) {
                             <Ionicons name="checkmark-done-outline" size={20} color={theme.colors.textMuted} style={styles.inputIcon} />
                             <TextInput
                                 style={styles.input}
-                                placeholder="Re-enter MPIN"
+                                placeholder="Re-enter 4-digit MPIN"
                                 placeholderTextColor={theme.colors.textMuted}
                                 keyboardType="numeric"
                                 secureTextEntry
                                 value={confirmMpin}
                                 onChangeText={setConfirmMpin}
-                                maxLength={6}
+                                maxLength={4}
                             />
                         </View>
                     </View>

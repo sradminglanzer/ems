@@ -55,7 +55,7 @@ class AuthService extends BaseService<User> {
 
         // Login Flow
         if (!mpin) {
-            throw new AppError(MESSAGES.ERROR.MPIN_REQUIRED, HTTP_STATUS.BAD_REQUEST);
+            return { requiresMpin: true, message: 'Please provide your MPIN to login' };
         }
 
         const isMatch = await bcrypt.compare(mpin, user.mpin);
