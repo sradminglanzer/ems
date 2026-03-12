@@ -14,6 +14,8 @@ export const validateRequest = (schema: Schema) => {
             });
             next();
         } catch (error: any) {
+            console.log('Errors..... ', error);
+
             if (error instanceof ZodError) {
                 // @ts-ignore - ZodError generic typing mismatch in middleware
                 const errorMessages = error.errors.map((issue: any) => ({

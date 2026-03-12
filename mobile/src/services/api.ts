@@ -4,7 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // In development, this should be your local machine's IP address if testing on a physical device,
 // or 10.0.2.2 if testing on an Android Emulator, or localhost for iOS simulator.
 // TODO: Replace with environment variable strategy later
-const API_URL = 'http://localhost:5001/api';
+// const API_URL = 'http://localhost:5001/api';
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://smsapi.srglanzsoftware.com/api';
 
 const api = axios.create({
     baseURL: API_URL,

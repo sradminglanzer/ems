@@ -12,7 +12,7 @@ let db: Db;
 export const connectDB = async () => {
     try {
         await client.connect();
-        db = client.db();
+        db = client.db(process.env.DB_NAME);
         console.log('Successfully connected to MongoDB');
     } catch (error) {
         console.error('Failed to connect to MongoDB', error);

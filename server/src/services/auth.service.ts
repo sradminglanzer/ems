@@ -22,6 +22,9 @@ class AuthService extends BaseService<User> {
             throw new AppError('Invalid Entity ID format', HTTP_STATUS.BAD_REQUEST);
         }
 
+        console.log('Logging in user with contact number: ', contactNumber);
+        console.log('Entity ID: ', objectId, entityId, mpin);
+
         const user = await this.getOne({ contactNumber, entityId: objectId });
 
         if (!user) {
