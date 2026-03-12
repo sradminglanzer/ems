@@ -4,20 +4,21 @@
   "main": "index.ts",
   "scripts": {
     "start": "expo start -c",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web"
   },
   "dependencies": {
     "@expo/metro-runtime": "~55.0.6",
     "@expo/vector-icons": "^15.0.2",
-    "@react-native-async-storage/async-storage": "^3.0.1",
+    "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/datetimepicker": "8.6.0",
     "@react-navigation/drawer": "^7.9.2",
     "@react-navigation/native": "^7.1.31",
     "@react-navigation/native-stack": "^7.14.2",
     "axios": "^1.13.6",
-    "expo": "~55.0.4",
+    "expo": "~55.0.5",
+    "expo-font": "~55.0.4",
     "expo-linear-gradient": "~55.0.8",
     "expo-status-bar": "~55.0.4",
     "react": "19.2.0",
@@ -25,9 +26,10 @@
     "react-native": "0.83.2",
     "react-native-gesture-handler": "~2.30.0",
     "react-native-reanimated": "^4.2.1",
-    "react-native-safe-area-context": "^5.7.0",
-    "react-native-screens": "^4.24.0",
+    "react-native-safe-area-context": "~5.6.2",
+    "react-native-screens": "~4.23.0",
     "react-native-web": "^0.21.0",
+    "react-native-worklets": "0.7.2",
     "zod": "^4.3.6"
   },
   "devDependencies": {
