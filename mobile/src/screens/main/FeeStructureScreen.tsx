@@ -157,7 +157,9 @@ export default function FeeStructureScreen() {
                     <Animated.Text style={[styles.stickyTitle, { opacity: headerTitleOpacity }]}>
                         Fee Structures
                     </Animated.Text>
-                    <HeaderActions />
+                    <View style={styles.headerActionsWrapper}>
+                        <HeaderActions />
+                    </View>
                 </View>
 
                 <Animated.View style={[styles.heroContent, { opacity: headerOpacity }]}>
@@ -286,6 +288,12 @@ const styles = StyleSheet.create({
         paddingHorizontal: theme.spacing.m,
         height: Platform.OS === 'ios' ? 100 : 80,
         paddingTop: Platform.OS === 'ios' ? 40 : 20,
+        zIndex: 100,
+    },
+    headerActionsWrapper: {
+        backgroundColor: 'rgba(255,255,255,0.9)',
+        borderRadius: theme.borderRadius.s,
+        padding: 4,
     },
     stickyTitle: {
         fontSize: 18,

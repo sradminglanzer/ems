@@ -506,6 +506,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: theme.spacing.l,
         paddingTop: Platform.OS === 'ios' ? 44 : 20,
         height: Platform.OS === 'ios' ? 100 : 80,
+        zIndex: 100,
     },
     iconButton: {
         width: 40,

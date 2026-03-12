@@ -3,6 +3,7 @@ import {
     View, Text, StyleSheet, TouchableOpacity,
     TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Animated
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import api from '../../services/api';
 import { theme, globalStyles } from '../../theme';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,7 +25,8 @@ export default function AddMemberScreen() {
     const [middleName, setMiddleName] = useState(memberToEdit?.middleName || '');
     const [lastName, setLastName] = useState(memberToEdit?.lastName || '');
     const [knownId, setKnownId] = useState(memberToEdit?.knownId || '');
-    const [dob, setDob] = useState(memberToEdit?.dob || '');
+    const [dobDate, setDobDate] = useState<Date | null>(memberToEdit?.dob ? new Date(memberToEdit.dob) : null);
+    const [showDobPicker, setShowDobPicker] = useState(false);
     const [contact, setContact] = useState(memberToEdit?.contact || '');
     const [altContact, setAltContact] = useState(memberToEdit?.altContact || '');
     const [fatherOccupation, setFatherOccupation] = useState(memberToEdit?.fatherOccupation || '');
@@ -43,7 +45,7 @@ export default function AddMemberScreen() {
         try {
             const payload = {
                 firstName, middleName, lastName, knownId,
-                dob, contact, altContact, fatherOccupation,
+                dob: dobDate ? dobDate.toISOString().split('T')[0] : '', contact, altContact, fatherOccupation,
                 motherOccupation, address
             };
 
@@ -106,7 +108,6 @@ export default function AddMemberScreen() {
             style={globalStyles.container}
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-            {/* Animated Sticky Header */}
             <Animated.View style={[styles.animatedHeader, { height: headerHeight }]}>
                 <LinearGradient
                     colors={theme.gradients.primary}
@@ -121,7 +122,7 @@ export default function AddMemberScreen() {
                     <Animated.Text style={[styles.stickyTitle, { opacity: headerTitleOpacity }]}>
                         {memberToEdit ? 'Edit Student' : 'Add Student'}
                     </Animated.Text>
-                    <View style={{ width: 40 }} /> {/* balance layout */}
+                    <View style={{ width: 40 }} />
                 </View>
 
                 <Animated.View style={[styles.heroContent, { opacity: headerOpacity }]}>
@@ -146,7 +147,6 @@ export default function AddMemberScreen() {
                 scrollEventThrottle={16}
             >
 
-                {/* Personal Information Section */}
                 <View style={[styles.glassCard, { marginTop: -20 }]}>
                     <View style={styles.sectionHeader}>
                         <Ionicons name="person-outline" size={18} color={theme.colors.primary} />
@@ -193,18 +193,29 @@ export default function AddMemberScreen() {
                         </View>
                         <View style={{ flex: 1, paddingLeft: 8 }}>
                             <Text style={globalStyles.label}>Date of Birth</Text>
-                            <TextInput
-                                style={globalStyles.input}
-                                placeholder="YYYY-MM-DD"
-                                value={dob}
-                                onChangeText={setDob}
-                                placeholderTextColor={theme.colors.textMuted}
-                            />
+                            <TouchableOpacity
+                                style={[globalStyles.input, { justifyContent: 'center' }]}
+                                onPress={() => setShowDobPicker(true)}
+                            >
+                                <Text style={{ color: dobDate ? theme.colors.textPrimary : theme.colors.textMuted }}>
+                                    {dobDate ? dobDate.toISOString().split('T')[0] : "YYYY-MM-DD"}
+                                </Text>
+                            </TouchableOpacity>
+                            {showDobPicker ? (
+                                <DateTimePicker
+                                    value={dobDate || new Date()}
+                                    mode="date"
+                                    display="default"
+                                    onChange={(event, selectedDate) => {
+                                        setShowDobPicker(Platform.OS === 'ios');
+                                        if (selectedDate) setDobDate(selectedDate);
+                                    }}
+                                />
+                            ) : null}
                         </View>
                     </View>
                 </View>
 
-                {/* Contact Information Section */}
                 <View style={styles.glassCard}>
                     <View style={styles.sectionHeader}>
                         <Ionicons name="call-outline" size={18} color={theme.colors.secondary} />
@@ -242,7 +253,6 @@ export default function AddMemberScreen() {
                     />
                 </View>
 
-                {/* Parents Information Section */}
                 <View style={styles.glassCard}>
                     <View style={styles.sectionHeader}>
                         <Ionicons name="people-circle-outline" size={18} color={theme.colors.primary} />
@@ -309,6 +319,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: theme.spacing.l,
         paddingTop: Platform.OS === 'ios' ? 44 : 20,
         height: Platform.OS === 'ios' ? 100 : 80,
+        zIndex: 100,
     },
     stickyTitle: {
         fontSize: 18,

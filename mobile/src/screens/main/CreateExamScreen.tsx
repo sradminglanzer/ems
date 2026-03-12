@@ -5,10 +5,10 @@ import { useNavigation } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import api from '../../services/api';
 import { AuthContext } from '../../context/AuthContext';
-import { useContext } from 'react';
+import { useContext, useRef } from 'react';
 import { theme, globalStyles } from '../../theme';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRef } from 'react';
+import HeaderActions from '../../components/HeaderActions';
 
 export default function CreateExamScreen() {
     const { selectedAcademicYearId } = useContext(AuthContext);
@@ -21,7 +21,6 @@ export default function CreateExamScreen() {
     const [showEndDatePicker, setShowEndDatePicker] = useState(false);
 
     const [subjects, setSubjects] = useState<any[]>([]);
-    const [activeYearName, setActiveYearName] = useState<string>('');
 
     // Subject Form Additions
     const [subName, setSubName] = useState('');
@@ -37,23 +36,6 @@ export default function CreateExamScreen() {
 
     const formatDate = (date: Date) => date.toISOString().split('T')[0];
     const formatTime = (date: Date) => date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    React.useEffect(() => {
-        const fetchYearName = async () => {
-            if (selectedAcademicYearId) {
-                try {
-                    const res = await api.get('/academic-years');
-                    const yearObj = res.data.find((y: any) => y._id === selectedAcademicYearId);
-                    if (yearObj) {
-                        setActiveYearName(yearObj.name);
-                    }
-                } catch (e) {
-                    console.error("Failed to fetch academic year details in CreateExam", e);
-                }
-            }
-        };
-        fetchYearName();
-    }, [selectedAcademicYearId]);
 
     const scrollY = useRef(new Animated.Value(0)).current;
 
@@ -141,7 +123,9 @@ export default function CreateExamScreen() {
                     <Animated.Text style={[styles.stickyTitle, { opacity: headerTitleOpacity }]}>
                         Create Exam
                     </Animated.Text>
-                    <View style={{ width: 40 }} />
+                    <View style={styles.headerActionsWrapper}>
+                        <HeaderActions />
+                    </View>
                 </View>
 
                 <Animated.View style={[styles.heroContent, { opacity: headerOpacity }]}>
@@ -163,17 +147,8 @@ export default function CreateExamScreen() {
                 scrollEventThrottle={16}
             >
 
-                {activeYearName ? (
-                    <View style={styles.yearAlert}>
-                        <Ionicons name="calendar" size={20} color={theme.colors.primary} />
-                        <Text style={styles.yearAlertText}>
-                            Academic Year: <Text style={{ fontWeight: 'bold' }}>{activeYearName}</Text>
-                        </Text>
-                    </View>
-                ) : null}
-
                 {/* Exam Core Details Card */}
-                <View style={[styles.glassCard, { marginTop: activeYearName ? 0 : -20 }]}>
+                <View style={[styles.glassCard, { marginTop: 0 }]}>
                     <View style={styles.sectionHeader}>
                         <Ionicons name="document-text-outline" size={18} color={theme.colors.primary} />
                         <Text style={styles.sectionTitle}>Exam Details</Text>
@@ -329,6 +304,12 @@ const styles = StyleSheet.create({
         paddingHorizontal: theme.spacing.m,
         height: Platform.OS === 'ios' ? 100 : 80,
         paddingTop: Platform.OS === 'ios' ? 40 : 20,
+        zIndex: 100,
+    },
+    headerActionsWrapper: {
+        backgroundColor: 'rgba(255,255,255,0.9)',
+        borderRadius: theme.borderRadius.s,
+        padding: 4,
     },
     stickyTitle: {
         fontSize: 18,

@@ -64,7 +64,7 @@ export default function ExamDetailsScreen() {
 
     const headerHeight = scrollY.interpolate({
         inputRange: [0, 100],
-        outputRange: [Platform.OS === 'ios' ? 340 : 300, Platform.OS === 'ios' ? 150 : 130],
+        outputRange: [Platform.OS === 'ios' ? 360 : 320, Platform.OS === 'ios' ? 150 : 130],
         extrapolate: 'clamp',
     });
 
@@ -313,7 +313,9 @@ export default function ExamDetailsScreen() {
                     <Animated.Text style={[styles.stickyTitle, { opacity: headerTitleOpacity }]} numberOfLines={1}>
                         {exam.name}
                     </Animated.Text>
-                    <HeaderActions />
+                    <View style={styles.headerActionsWrapper}>
+                        <HeaderActions />
+                    </View>
                 </View>
 
                 <Animated.View style={[styles.heroContent, { opacity: headerOpacity }]}>
@@ -429,6 +431,12 @@ const styles = StyleSheet.create({
         paddingHorizontal: theme.spacing.l,
         height: Platform.OS === 'ios' ? 100 : 80,
         paddingTop: Platform.OS === 'ios' ? 40 : 20,
+        zIndex: 100,
+    },
+    headerActionsWrapper: {
+        backgroundColor: 'rgba(255,255,255,0.9)',
+        borderRadius: theme.borderRadius.s,
+        padding: 4,
     },
     stickyTitle: {
         fontSize: 18,
@@ -455,13 +463,13 @@ const styles = StyleSheet.create({
         paddingHorizontal: theme.spacing.m,
     },
     examIconBg: {
-        width: 72,
-        height: 72,
-        borderRadius: 36,
+        width: 64,
+        height: 64,
+        borderRadius: 32,
         backgroundColor: theme.colors.surface,
         justifyContent: 'center',
         alignItems: 'center',
-        marginBottom: 12,
+        marginBottom: 8,
         ...theme.shadows.sm,
     },
     heroTitle: {
@@ -479,7 +487,7 @@ const styles = StyleSheet.create({
     },
     selectorsBlock: {
         position: 'absolute',
-        bottom: 20,
+        bottom: 16,
         left: 0,
         right: 0,
     },
@@ -524,7 +532,7 @@ const styles = StyleSheet.create({
     listContent: {
         paddingHorizontal: theme.spacing.m,
         paddingBottom: 40,
-        paddingTop: Platform.OS === 'ios' ? 360 : 320,
+        paddingTop: Platform.OS === 'ios' ? 380 : 340,
     },
     memberCard: {
         backgroundColor: theme.colors.surface,

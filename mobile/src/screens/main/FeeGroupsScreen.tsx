@@ -134,7 +134,9 @@ export default function FeeGroupsScreen() {
                     <Animated.Text style={[styles.stickyTitle, { opacity: headerTitleOpacity }]}>
                         Manage Classes
                     </Animated.Text>
-                    <HeaderActions />
+                    <View style={styles.headerActionsWrapper}>
+                        <HeaderActions />
+                    </View>
                 </View>
                 <Animated.View style={[styles.heroContent, { opacity: headerOpacity }]}>
                     <View style={styles.heroTextContent}>
@@ -235,6 +237,12 @@ const styles = StyleSheet.create({
         height: Platform.OS === 'ios' ? 100 : 80,
         paddingTop: Platform.OS === 'ios' ? 40 : 20,
         paddingHorizontal: theme.spacing.m,
+        zIndex: 100,
+    },
+    headerActionsWrapper: {
+        backgroundColor: 'rgba(255,255,255,0.9)',
+        borderRadius: theme.borderRadius.s,
+        padding: 4,
     },
     iconButton: {
         width: 40, height: 40, borderRadius: 20,
