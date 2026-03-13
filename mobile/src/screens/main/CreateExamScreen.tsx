@@ -8,10 +8,12 @@ import { AuthContext } from '../../context/AuthContext';
 import { useContext, useRef } from 'react';
 import { theme, globalStyles } from '../../theme';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import HeaderActions from '../../components/HeaderActions';
 
 export default function CreateExamScreen() {
     const { selectedAcademicYearId } = useContext(AuthContext);
+    const insets = useSafeAreaInsets();
     const navigation = useNavigation<any>();
     const [name, setName] = useState('');
     const [startDate, setStartDate] = useState(new Date());
@@ -265,7 +267,7 @@ export default function CreateExamScreen() {
 
             </Animated.ScrollView>
 
-            <View style={styles.footer}>
+            <View style={[styles.footer, { paddingBottom: Math.max(theme.spacing.m, insets.bottom + 12) }]}>
                 <TouchableOpacity
                     style={[globalStyles.submitButton, isSubmitting && globalStyles.disabledButton]}
                     onPress={handleCreate}
@@ -452,7 +454,6 @@ const styles = StyleSheet.create({
         backgroundColor: theme.colors.surface,
         borderTopWidth: 1,
         borderTopColor: theme.colors.border,
-        paddingBottom: Platform.OS === 'ios' ? 32 : theme.spacing.m,
         ...theme.shadows.md,
     }
 });

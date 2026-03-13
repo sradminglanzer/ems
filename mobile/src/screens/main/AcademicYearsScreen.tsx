@@ -6,12 +6,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { AuthContext } from '../../context/AuthContext';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRef } from 'react';
 
 export default function AcademicYearsScreen() {
     const { user, selectedAcademicYearId, setSelectedAcademicYearId } = useContext(AuthContext);
     const navigation = useNavigation<any>();
+    const insets = useSafeAreaInsets();
     const [years, setYears] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -325,7 +327,7 @@ const styles = StyleSheet.create({
     heroSubtitle: { fontSize: 16, color: 'rgba(255,255,255,0.8)', marginTop: 4, fontWeight: '500' },
 
     listWrapper: { flex: 1 },
-    listContent: { paddingHorizontal: theme.spacing.m, paddingBottom: 120, paddingTop: Platform.OS === 'ios' ? 280 : 240 },
+    listContent: { paddingHorizontal: theme.spacing.m, paddingBottom: 100, paddingTop: Platform.OS === 'ios' ? 280 : 240 },
 
     emptyCardBox: {
         alignItems: 'center',

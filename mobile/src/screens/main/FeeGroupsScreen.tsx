@@ -7,11 +7,13 @@ import api from '../../services/api';
 import { theme, globalStyles } from '../../theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import HeaderActions from '../../components/HeaderActions';
 
 export default function FeeGroupsScreen() {
     const navigation = useNavigation<any>();
+    const insets = useSafeAreaInsets();
     const [groupsList, setGroupsList] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -178,7 +180,7 @@ export default function FeeGroupsScreen() {
                 )}
             </View>
 
-            <TouchableOpacity style={globalStyles.fab} onPress={() => setModalVisible(true)} activeOpacity={0.9}>
+            <TouchableOpacity style={[globalStyles.fab, { bottom: Math.max(24, insets.bottom + 16) }]} onPress={() => setModalVisible(true)} activeOpacity={0.9}>
                 <LinearGradient
                     colors={theme.gradients.primary}
                     style={styles.fabGradient}

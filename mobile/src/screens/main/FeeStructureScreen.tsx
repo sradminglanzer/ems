@@ -9,10 +9,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRef } from 'react';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import HeaderActions from '../../components/HeaderActions';
 
 export default function FeeStructureScreen() {
     const navigation = useNavigation<any>();
+    const insets = useSafeAreaInsets();
     const [structures, setStructures] = useState<any[]>([]);
     const [groupsList, setGroupsList] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -200,7 +202,7 @@ export default function FeeStructureScreen() {
                 )}
             </View>
 
-            <TouchableOpacity style={styles.fab} onPress={() => setModalVisible(true)} activeOpacity={0.8}>
+            <TouchableOpacity style={[styles.fab, { bottom: Math.max(24, insets.bottom + 16) }]} onPress={() => setModalVisible(true)} activeOpacity={0.8}>
                 <LinearGradient
                     colors={theme.gradients.primary}
                     start={{ x: 0, y: 0 }}
@@ -389,6 +391,6 @@ const styles = StyleSheet.create({
         borderColor: theme.colors.border,
     },
 
-    fab: { position: 'absolute', bottom: 24, right: 24, ...theme.shadows.lg },
+    fab: { position: 'absolute', bottom: 48, right: 24, ...theme.shadows.lg },
     fabGradient: { width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center' }
 });

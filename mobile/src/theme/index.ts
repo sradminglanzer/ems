@@ -92,7 +92,7 @@ export const globalStyles = StyleSheet.create({
     },
     fab: {
         position: 'absolute',
-        bottom: theme.spacing.xl,
+        bottom: 48, // Increased from theme.spacing.xl to clear Android nav bar
         right: theme.spacing.xl,
         width: 56,
         height: 56,

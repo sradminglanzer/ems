@@ -5,11 +5,13 @@ import { theme, globalStyles } from '../../theme';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { AuthContext } from '../../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import HeaderActions from '../../components/HeaderActions';
 
 export default function ExamsScreen() {
     const navigation = useNavigation<any>();
+    const insets = useSafeAreaInsets();
     const [examsList, setExamsList] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -151,7 +153,7 @@ export default function ExamsScreen() {
                 )}
             </View>
 
-            <TouchableOpacity style={globalStyles.fab} onPress={() => navigation.navigate('CreateExam')} activeOpacity={0.9}>
+            <TouchableOpacity style={[globalStyles.fab, { bottom: Math.max(24, insets.bottom + 16) }]} onPress={() => navigation.navigate('CreateExam')} activeOpacity={0.9}>
                 <LinearGradient
                     colors={theme.gradients.primary}
                     style={styles.fabGradient}
