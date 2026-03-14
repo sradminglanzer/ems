@@ -48,7 +48,8 @@ export default function AddMemberScreen() {
             const payload = {
                 firstName, middleName, lastName, knownId,
                 dob: dobDate ? dobDate.toISOString().split('T')[0] : '', contact, altContact, fatherOccupation,
-                motherOccupation, address
+                motherOccupation, address,
+                ...(feeGroupId && selectedAcademicYearId ? { feeGroupId, academicYearId: selectedAcademicYearId } : {})
             };
 
             if (memberToEdit) {
@@ -56,25 +57,7 @@ export default function AddMemberScreen() {
                 await api.put(`/members/${memberToEdit._id}`, payload);
             } else {
                 // Create
-                const response = await api.post('/members', payload);
-                const newMemberId = response.data.insertedId;
-
-                // If feeGroupId is passed, we also need to push the member id to the fee group
-                if (feeGroupId && newMemberId && selectedAcademicYearId) {
-                    const groupResp = await api.get('/fee-groups');
-                    const group = groupResp.data.find((g: any) => g._id === feeGroupId);
-                    if (group) {
-                        let currentRosterMembers: string[] = [];
-                        if (group.yearlyRosters && Array.isArray(group.yearlyRosters)) {
-                            const roster = group.yearlyRosters.find((r: any) => r.academicYearId === selectedAcademicYearId);
-                            if (roster && roster.members) {
-                                currentRosterMembers = roster.members;
-                            }
-                        }
-                        const updatedMembers = [...currentRosterMembers, newMemberId];
-                        await api.put(`/fee-groups/${feeGroupId}`, { members: updatedMembers, academicYearId: selectedAcademicYearId });
-                    }
-                }
+                await api.post('/members', payload);
             }
 
             // Go back to the previous screen (Members list)

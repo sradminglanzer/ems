@@ -97,6 +97,43 @@ export const createMember = async (req: AuthRequest, res: Response, next: NextFu
 
         const result = await memberService.insert(member);
 
+        // Auto-assign to fee group if requested inline
+        if (req.body.feeGroupId && req.body.academicYearId) {
+            try {
+                const groupId = new ObjectId(req.body.feeGroupId as string);
+                const yearId = new ObjectId(req.body.academicYearId as string);
+                const memberIdObj = new ObjectId(result.insertedId.toString());
+
+                // Fetch group
+                const group = await feeGroupService.getOne({ _id: groupId, entityId: new ObjectId(req.user!.entityId) });
+                if (group) {
+                    let rosters = group.yearlyRosters || [];
+                    const rosterIdx = rosters.findIndex((r: any) => r.academicYearId.toString() === yearId.toString());
+
+                    if (rosterIdx > -1) {
+                        let currentMembers: any[] = (rosters[rosterIdx] as any).members || [];
+                        const exists = currentMembers.some((m: any) => m.toString() === memberIdObj.toString());
+                        if (!exists) {
+                            currentMembers.push(memberIdObj);
+                        }
+                        (rosters[rosterIdx] as any).members = currentMembers;
+                    } else {
+                        rosters.push({
+                            academicYearId: yearId,
+                            members: [memberIdObj]
+                        });
+                    }
+
+                    await feeGroupService.update(
+                        { _id: groupId, entityId: new ObjectId(req.user!.entityId) },
+                        { $set: { yearlyRosters: rosters } }
+                    );
+                }
+            } catch (e: any) {
+                console.error('Error auto-enrolling into fee group during member creation:', e);
+            }
+        }
+
         // Ensure a parent user exists for this contact number
         try {
             if (member.contact) {

@@ -12,7 +12,8 @@ import HeaderActions from '../../components/HeaderActions';
 import { LinearGradient } from 'expo-linear-gradient';
 
 export default function FeeGroupDetailsScreen() {
-    const { selectedAcademicYearId } = useContext(AuthContext);
+    const { selectedAcademicYearId, user } = useContext(AuthContext);
+    const userRole = user?.role;
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
     const { group } = route.params;
@@ -49,43 +50,23 @@ export default function FeeGroupDetailsScreen() {
 
     const loadGroupMembers = async () => {
         try {
-            // Re-fetch group to get latest members array
-            const groupResp = await api.get('/fee-groups');
-            const currentGroup = groupResp.data.find((g: any) => g._id === group._id);
+            const resp = await api.get(`/fee-groups/${group._id}/details`, {
+                params: { academicYearId: selectedAcademicYearId }
+            });
 
-            if (currentGroup) {
-                setCurrentGroupData(currentGroup);
-                let currentRosterMembers: string[] = [];
-                if (currentGroup.yearlyRosters && Array.isArray(currentGroup.yearlyRosters)) {
-                    const roster = currentGroup.yearlyRosters.find((r: any) => r.academicYearId === selectedAcademicYearId);
-                    if (roster && roster.members) {
-                        currentRosterMembers = roster.members;
-                    }
-                }
+            const { group: currentGroup, members: groupMembers, feeStructures, academicYears: years, allGroups: groups } = resp.data;
 
-                if (currentRosterMembers.length > 0) {
-                    // Fetch all members
-                    const membersResp = await api.get('/members');
-                    const matchedMembers = membersResp.data.filter((m: any) => currentRosterMembers.includes(m._id));
-                    setMembers(matchedMembers);
-                } else {
-                    setMembers([]);
-                }
+            setCurrentGroupData(currentGroup);
+            setMembers(groupMembers || []);
+            
+            if (userRole !== 'teacher') {
+                setStructures(feeStructures || []);
+            } else {
+                setStructures([]);
             }
 
-            // Fetch fee structures for this group
-            const structResp = await api.get('/fee-structures');
-            const matchedStructs = structResp.data.filter((s: any) => s.feeGroupId === group._id);
-            setStructures(matchedStructs);
-
-            // Fetch dropdown data for promotion
-            const [yearsResp, groupsResp] = await Promise.all([
-                api.get('/academic-years'),
-                api.get('/fee-groups')
-            ]);
-            setAcademicYears(yearsResp.data.filter((y: any) => y._id !== selectedAcademicYearId));
-            setAllGroups(groupsResp.data);
-
+            setAcademicYears(years.filter((y: any) => y._id !== selectedAcademicYearId) || []);
+            setAllGroups(groups || []);
         } catch (error) {
             console.error('Error loading members or structures:', error);
         } finally {
@@ -230,10 +211,12 @@ export default function FeeGroupDetailsScreen() {
                     <Text style={styles.statLabel}>Students Enrolled</Text>
                     <Text style={styles.statValue}>{members.length}</Text>
                 </View>
-                <View style={styles.statCard}>
-                    <Text style={styles.statLabel}>Total Fees Generated</Text>
-                    <Text style={[styles.statValue, { color: theme.colors.primary }]}>₹{totalFees.toLocaleString('en-IN')}</Text>
-                </View>
+                {userRole !== 'teacher' && (
+                    <View style={styles.statCard}>
+                        <Text style={styles.statLabel}>Total Fees Generated</Text>
+                        <Text style={[styles.statValue, { color: theme.colors.primary }]}>₹{totalFees.toLocaleString('en-IN')}</Text>
+                    </View>
+                )}
             </View>
 
             {/* Actions */}
@@ -246,36 +229,40 @@ export default function FeeGroupDetailsScreen() {
                 )}
             </View>
 
-            {/* Fee Structures */}
-            <View style={styles.feeSectionHeader}>
-                <Text style={styles.sectionTitle}>Fee Structures</Text>
-                <TouchableOpacity onPress={() => setFeeModalVisible(true)} style={styles.addIconSmall}>
-                    <Ionicons name="add" size={20} color={theme.colors.primary} />
-                </TouchableOpacity>
-            </View>
-
-            {structures.length > 0 ? (
-                structures.map((s, idx) => (
-                    <View key={idx} style={styles.structureCard}>
-                        <View style={styles.structureInfo}>
-                            <View style={styles.structureIcon}>
-                                <Ionicons name="cash-outline" size={18} color={theme.colors.primary} />
-                            </View>
-                            <View>
-                                <Text style={styles.structureName}>{s.name}</Text>
-                                <View style={styles.frequencyBadge}>
-                                    <Text style={styles.frequencyText}>{s.frequency}</Text>
-                                </View>
-                            </View>
-                        </View>
-                        <Text style={styles.structureAmount}>₹{s.amount.toLocaleString('en-IN')}</Text>
+            {/* Fee Structures - Hidden from Teachers */}
+            {userRole !== 'teacher' && (
+                <>
+                    <View style={styles.feeSectionHeader}>
+                        <Text style={styles.sectionTitle}>Fee Structures</Text>
+                        <TouchableOpacity onPress={() => setFeeModalVisible(true)} style={styles.addIconSmall}>
+                            <Ionicons name="add" size={20} color={theme.colors.primary} />
+                        </TouchableOpacity>
                     </View>
-                ))
-            ) : (
-                <View style={styles.emptyCardBox}>
-                    <Ionicons name="cash-outline" size={32} color={theme.colors.border} />
-                    <Text style={[globalStyles.emptyText, { marginTop: 8 }]}>No fee structures defined.</Text>
-                </View>
+
+                    {structures.length > 0 ? (
+                        structures.map((s, idx) => (
+                            <View key={idx} style={styles.structureCard}>
+                                <View style={styles.structureInfo}>
+                                    <View style={styles.structureIcon}>
+                                        <Ionicons name="cash-outline" size={18} color={theme.colors.primary} />
+                                    </View>
+                                    <View>
+                                        <Text style={styles.structureName}>{s.name}</Text>
+                                        <View style={styles.frequencyBadge}>
+                                            <Text style={styles.frequencyText}>{s.frequency}</Text>
+                                        </View>
+                                    </View>
+                                </View>
+                                <Text style={styles.structureAmount}>₹{s.amount.toLocaleString('en-IN')}</Text>
+                            </View>
+                        ))
+                    ) : (
+                        <View style={styles.emptyCardBox}>
+                            <Ionicons name="cash-outline" size={32} color={theme.colors.border} />
+                            <Text style={[globalStyles.emptyText, { marginTop: 8 }]}>No fee structures defined.</Text>
+                        </View>
+                    )}
+                </>
             )}
 
             <View style={[styles.feeSectionHeader, { marginTop: 24, marginBottom: 8 }]}>
