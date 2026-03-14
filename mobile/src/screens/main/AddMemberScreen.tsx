@@ -195,25 +195,47 @@ export default function AddMemberScreen() {
                         </View>
                         <View style={{ flex: 1, paddingLeft: 8 }}>
                             <Text style={globalStyles.label}>Date of Birth</Text>
-                            <TouchableOpacity
-                                style={[globalStyles.input, { justifyContent: 'center' }]}
-                                onPress={() => setShowDobPicker(true)}
-                            >
-                                <Text style={{ color: dobDate ? theme.colors.textPrimary : theme.colors.textMuted }}>
-                                    {dobDate ? dobDate.toISOString().split('T')[0] : "YYYY-MM-DD"}
-                                </Text>
-                            </TouchableOpacity>
-                            {showDobPicker ? (
-                                <DateTimePicker
-                                    value={dobDate || new Date()}
-                                    mode="date"
-                                    display="default"
-                                    onChange={(event, selectedDate) => {
-                                        setShowDobPicker(Platform.OS === 'ios');
-                                        if (selectedDate) setDobDate(selectedDate);
+                            {Platform.OS === 'web' ? (
+                                <TextInput
+                                    style={globalStyles.input}
+                                    placeholder="YYYY-MM-DD"
+                                    value={dobDate ? dobDate.toISOString().split('T')[0] : ''}
+                                    onChangeText={(text) => {
+                                        // Basic validation to accept valid date formats if entered manually
+                                        const parsedDate = new Date(text);
+                                        if (!isNaN(parsedDate.getTime())) {
+                                            setDobDate(parsedDate);
+                                        } else if (text === '') {
+                                            setDobDate(null);
+                                        }
                                     }}
+                                    // @ts-ignore
+                                    type="date"
+                                    placeholderTextColor={theme.colors.textMuted}
                                 />
-                            ) : null}
+                            ) : (
+                                <>
+                                    <TouchableOpacity
+                                        style={[globalStyles.input, { justifyContent: 'center' }]}
+                                        onPress={() => setShowDobPicker(true)}
+                                    >
+                                        <Text style={{ color: dobDate ? theme.colors.textPrimary : theme.colors.textMuted }}>
+                                            {dobDate ? dobDate.toISOString().split('T')[0] : "YYYY-MM-DD"}
+                                        </Text>
+                                    </TouchableOpacity>
+                                    {showDobPicker ? (
+                                        <DateTimePicker
+                                            value={dobDate || new Date()}
+                                            mode="date"
+                                            display="default"
+                                            onChange={(event, selectedDate) => {
+                                                setShowDobPicker(Platform.OS === 'ios');
+                                                if (selectedDate) setDobDate(selectedDate);
+                                            }}
+                                        />
+                                    ) : null}
+                                </>
+                            )}
                         </View>
                     </View>
                 </View>

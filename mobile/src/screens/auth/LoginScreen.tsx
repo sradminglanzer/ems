@@ -65,8 +65,8 @@ export default function LoginScreen({ navigation }: any) {
     };
 
     const handleNumberPhase = async () => {
-        if (!contactNumber || contactNumber.length < 5) {
-            Alert.alert('Error', 'Please enter a valid contact number');
+        if (!contactNumber || contactNumber.length < 10) {
+            Alert.alert('Error', 'Please enter a valid 10-digit contact number');
             return;
         }
 
@@ -88,6 +88,7 @@ export default function LoginScreen({ navigation }: any) {
                 await AsyncStorage.setItem(STORE_KEY, contactNumber);
                 setMpin('');
                 setFlowState('ENTER_MPIN');
+                triggerEntryAnimation();
             }
         } catch (error: any) {
             const message = error.response?.data?.message || 'Login failed. Please check contact number.';
@@ -192,8 +193,9 @@ export default function LoginScreen({ navigation }: any) {
                                     placeholderTextColor={theme.colors.textMuted}
                                     keyboardType="phone-pad"
                                     value={contactNumber}
-                                    onChangeText={setContactNumber}
+                                    onChangeText={(text) => setContactNumber(text.replace(/[^0-9]/g, ''))}
                                     autoCapitalize="none"
+                                    maxLength={10}
                                 />
                             </View>
                         </View>

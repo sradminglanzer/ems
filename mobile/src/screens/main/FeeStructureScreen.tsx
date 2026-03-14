@@ -99,6 +99,19 @@ export default function FeeStructureScreen() {
     };
 
     const deleteStructure = async (id: string) => {
+        if (Platform.OS === 'web') {
+            const confirmed = window.confirm('Are you sure you want to delete this structure? This action cannot be undone.');
+            if (confirmed) {
+                try {
+                    await api.delete(`/fee-structures/${id}`);
+                    fetchData();
+                } catch (error: any) {
+                    alert(error.response?.data?.message || 'Failed to delete structure');
+                }
+            }
+            return;
+        }
+
         Alert.alert('Delete Fee Structure', 'Are you sure you want to delete this structure? This action cannot be undone.', [
             { text: 'Cancel', style: 'cancel' },
             {
@@ -121,7 +134,7 @@ export default function FeeStructureScreen() {
             <View style={styles.cardInfo}>
                 <View style={styles.cardHeader}>
                     <Text style={styles.name}>{item.name}</Text>
-                    <TouchableOpacity onPress={() => deleteStructure(item._id)} style={styles.deleteBtn}>
+                    <TouchableOpacity onPress={() => deleteStructure(item._id)} style={styles.deleteBtn} activeOpacity={0.6}>
                         <Ionicons name="trash-outline" size={18} color={theme.colors.danger} />
                     </TouchableOpacity>
                 </View>
@@ -343,9 +356,11 @@ const styles = StyleSheet.create({
     },
     name: { fontSize: 16, fontWeight: 'bold', color: theme.colors.textPrimary },
     deleteBtn: {
-        padding: 4,
+        padding: 8,
         backgroundColor: theme.colors.danger + '15',
         borderRadius: theme.borderRadius.s,
+        zIndex: 10,
+        elevation: 10,
     },
     detailsRow: {
         flexDirection: 'row',

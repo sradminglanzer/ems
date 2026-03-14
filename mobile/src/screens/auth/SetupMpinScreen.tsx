@@ -75,7 +75,7 @@ export default function SetupMpinScreen({ route, navigation }: any) {
                                 keyboardType="numeric"
                                 secureTextEntry
                                 value={mpin}
-                                onChangeText={setMpin}
+                                onChangeText={(text) => setMpin(text.replace(/[^0-9]/g, ''))}
                                 maxLength={4}
                             />
                         </View>
@@ -92,7 +92,7 @@ export default function SetupMpinScreen({ route, navigation }: any) {
                                 keyboardType="numeric"
                                 secureTextEntry
                                 value={confirmMpin}
-                                onChangeText={setConfirmMpin}
+                                onChangeText={(text) => setConfirmMpin(text.replace(/[^0-9]/g, ''))}
                                 maxLength={4}
                             />
                         </View>
