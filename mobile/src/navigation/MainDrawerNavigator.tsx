@@ -1,5 +1,6 @@
 import React from 'react';
 import { createDrawerNavigator } from '@react-navigation/drawer';
+import Constants from 'expo-constants';
 
 import DashboardScreen from '../screens/main/DashboardScreen';
 import StaffScreen from '../screens/main/StaffScreen';
@@ -29,15 +30,19 @@ type DrawerParamList = {
 const Drawer = createDrawerNavigator<DrawerParamList>();
 
 function CustomDrawerContent(props: any) {
-    const { signOut } = React.useContext(AuthContext);
+    const { signOut, user } = React.useContext(AuthContext);
+
+    // Prefer the exact entity name from the database, fallback to Expo config name
+    const appName = user?.entityName || Constants.expoConfig?.name || 'EMS Portal';
+    const roleDisplay = user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'Administrator';
 
     return (
         <View style={{ flex: 1, backgroundColor: theme.colors.surface }}>
             <DrawerContentScrollView {...props} contentContainerStyle={{ backgroundColor: theme.colors.primary, paddingTop: 0 }}>
                 <View style={styles.drawerHeader}>
                     <Ionicons name="school" size={60} color={theme.colors.surface} />
-                    <Text style={styles.drawerTitle}>EMS Portal</Text>
-                    <Text style={styles.drawerSubtitle}>Administrator</Text>
+                    <Text style={styles.drawerTitle}>{appName}</Text>
+                    <Text style={styles.drawerSubtitle}>{roleDisplay}</Text>
                 </View>
                 <View style={styles.drawerListWrapper}>
                     <DrawerItemList {...props} />

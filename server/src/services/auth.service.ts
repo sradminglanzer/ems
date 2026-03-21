@@ -6,6 +6,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import academicYearService from './academic-year.service';
 import { ObjectId } from 'mongodb';
+import { getDB } from '../config/db';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'ems_secure_jwt_key';
 
@@ -31,6 +32,20 @@ class AuthService extends BaseService<User> {
             throw new AppError(MESSAGES.ERROR.USER_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
         }
 
+        let entityName = 'EMS Portal';
+        try {
+            const db = getDB();
+            if (db) {
+                const entityCol = db.collection('entities');
+                const entityDoc = await entityCol.findOne({ _id: user.entityId });
+                if (entityDoc && entityDoc.name) {
+                    entityName = entityDoc.name;
+                }
+            }
+        } catch (e) {
+            console.error('Error fetching entity name during login', e);
+        }
+
         // Setup Flow
         if (!user.mpin) {
             if (!mpin) {
@@ -49,7 +64,7 @@ class AuthService extends BaseService<User> {
             return {
                 message: MESSAGES.SUCCESS.MPIN_SETUP_SUCCESS,
                 token,
-                user: this.formatUserResponse(user as User, activeYear)
+                user: this.formatUserResponse(user as User, activeYear, entityName)
             };
         }
 
@@ -65,28 +80,12 @@ class AuthService extends BaseService<User> {
 
         const token = this.generateToken(user as User);
 
-        // let settings = undefined; // This block is no longer needed as settings are not returned
-        // try {
-        //     const { BaseService } = require('../services/base.service');
-        //     const db = BaseService.getDb();
-        //     // In a better architecture we'd have EntityService. Get directly for now.
-        //     if (db) {
-        //         const entityCol = db.collection('entities');
-        //         const entity = await entityCol.findOne({ _id: user.entityId });
-        //         if (entity && entity.settings) {
-        //             settings = entity.settings;
-        //         }
-        //     }
-        // } catch (e) {
-        //     console.error('Error fetching entity settings during login', e)
-        // }
-
         const activeYear = await academicYearService.getOne({ entityId: user.entityId, isActive: true });
 
         return {
             message: MESSAGES.SUCCESS.LOGIN_SUCCESS,
             token,
-            user: this.formatUserResponse(user as User, activeYear)
+            user: this.formatUserResponse(user as User, activeYear, entityName)
         };
     }
 
@@ -94,10 +93,11 @@ class AuthService extends BaseService<User> {
         return jwt.sign({ userId: user._id, role: user.role, entityId: user.entityId }, JWT_SECRET, { expiresIn: '7d' });
     }
 
-    private formatUserResponse(user: User, activeYear?: any) {
+    private formatUserResponse(user: User, activeYear?: any, entityName?: string) {
         return {
             id: user._id,
             entityId: user.entityId,
+            entityName: entityName,
             name: user.name,
             role: user.role,
             contactNumber: user.contactNumber,

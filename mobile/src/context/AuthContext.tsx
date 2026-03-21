@@ -4,6 +4,8 @@ import api from '../services/api';
 
 export type UserContextType = {
     id: string;
+    entityId: string;
+    entityName?: string;
     name: string;
     role: string;
     activeAcademicYearId?: string;
