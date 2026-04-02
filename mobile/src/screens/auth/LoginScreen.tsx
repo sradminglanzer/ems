@@ -178,7 +178,7 @@ export default function LoginScreen({ navigation }: any) {
                         <View style={styles.logoPlaceholder}>
                             <Ionicons name="school" size={48} color={theme.colors.primary} />
                         </View>
-                        <Text style={styles.title}>Welcome</Text>
+                        <Text style={styles.title}>Welcomeeee</Text>
                         <Text style={styles.subtitle}>Enter your contact number to begin</Text>
                     </View>
 

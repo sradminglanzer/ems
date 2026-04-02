@@ -5,7 +5,7 @@ export class FeeStructure {
     entityId: ObjectId;
     feeGroupId: ObjectId; // Links to a specific class / fee group
     amount: number;
-    frequency: 'monthly' | 'term' | 'annual' | 'one-time';
+    frequency: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'half-yearly' | 'annual' | 'one-time';
     name: string; // e.g., "Tuition Fee", "Lab Fee"
     createdAt?: Date;
     updatedAt?: Date;

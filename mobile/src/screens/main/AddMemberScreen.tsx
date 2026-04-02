@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity,
     TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Animated
@@ -9,25 +9,29 @@ import { theme, globalStyles } from '../../theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { AuthContext } from '../../context/AuthContext';
-import { useContext } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { getTerm } from '../../utils/terminology';
 
 export default function AddMemberScreen() {
-    const { selectedAcademicYearId } = useContext(AuthContext);
+    const { selectedAcademicYearId, user } = useContext(AuthContext);
     const navigation = useNavigation();
     const route = useRoute<any>();
     const insets = useSafeAreaInsets();
     const scrollY = React.useRef(new Animated.Value(0)).current;
 
     const memberToEdit = route.params?.memberToEdit;
-    const feeGroupId = route.params?.feeGroupId;
+    const initialFeeGroupId = route.params?.feeGroupId;
+
+    const [feeGroupId, setFeeGroupId] = useState(initialFeeGroupId || '');
+    const [groupsList, setGroupsList] = useState<any[]>([]);
 
     const [firstName, setFirstName] = useState(memberToEdit?.firstName || '');
     const [middleName, setMiddleName] = useState(memberToEdit?.middleName || '');
     const [lastName, setLastName] = useState(memberToEdit?.lastName || '');
     const [knownId, setKnownId] = useState(memberToEdit?.knownId || '');
     const [dobDate, setDobDate] = useState<Date | null>(memberToEdit?.dob ? new Date(memberToEdit.dob) : null);
+    const [dobStr, setDobStr] = useState(memberToEdit?.dob ? String(memberToEdit.dob).split('T')[0] : '');
     const [showDobPicker, setShowDobPicker] = useState(false);
     const [contact, setContact] = useState(memberToEdit?.contact || '');
     const [altContact, setAltContact] = useState(memberToEdit?.altContact || '');
@@ -37,8 +41,18 @@ export default function AddMemberScreen() {
 
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    useEffect(() => {
+        if (!initialFeeGroupId && !memberToEdit) {
+            api.get('/fee-groups')
+               .then(res => setGroupsList(res.data))
+               .catch(() => console.log('Failed to fetch fee groups'));
+        }
+    }, [initialFeeGroupId, memberToEdit]);
+
     const handleCreate = async () => {
-        if (!firstName || !lastName || !knownId) {
+        const finalKnownId = (user?.entityType === 'gym' && !knownId) ? `GYM-${Date.now().toString().slice(-6)}` : knownId;
+
+        if (!firstName || !lastName || !finalKnownId) {
             alert('First Name, Last Name, and Known ID are required');
             return;
         }
@@ -46,10 +60,11 @@ export default function AddMemberScreen() {
         setIsSubmitting(true);
         try {
             const payload = {
-                firstName, middleName, lastName, knownId,
-                dob: dobDate ? dobDate.toISOString().split('T')[0] : '', contact, altContact, fatherOccupation,
+                firstName, middleName, lastName, knownId: finalKnownId,
+                dob: Platform.OS === 'web' ? dobStr : (dobDate ? dobDate.toISOString().split('T')[0] : ''), 
+                contact, altContact, fatherOccupation,
                 motherOccupation, address,
-                ...(feeGroupId && selectedAcademicYearId ? { feeGroupId, academicYearId: selectedAcademicYearId } : {})
+                ...(feeGroupId ? { feeGroupId, ...(user?.entityType !== 'gym' && selectedAcademicYearId ? { academicYearId: selectedAcademicYearId } : {}) } : {})
             };
 
             if (memberToEdit) {
@@ -62,9 +77,8 @@ export default function AddMemberScreen() {
 
             // Go back to the previous screen (Members list)
             navigation.goBack();
-        } catch (error) {
-            console.error('Error creating member:', error);
-            alert('Failed to save student details');
+        } catch (error: any) {
+            alert(error.response?.data?.message || `Failed to save ${getTerm('Student', user?.entityType).toLowerCase()} details`);
         } finally {
             setIsSubmitting(false);
         }
@@ -105,7 +119,7 @@ export default function AddMemberScreen() {
                         <Ionicons name="arrow-back" size={24} color={theme.colors.surface} />
                     </TouchableOpacity>
                     <Animated.Text style={[styles.stickyTitle, { opacity: headerTitleOpacity }]}>
-                        {memberToEdit ? 'Edit Student' : 'Add Student'}
+                        {memberToEdit ? `Edit ${getTerm('Student', user?.entityType)}` : `Add ${getTerm('Student', user?.entityType)}`}
                     </Animated.Text>
                     <View style={{ width: 40 }} />
                 </View>
@@ -114,9 +128,9 @@ export default function AddMemberScreen() {
                     <View style={styles.iconBg}>
                         <Ionicons name={memberToEdit ? "pencil" : "person-add"} size={32} color={theme.colors.primary} />
                     </View>
-                    <Text style={styles.heroTitle}>{memberToEdit ? 'Edit Student' : 'Add New Student'}</Text>
+                    <Text style={styles.heroTitle}>{memberToEdit ? `Edit ${getTerm('Student', user?.entityType)}` : `Add New ${getTerm('Student', user?.entityType)}`}</Text>
                     <Text style={styles.heroSubtitle}>
-                        {memberToEdit ? 'Update student records and details' : 'Register a new student into the system'}
+                        {memberToEdit ? `Update records and details` : `Register a new ${getTerm('Student', user?.entityType).toLowerCase()} into the system`}
                     </Text>
                 </Animated.View>
             </Animated.View>
@@ -166,30 +180,30 @@ export default function AddMemberScreen() {
                     />
 
                     <View style={styles.row}>
-                        <View style={{ flex: 1, paddingRight: 8 }}>
-                            <Text style={globalStyles.label}>Roll No *</Text>
-                            <TextInput
-                                style={globalStyles.input}
-                                placeholder="101"
-                                value={knownId}
-                                onChangeText={setKnownId}
-                                placeholderTextColor={theme.colors.textMuted}
-                            />
-                        </View>
-                        <View style={{ flex: 1, paddingLeft: 8 }}>
+                        {user?.entityType !== 'gym' && (
+                            <View style={{ flex: 1, paddingRight: 8 }}>
+                                <Text style={globalStyles.label}>{getTerm('Roll No', user?.entityType)} *</Text>
+                                <TextInput
+                                    style={globalStyles.input}
+                                    placeholder="101"
+                                    value={knownId}
+                                    onChangeText={setKnownId}
+                                    placeholderTextColor={theme.colors.textMuted}
+                                />
+                            </View>
+                        )}
+                        <View style={{ flex: user?.entityType !== 'gym' ? 1 : undefined, width: user?.entityType === 'gym' ? '100%' : undefined, paddingLeft: user?.entityType !== 'gym' ? 8 : 0 }}>
                             <Text style={globalStyles.label}>Date of Birth</Text>
                             {Platform.OS === 'web' ? (
                                 <TextInput
                                     style={globalStyles.input}
                                     placeholder="YYYY-MM-DD"
-                                    value={dobDate ? dobDate.toISOString().split('T')[0] : ''}
+                                    value={dobStr}
                                     onChangeText={(text) => {
-                                        // Basic validation to accept valid date formats if entered manually
+                                        setDobStr(text);
                                         const parsedDate = new Date(text);
                                         if (!isNaN(parsedDate.getTime())) {
                                             setDobDate(parsedDate);
-                                        } else if (text === '') {
-                                            setDobDate(null);
                                         }
                                     }}
                                     // @ts-ignore
@@ -222,6 +236,27 @@ export default function AddMemberScreen() {
                         </View>
                     </View>
                 </View>
+
+                {!memberToEdit && !initialFeeGroupId && groupsList.length > 0 && (
+                    <View style={styles.glassCard}>
+                        <View style={styles.sectionHeader}>
+                            <Ionicons name="fitness-outline" size={18} color={theme.colors.primary} />
+                            <Text style={styles.sectionTitle}>Membership Plan</Text>
+                        </View>
+                        <Text style={globalStyles.label}>Select Package</Text>
+                        <View style={styles.mockPicker}>
+                            {groupsList.map(g => (
+                                <TouchableOpacity
+                                    key={g._id}
+                                    style={[styles.pill, feeGroupId === g._id && styles.pillActive]}
+                                    onPress={() => setFeeGroupId(g._id)}
+                                >
+                                    <Text style={[styles.pillText, feeGroupId === g._id && styles.pillTextActive]}>{g.name}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </View>
+                )}
 
                 <View style={styles.glassCard}>
                     <View style={styles.sectionHeader}>
@@ -260,30 +295,32 @@ export default function AddMemberScreen() {
                     />
                 </View>
 
-                <View style={styles.glassCard}>
-                    <View style={styles.sectionHeader}>
-                        <Ionicons name="people-circle-outline" size={18} color={theme.colors.primary} />
-                        <Text style={styles.sectionTitle}>Parent Details</Text>
+                {user?.entityType !== 'gym' && (
+                    <View style={styles.glassCard}>
+                        <View style={styles.sectionHeader}>
+                            <Ionicons name="people-circle-outline" size={18} color={theme.colors.primary} />
+                            <Text style={styles.sectionTitle}>Parent Details</Text>
+                        </View>
+
+                        <Text style={globalStyles.label}>Father's Occupation</Text>
+                        <TextInput
+                            style={globalStyles.input}
+                            placeholder="e.g. Engineer"
+                            value={fatherOccupation}
+                            onChangeText={setFatherOccupation}
+                            placeholderTextColor={theme.colors.textMuted}
+                        />
+
+                        <Text style={globalStyles.label}>Mother's Occupation</Text>
+                        <TextInput
+                            style={globalStyles.input}
+                            placeholder="e.g. Doctor"
+                            value={motherOccupation}
+                            onChangeText={setMotherOccupation}
+                            placeholderTextColor={theme.colors.textMuted}
+                        />
                     </View>
-
-                    <Text style={globalStyles.label}>Father's Occupation</Text>
-                    <TextInput
-                        style={globalStyles.input}
-                        placeholder="e.g. Engineer"
-                        value={fatherOccupation}
-                        onChangeText={setFatherOccupation}
-                        placeholderTextColor={theme.colors.textMuted}
-                    />
-
-                    <Text style={globalStyles.label}>Mother's Occupation</Text>
-                    <TextInput
-                        style={globalStyles.input}
-                        placeholder="e.g. Doctor"
-                        value={motherOccupation}
-                        onChangeText={setMotherOccupation}
-                        placeholderTextColor={theme.colors.textMuted}
-                    />
-                </View>
+                )}
 
             </Animated.ScrollView>
 
@@ -298,7 +335,7 @@ export default function AddMemberScreen() {
                     ) : (
                         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                             <Ionicons name="save-outline" size={20} color={theme.colors.surface} />
-                            <Text style={globalStyles.submitButtonText}>{memberToEdit ? 'Save Changes' : 'Register Student'}</Text>
+                            <Text style={globalStyles.submitButtonText}>{memberToEdit ? 'Save Changes' : `Register ${getTerm('Student', user?.entityType)}`}</Text>
                         </View>
                     )}
                 </TouchableOpacity>
@@ -395,5 +432,18 @@ const styles = StyleSheet.create({
         borderTopWidth: 1,
         borderTopColor: theme.colors.border,
         ...theme.shadows.md,
-    }
+    },
+    mockPicker: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 },
+    pill: {
+        paddingHorizontal: 16, paddingVertical: 10,
+        borderRadius: theme.borderRadius.round,
+        borderWidth: 1, borderColor: theme.colors.border,
+        backgroundColor: theme.colors.background
+    },
+    pillActive: {
+        borderColor: theme.colors.primary,
+        backgroundColor: theme.colors.primary + '15'
+    },
+    pillText: { color: theme.colors.textSecondary, fontWeight: '500', fontSize: 14 },
+    pillTextActive: { color: theme.colors.primary, fontWeight: 'bold' }
 });

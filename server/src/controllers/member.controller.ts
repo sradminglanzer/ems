@@ -54,9 +54,10 @@ export const getMembers = async (req: AuthRequest, res: Response, next: NextFunc
                     return roster && roster.members && roster.members.some((id: any) => id.toString() === mId);
                 });
             } else {
-                // Fallback if no year passed: check all rosters 
+                // Fallback if no year passed: check generic members array then rosters 
                 group = feeGroups.find(g => {
-                    return g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId));
+                    return (g.members && g.members.some((id: any) => id.toString() === mId)) || 
+                           (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)));
                 });
             }
 
@@ -98,36 +99,50 @@ export const createMember = async (req: AuthRequest, res: Response, next: NextFu
         const result = await memberService.insert(member);
 
         // Auto-assign to fee group if requested inline
-        if (req.body.feeGroupId && req.body.academicYearId) {
+        if (req.body.feeGroupId) {
             try {
                 const groupId = new ObjectId(req.body.feeGroupId as string);
-                const yearId = new ObjectId(req.body.academicYearId as string);
                 const memberIdObj = new ObjectId(result.insertedId.toString());
 
                 // Fetch group
                 const group = await feeGroupService.getOne({ _id: groupId, entityId: new ObjectId(req.user!.entityId) });
+                
                 if (group) {
-                    let rosters = group.yearlyRosters || [];
-                    const rosterIdx = rosters.findIndex((r: any) => r.academicYearId.toString() === yearId.toString());
+                    if (req.body.academicYearId) {
+                        const yearId = new ObjectId(req.body.academicYearId as string);
+                        let rosters = group.yearlyRosters || [];
+                        const rosterIdx = rosters.findIndex((r: any) => r.academicYearId.toString() === yearId.toString());
 
-                    if (rosterIdx > -1) {
-                        let currentMembers: any[] = (rosters[rosterIdx] as any).members || [];
-                        const exists = currentMembers.some((m: any) => m.toString() === memberIdObj.toString());
-                        if (!exists) {
-                            currentMembers.push(memberIdObj);
+                        if (rosterIdx > -1) {
+                            let currentMembers: any[] = (rosters[rosterIdx] as any).members || [];
+                            const exists = currentMembers.some((m: any) => m.toString() === memberIdObj.toString());
+                            if (!exists) {
+                                currentMembers.push(memberIdObj);
+                            }
+                            (rosters[rosterIdx] as any).members = currentMembers;
+                        } else {
+                            rosters.push({
+                                academicYearId: yearId,
+                                members: [memberIdObj]
+                            });
                         }
-                        (rosters[rosterIdx] as any).members = currentMembers;
-                    } else {
-                        rosters.push({
-                            academicYearId: yearId,
-                            members: [memberIdObj]
-                        });
-                    }
 
-                    await feeGroupService.update(
-                        { _id: groupId, entityId: new ObjectId(req.user!.entityId) },
-                        { $set: { yearlyRosters: rosters } }
-                    );
+                        await feeGroupService.update(
+                            { _id: groupId, entityId: new ObjectId(req.user!.entityId) },
+                            { $set: { yearlyRosters: rosters } }
+                        );
+                    } else {
+                        // Decoupled flow for Gyms (no academicYearId passed)
+                        let directMembers = group.members || [];
+                        const exists = directMembers.some((m: any) => m.toString() === memberIdObj.toString());
+                        if (!exists) {
+                            directMembers.push(memberIdObj);
+                            await feeGroupService.update(
+                                { _id: groupId, entityId: new ObjectId(req.user!.entityId) },
+                                { $set: { members: directMembers } }
+                            );
+                        }
+                    }
                 }
             } catch (e: any) {
                 console.error('Error auto-enrolling into fee group during member creation:', e);

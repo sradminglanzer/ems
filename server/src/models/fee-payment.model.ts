@@ -9,6 +9,7 @@ export class FeePayment {
     amount: number;
     notes?: string;
     paymentDate: Date;
+    nextPaymentDate?: Date;
     createdAt?: Date;
     updatedAt?: Date;
 
@@ -21,6 +22,7 @@ export class FeePayment {
         this.amount = Number(data.amount);
         this.notes = data.notes;
         this.paymentDate = data.paymentDate ? new Date(data.paymentDate) : new Date();
+        if (data.nextPaymentDate) this.nextPaymentDate = new Date(data.nextPaymentDate);
         this.createdAt = data.createdAt || new Date();
         this.updatedAt = data.updatedAt || new Date();
     }

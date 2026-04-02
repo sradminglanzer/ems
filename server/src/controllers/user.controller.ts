@@ -56,3 +56,19 @@ export const deleteUser = async (req: AuthRequest, res: Response, next: NextFunc
         next(error);
     }
 };
+
+export const updatePushToken = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const { expoPushToken } = req.body;
+        if (!expoPushToken) {
+            throw new AppError('expoPushToken is required', HTTP_STATUS.BAD_REQUEST);
+        }
+
+        const userId = new ObjectId(req.user!.userId);
+        await userService.update({ _id: userId }, { $set: { expoPushToken } });
+
+        res.status(HTTP_STATUS.OK).json({ message: 'Push token updated successfully' });
+    } catch (error) {
+        next(error);
+    }
+};

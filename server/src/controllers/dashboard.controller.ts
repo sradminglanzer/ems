@@ -60,12 +60,20 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
                 const memberPayments = feePayments.filter(p => p.memberId.toString() === mId);
                 const totalPaid = memberPayments.reduce((sum, p) => sum + p.amount, 0);
 
+                let nextPaymentDate = null;
+                const sortedPayments = memberPayments.sort((a,b) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime());
+                const latestPayment = sortedPayments[0];
+                if (latestPayment && latestPayment.nextPaymentDate) {
+                    nextPaymentDate = latestPayment.nextPaymentDate;
+                }
+
                 return {
                     ...m,
                     groupName,
                     totalFee,
                     totalPaid,
-                    pendingAmount: totalFee - totalPaid
+                    pendingAmount: totalFee - totalPaid,
+                    nextPaymentDate
                 };
             });
 
@@ -87,6 +95,11 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
         });
 
         let systemTotalFees = 0;
+        const expiringMembers: any[] = [];
+        const today = new Date();
+        const nextWeek = new Date();
+        nextWeek.setDate(today.getDate() + 7);
+
         members.forEach(m => {
             const mId = m._id!.toString();
 
@@ -98,14 +111,38 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
                 });
             } else {
                 group = feeGroups.find(g => {
-                    return g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId));
+                    return (g.members && g.members.some((id: any) => id.toString() === mId)) || 
+                           (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)));
                 });
             }
 
             if (group) {
                 systemTotalFees += (groupTotalFees[group._id!.toString()] || 0);
             }
+
+            // Find expiry
+            const memberPayments = feePayments.filter(p => p.memberId.toString() === mId);
+            const sortedPayments = memberPayments.sort((a,b) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime());
+            const latestPayment = sortedPayments[0];
+            if (latestPayment && latestPayment.nextPaymentDate) {
+                const nextDate = new Date(latestPayment.nextPaymentDate);
+                // Within 7 days (can be slightly in the past if expired recently)
+                const daysDiff = (nextDate.getTime() - today.getTime()) / (1000 * 3600 * 24);
+                if (daysDiff <= 7 && daysDiff >= -30) { // arbitrary 30 days past allowed to show in "expiring soon/expired"
+                    expiringMembers.push({
+                        _id: m._id,
+                        firstName: m.firstName,
+                        lastName: m.lastName,
+                        knownId: m.knownId,
+                        contact: m.contact,
+                        nextPaymentDate: nextDate
+                    });
+                }
+            }
         });
+
+        // Sort expiring members by date ascending
+        expiringMembers.sort((a, b) => new Date(a.nextPaymentDate).getTime() - new Date(b.nextPaymentDate).getTime());
 
         const systemTotalPaid = feePayments.reduce((sum, p) => sum + p.amount, 0);
 
@@ -113,7 +150,8 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
             totalMembers: members.length,
             totalFeeGroups: feeGroups.length,
             totalPendingAmount: systemTotalFees - systemTotalPaid,
-            totalCollectedAmount: systemTotalPaid
+            totalCollectedAmount: systemTotalPaid,
+            expiringMembers
         };
 
         res.status(HTTP_STATUS.OK).json(stats);

@@ -10,6 +10,7 @@ import { AuthContext } from '../../context/AuthContext';
 import { useContext } from 'react';
 import HeaderActions from '../../components/HeaderActions';
 import { LinearGradient } from 'expo-linear-gradient';
+import { getTerm } from '../../utils/terminology';
 
 export default function FeeGroupDetailsScreen() {
     const { selectedAcademicYearId, user } = useContext(AuthContext);
@@ -50,9 +51,8 @@ export default function FeeGroupDetailsScreen() {
 
     const loadGroupMembers = async () => {
         try {
-            const resp = await api.get(`/fee-groups/${group._id}/details`, {
-                params: { academicYearId: selectedAcademicYearId }
-            });
+            const params = user?.entityType !== 'gym' && selectedAcademicYearId ? { academicYearId: selectedAcademicYearId } : {};
+            const resp = await api.get(`/fee-groups/${group._id}/details`, { params });
 
             const { group: currentGroup, members: groupMembers, feeStructures, academicYears: years, allGroups: groups } = resp.data;
 
@@ -95,7 +95,7 @@ export default function FeeGroupDetailsScreen() {
     };
 
     const handleDeleteGroup = () => {
-        Alert.alert("Delete Group", "Are you sure you want to delete this class group?", [
+        Alert.alert("Delete Group", `Are you sure you want to delete this ${getTerm('Class', user?.entityType).toLowerCase()} group?`, [
             { text: "Cancel", style: "cancel" },
             {
                 text: "Delete", style: "destructive", onPress: async () => {
@@ -117,7 +117,7 @@ export default function FeeGroupDetailsScreen() {
         }
 
         if (members.length === 0) {
-            Alert.alert('No Students', 'There are no students to promote from this class year.');
+            Alert.alert(`No ${getTerm('Students', user?.entityType)}`, `There are no ${getTerm('Students', user?.entityType).toLowerCase()} to promote from this ${getTerm('Class', user?.entityType).toLowerCase()} year.`);
             return;
         }
 
@@ -149,14 +149,14 @@ export default function FeeGroupDetailsScreen() {
                 members: nextYearMembers
             });
 
-            Alert.alert('Success', `Successfully promoted ${currentMemberIdsToPromote.length} students.`);
+            Alert.alert('Success', `Successfully promoted ${currentMemberIdsToPromote.length} ${getTerm('Students', user?.entityType).toLowerCase()}.`);
             setPromoteModalVisible(false);
             setSelectedTargetYearId('');
             setSelectedTargetGroupId('');
 
         } catch (error: any) {
             console.error('Promotion error:', error);
-            Alert.alert('Error', 'Failed to promote students.');
+            Alert.alert('Error', `Failed to promote ${getTerm('Students', user?.entityType).toLowerCase()}.`);
         } finally {
             setIsPromoting(false);
         }
@@ -208,7 +208,7 @@ export default function FeeGroupDetailsScreen() {
         <View style={styles.statsContainer}>
             <View style={styles.statCardsRow}>
                 <View style={styles.statCard}>
-                    <Text style={styles.statLabel}>Students Enrolled</Text>
+                    <Text style={styles.statLabel}>{getTerm('Students', user?.entityType)} Enrolled</Text>
                     <Text style={styles.statValue}>{members.length}</Text>
                 </View>
                 {userRole !== 'teacher' && (
@@ -221,10 +221,10 @@ export default function FeeGroupDetailsScreen() {
 
             {/* Actions */}
             <View style={styles.actionsContainer}>
-                {members.length > 0 && (
+                {members.length > 0 && user?.entityType !== 'gym' && (
                     <TouchableOpacity style={styles.actionButtonPrimary} onPress={() => setPromoteModalVisible(true)} activeOpacity={0.8}>
                         <Ionicons name="arrow-up-circle" size={20} color={theme.colors.surface} />
-                        <Text style={styles.actionButtonPrimaryText}>Promote Students</Text>
+                        <Text style={styles.actionButtonPrimaryText}>Promote {getTerm('Students', user?.entityType)}</Text>
                     </TouchableOpacity>
                 )}
             </View>
@@ -266,7 +266,7 @@ export default function FeeGroupDetailsScreen() {
             )}
 
             <View style={[styles.feeSectionHeader, { marginTop: 24, marginBottom: 8 }]}>
-                <Text style={styles.sectionTitle}>Enrolled Students</Text>
+                <Text style={styles.sectionTitle}>Enrolled {getTerm('Students', user?.entityType)}</Text>
             </View>
         </View>
     );
@@ -323,7 +323,7 @@ export default function FeeGroupDetailsScreen() {
                         <Text style={styles.heroAvatarText}>{currentGroupData.name.substring(0, 2).toUpperCase()}</Text>
                     </View>
                     <Text style={styles.heroTitle}>{currentGroupData.name}</Text>
-                    <Text style={styles.heroSubtitle}>{currentGroupData.description || 'Academic Class Group'}</Text>
+                    <Text style={styles.heroSubtitle}>{currentGroupData.description || 'Group'}</Text>
                 </Animated.View>
             </Animated.View>
 
@@ -345,7 +345,7 @@ export default function FeeGroupDetailsScreen() {
                             { useNativeDriver: false }
                         )}
                         scrollEventThrottle={16}
-                        ListEmptyComponent={<Text style={globalStyles.emptyText}>No students in this group.</Text>}
+                        ListEmptyComponent={<Text style={globalStyles.emptyText}>No {getTerm('Students', user?.entityType).toLowerCase()} in this group.</Text>}
                     />
                 )}
             </View>
@@ -367,20 +367,20 @@ export default function FeeGroupDetailsScreen() {
                 <KeyboardAvoidingView style={globalStyles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
                     <View style={globalStyles.modalContent}>
                         <View style={globalStyles.modalHeader}>
-                            <Text style={globalStyles.modalTitle}>Edit Class Group</Text>
+                            <Text style={globalStyles.modalTitle}>Edit {getTerm('Class', user?.entityType)} Group</Text>
                             <TouchableOpacity onPress={() => setModalVisible(false)} style={globalStyles.closeButton}>
                                 <Ionicons name="close" size={24} color={theme.colors.textSecondary} />
                             </TouchableOpacity>
                         </View>
 
-                        <Text style={globalStyles.label}>Class Name</Text>
+                        <Text style={globalStyles.label}>{getTerm('Class', user?.entityType)} Name</Text>
                         <TextInput style={globalStyles.input} value={newName} onChangeText={setNewName} />
 
                         <Text style={globalStyles.label}>Description</Text>
                         <TextInput style={globalStyles.input} value={newDescription} onChangeText={setNewDescription} />
 
                         <TouchableOpacity style={[globalStyles.submitButton, isSubmitting && globalStyles.disabledButton]} onPress={handleUpdateGroup} disabled={isSubmitting}>
-                            {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={globalStyles.submitButtonText}>Update Class</Text>}
+                            {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={globalStyles.submitButtonText}>Update {getTerm('Class', user?.entityType)}</Text>}
                         </TouchableOpacity>
                     </View>
                 </KeyboardAvoidingView>
@@ -428,14 +428,14 @@ export default function FeeGroupDetailsScreen() {
                 <KeyboardAvoidingView style={globalStyles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
                     <View style={globalStyles.modalContent}>
                         <View style={globalStyles.modalHeader}>
-                            <Text style={globalStyles.modalTitle}>Bulk Promote Students</Text>
+                            <Text style={globalStyles.modalTitle}>Bulk Promote {getTerm('Students', user?.entityType)}</Text>
                             <TouchableOpacity onPress={() => setPromoteModalVisible(false)} style={globalStyles.closeButton}>
                                 <Ionicons name="close" size={24} color={theme.colors.textSecondary} />
                             </TouchableOpacity>
                         </View>
 
                         <Text style={{ fontSize: 14, color: theme.colors.textSecondary, marginBottom: 16 }}>
-                            This will copy all {members.length} current students from this year's roster into the target group and year you select below.
+                            This will copy all {members.length} current {getTerm('Students', user?.entityType).toLowerCase()} from this year's roster into the target group and year you select below.
                         </Text>
 
                         <Text style={globalStyles.label}>Target Academic Year</Text>
@@ -451,7 +451,7 @@ export default function FeeGroupDetailsScreen() {
                             ))}
                         </View>
 
-                        <Text style={globalStyles.label}>Target Class</Text>
+                        <Text style={globalStyles.label}>Target {getTerm('Class', user?.entityType)}</Text>
                         <View style={styles.pickerContainer}>
                             {allGroups.map(g => (
                                 <TouchableOpacity
@@ -465,7 +465,7 @@ export default function FeeGroupDetailsScreen() {
                         </View>
 
                         <TouchableOpacity style={[globalStyles.submitButton, isPromoting && globalStyles.disabledButton]} onPress={handlePromoteStudents} disabled={isPromoting}>
-                            {isPromoting ? <ActivityIndicator color="#fff" /> : <Text style={globalStyles.submitButtonText}>Promote Students</Text>}
+                            {isPromoting ? <ActivityIndicator color="#fff" /> : <Text style={globalStyles.submitButtonText}>Promote {getTerm('Students', user?.entityType)}</Text>}
                         </TouchableOpacity>
                     </View>
                 </KeyboardAvoidingView>

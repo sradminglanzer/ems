@@ -13,6 +13,7 @@ export class Member {
     fatherOccupation?: string;
     motherOccupation?: string;
     address?: string;
+    feeGroupId?: ObjectId;
     createdAt?: Date;
     updatedAt?: Date;
 
@@ -30,6 +31,8 @@ export class Member {
         this.fatherOccupation = data.fatherOccupation || data.father_occupation;
         this.motherOccupation = data.motherOccupation || data.mother_occupation;
         this.address = data.address;
+        
+        if (data.feeGroupId) this.feeGroupId = typeof data.feeGroupId === 'string' ? new ObjectId(data.feeGroupId) : data.feeGroupId;
 
         this.createdAt = data.createdAt || new Date();
         this.updatedAt = data.updatedAt || new Date();

@@ -10,7 +10,8 @@ export class FeeGroup {
     entityId: ObjectId;
     name: string;
     description?: string;
-    yearlyRosters: YearlyRoster[];
+     yearlyRosters: YearlyRoster[];
+    members: ObjectId[] = []; // For non-academic tenants like Gyms
     createdAt?: Date;
     updatedAt?: Date;
 
@@ -28,8 +29,10 @@ export class FeeGroup {
                 members: Array.isArray(r.members) ? r.members.map((id: any) => new ObjectId(id)) : []
             }));
         } else if (Array.isArray(data.members)) {
-            // If old data struct is passed, we can't magically know the academic year here without context.
-            // Leaving it empty so the migration script handles the actual database records.
+            // Legacy/Direct Mapping for non-academic tenants
+            this.members = data.members.map((id: any) => new ObjectId(id));
+        } else {
+            this.members = [];
         }
 
         this.createdAt = data.createdAt || new Date();

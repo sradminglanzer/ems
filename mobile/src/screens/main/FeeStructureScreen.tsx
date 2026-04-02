@@ -7,12 +7,15 @@ import api from '../../services/api';
 import { theme, globalStyles } from '../../theme';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRef } from 'react';
+import { useRef, useContext } from 'react';
+import { AuthContext } from '../../context/AuthContext';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import HeaderActions from '../../components/HeaderActions';
+import { getTerm } from '../../utils/terminology';
 
 export default function FeeStructureScreen() {
+    const { user } = useContext(AuthContext);
     const navigation = useNavigation<any>();
     const insets = useSafeAreaInsets();
     const [structures, setStructures] = useState<any[]>([]);
@@ -141,7 +144,7 @@ export default function FeeStructureScreen() {
 
                 <View style={styles.detailsRow}>
                     <Ionicons name="people-outline" size={14} color={theme.colors.textSecondary} />
-                    <Text style={styles.details}>Class: {item.groupDetails?.name || 'Unknown'}</Text>
+                    <Text style={styles.details}>{getTerm('Class', user?.entityType)}: {item.groupDetails?.name || 'Unknown'}</Text>
                 </View>
 
                 <View style={styles.detailsRow}>
@@ -245,7 +248,7 @@ export default function FeeStructureScreen() {
 
                             {groupsList.length > 0 && (
                                 <>
-                                    <Text style={globalStyles.label}>Assign to Class</Text>
+                                    <Text style={globalStyles.label}>Assign to {getTerm('Class', user?.entityType)}</Text>
                                     <View style={styles.mockPicker}>
                                         {groupsList.map(g => (
                                             <TouchableOpacity

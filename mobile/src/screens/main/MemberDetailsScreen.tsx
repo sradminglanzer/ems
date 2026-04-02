@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity,
-    ActivityIndicator, FlatList, Platform, Modal, TextInput, Alert, Animated
+    ActivityIndicator, FlatList, Platform, Modal, TextInput, Alert, Animated, ScrollView
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import api from '../../services/api';
 import { theme, globalStyles } from '../../theme';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,6 +11,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { AuthContext } from '../../context/AuthContext';
 import { useContext } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
+import { getTerm } from '../../utils/terminology';
 
 export default function MemberDetailsScreen() {
     const { user, selectedAcademicYearId } = useContext(AuthContext);
@@ -27,6 +29,11 @@ export default function MemberDetailsScreen() {
     const [feeModalVisible, setFeeModalVisible] = useState(false);
     const [feeAmount, setFeeAmount] = useState('');
     const [feeNotes, setFeeNotes] = useState('');
+    const [nextPaymentDate, setNextPaymentDate] = useState<Date | null>(null);
+    const [nextPaymentDateStr, setNextPaymentDateStr] = useState('');
+    const [showDatePicker, setShowDatePicker] = useState(false);
+    const [selectedStructureId, setSelectedStructureId] = useState('');
+    const [feeStructures, setFeeStructures] = useState<any[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
@@ -36,16 +43,54 @@ export default function MemberDetailsScreen() {
     const loadData = async () => {
         try {
             const params = selectedAcademicYearId ? { academicYearId: selectedAcademicYearId } : {};
-            const [payRes, resRes] = await Promise.all([
+            const [payRes, resRes, structRes] = await Promise.all([
                 api.get(`/fee-payments?memberId=${member._id}`, { params }),
-                api.get(`/exams/member/${member._id}/results`, { params })
+                api.get(`/exams/member/${member._id}/results`, { params }),
+                api.get('/fee-structures')
             ]);
             setPayments(payRes.data);
             setResults(resRes.data);
+            
+            // Filter structures if member belongs to a specific group, else show all
+            if (member.feeGroupId) {
+                setFeeStructures(structRes.data.filter((s: any) => s.feeGroupId === member.feeGroupId));
+            } else {
+                setFeeStructures(structRes.data);
+            }
         } catch (error) {
             console.error('Error loading member data:', error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const calculateNextDate = (frequency: string) => {
+        const d = new Date();
+        if (frequency === 'monthly') d.setMonth(d.getMonth() + 1);
+        else if (frequency === 'quarterly') d.setMonth(d.getMonth() + 3);
+        else if (frequency === 'half-yearly') d.setMonth(d.getMonth() + 6);
+        else if (frequency === 'annual' || frequency === 'yearly') d.setFullYear(d.getFullYear() + 1);
+        else if (frequency === 'weekly') d.setDate(d.getDate() + 7);
+        else if (frequency === 'daily') d.setDate(d.getDate() + 1);
+        return d;
+    };
+
+    const handleOpenFeeModal = () => {
+        setFeeModalVisible(true);
+        if (user?.entityType === 'gym' && feeStructures.length > 0) {
+            const s = feeStructures[0];
+            setSelectedStructureId(s._id);
+            setFeeAmount(String(s.amount));
+            const nextD = calculateNextDate(s.frequency);
+            setNextPaymentDate(nextD);
+            const tzOffset = new Date().getTimezoneOffset() * 60000;
+            const localISOTime = new Date(nextD.getTime() - tzOffset).toISOString().slice(0, 10);
+            setNextPaymentDateStr(localISOTime);
+        } else {
+            setSelectedStructureId('');
+            setFeeAmount('');
+            setNextPaymentDate(null);
+            setNextPaymentDateStr('');
         }
     };
 
@@ -57,11 +102,15 @@ export default function MemberDetailsScreen() {
                 memberId: member._id,
                 amount: parseFloat(feeAmount),
                 notes: feeNotes,
-                academicYearId: selectedAcademicYearId
+                ...(user?.entityType !== 'gym' && selectedAcademicYearId ? { academicYearId: selectedAcademicYearId } : {}),
+                nextPaymentDate: Platform.OS === 'web' ? (nextPaymentDateStr || undefined) : (nextPaymentDate ? nextPaymentDate.toISOString().split('T')[0] : undefined)
             });
             setFeeModalVisible(false);
             setFeeAmount('');
             setFeeNotes('');
+            setSelectedStructureId('');
+            setNextPaymentDate(null);
+            setNextPaymentDateStr('');
             loadData();
         } catch (error) {
             console.error(error);
@@ -87,13 +136,13 @@ export default function MemberDetailsScreen() {
         };
 
         if (Platform.OS === 'web') {
-            if (window.confirm("Are you sure you want to completely remove this student?")) {
+            if (window.confirm(`Are you sure you want to completely remove this ${getTerm('Student', user?.entityType).toLowerCase()}?`)) {
                 executeDelete();
             }
         } else {
             Alert.alert(
-                "Delete Student",
-                "Are you sure you want to completely remove this student?",
+                `Delete ${getTerm('Student', user?.entityType)}`,
+                `Are you sure you want to completely remove this ${getTerm('Student', user?.entityType).toLowerCase()}?`,
                 [
                     { text: "Cancel", style: "cancel" },
                     { text: "Delete", style: "destructive", onPress: executeDelete }
@@ -117,13 +166,15 @@ export default function MemberDetailsScreen() {
                     </View>
 
                     <View style={styles.detailsGrid}>
-                        <View style={styles.detailItem}>
-                            <Text style={styles.detailLabel}>Roll No</Text>
-                            <Text style={styles.detailValue}>{member.knownId}</Text>
-                        </View>
+                        {user?.entityType !== 'gym' && (
+                            <View style={styles.detailItem}>
+                                <Text style={styles.detailLabel}>{getTerm('Roll No', user?.entityType)}</Text>
+                                <Text style={styles.detailValue}>{member.knownId}</Text>
+                            </View>
+                        )}
                         {member.groupName && (
                             <View style={styles.detailItem}>
-                                <Text style={styles.detailLabel}>Class Enrolled</Text>
+                                <Text style={styles.detailLabel}>{getTerm('Class', user?.entityType)} Enrolled</Text>
                                 <Text style={styles.detailValue}>{member.groupName}</Text>
                             </View>
                         )}
@@ -197,7 +248,7 @@ export default function MemberDetailsScreen() {
                 )}
 
                 {/* Exam Results */}
-                {results.length > 0 && (
+                {results.length > 0 && user?.entityType !== 'gym' && (
                     <View style={styles.glassCard}>
                         <View style={styles.sectionHeader}>
                             <Ionicons name="school-outline" size={20} color={theme.colors.primary} />
@@ -260,7 +311,7 @@ export default function MemberDetailsScreen() {
                         </View>
 
                         {user?.role !== 'parent' && (
-                            <TouchableOpacity style={styles.collectButton} onPress={() => setFeeModalVisible(true)}>
+                            <TouchableOpacity style={styles.collectButton} onPress={handleOpenFeeModal}>
                                 <Ionicons name="add" size={16} color={theme.colors.surface} />
                                 <Text style={styles.collectButtonText}>Collect</Text>
                             </TouchableOpacity>
@@ -326,7 +377,9 @@ export default function MemberDetailsScreen() {
                         </View>
                     </View>
                     <Text style={styles.heroTitle}>{member.firstName} {member.lastName}</Text>
-                    <Text style={styles.heroSubtitle}>Roll No: {member.knownId}</Text>
+                    {user?.entityType !== 'gym' && (
+                        <Text style={styles.heroSubtitle}>Roll No: {member.knownId}</Text>
+                    )}
                 </Animated.View>
             </Animated.View>
 
@@ -384,8 +437,72 @@ export default function MemberDetailsScreen() {
                             </TouchableOpacity>
                         </View>
 
+                        <Text style={globalStyles.label}>Select Package</Text>
+                        <View style={styles.mockPicker}>
+                            {feeStructures.map(s => (
+                                <TouchableOpacity
+                                    key={s._id}
+                                    style={[styles.pill, selectedStructureId === s._id && styles.pillActive]}
+                                    onPress={() => {
+                                        setSelectedStructureId(s._id);
+                                        setFeeAmount(String(s.amount));
+                                        
+                                        const nextD = calculateNextDate(s.frequency);
+                                        setNextPaymentDate(nextD);
+                                        
+                                        // Use local offset so Web YYYY-MM-DD doesn't shift by 1 day
+                                        const tzOffset = new Date().getTimezoneOffset() * 60000;
+                                        const localISOTime = new Date(nextD.getTime() - tzOffset).toISOString().slice(0, 10);
+                                        setNextPaymentDateStr(localISOTime);
+                                    }}
+                                >
+                                    <Text style={[styles.pillText, selectedStructureId === s._id && styles.pillTextActive]}>
+                                        {s.name} ({s.frequency})
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+
                         <Text style={globalStyles.label}>Amount (₹)</Text>
                         <TextInput style={globalStyles.input} placeholder="e.g. 5000" keyboardType="numeric" value={feeAmount} onChangeText={setFeeAmount} />
+
+                        <Text style={globalStyles.label}>Next Renewal Date</Text>
+                        {Platform.OS === 'web' ? (
+                            <TextInput
+                                style={globalStyles.input}
+                                placeholder="YYYY-MM-DD"
+                                value={nextPaymentDateStr}
+                                onChangeText={(text) => {
+                                    setNextPaymentDateStr(text);
+                                    const parsedOptions = new Date(text);
+                                    if (!isNaN(parsedOptions.getTime())) setNextPaymentDate(parsedOptions);
+                                }}
+                                // @ts-ignore
+                                type="date"
+                            />
+                        ) : (
+                            <>
+                                <TouchableOpacity
+                                    style={[globalStyles.input, { justifyContent: 'center' }]}
+                                    onPress={() => setShowDatePicker(true)}
+                                >
+                                    <Text style={{ color: nextPaymentDate ? theme.colors.textPrimary : theme.colors.textMuted }}>
+                                        {nextPaymentDate ? nextPaymentDate.toISOString().split('T')[0] : "Select Renewal Date"}
+                                    </Text>
+                                </TouchableOpacity>
+                                {showDatePicker && (
+                                    <DateTimePicker
+                                        value={nextPaymentDate || new Date()}
+                                        mode="date"
+                                        display="default"
+                                        onChange={(event, selectedDate) => {
+                                            setShowDatePicker(Platform.OS === 'ios');
+                                            if (selectedDate) setNextPaymentDate(selectedDate);
+                                        }}
+                                    />
+                                )}
+                            </>
+                        )}
 
                         <Text style={globalStyles.label}>Notes</Text>
                         <TextInput style={globalStyles.input} placeholder="Term 1 Fee..." value={feeNotes} onChangeText={setFeeNotes} />
@@ -751,4 +868,17 @@ const styles = StyleSheet.create({
         borderColor: theme.colors.border,
         marginHorizontal: theme.spacing.xs,
     },
+    mockPicker: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4, marginBottom: 16 },
+    pill: {
+        paddingHorizontal: 16, paddingVertical: 10,
+        borderRadius: theme.borderRadius.round,
+        borderWidth: 1, borderColor: theme.colors.border,
+        backgroundColor: theme.colors.background
+    },
+    pillActive: {
+        borderColor: theme.colors.primary,
+        backgroundColor: theme.colors.primary + '15'
+    },
+    pillText: { color: theme.colors.textSecondary, fontWeight: '500', fontSize: 13 },
+    pillTextActive: { color: theme.colors.primary, fontWeight: 'bold' }
 });

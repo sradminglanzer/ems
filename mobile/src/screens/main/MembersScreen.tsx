@@ -7,11 +7,14 @@ import api from '../../services/api';
 import { theme, globalStyles } from '../../theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef, useContext } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import HeaderActions from '../../components/HeaderActions';
+import { AuthContext } from '../../context/AuthContext';
+import { getTerm } from '../../utils/terminology';
 
 export default function MembersScreen() {
+    const { user } = useContext(AuthContext);
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
     const [members, setMembers] = useState([]);
@@ -128,7 +131,7 @@ export default function MembersScreen() {
                         <Ionicons name="menu" size={24} color={theme.colors.surface} />
                     </TouchableOpacity>
                     <Animated.Text style={[styles.stickyTitle, { opacity: headerTitleOpacity }]}>
-                        {isPendingFeesFilter ? 'Pending Collections' : 'Student Directory'}
+                        {isPendingFeesFilter ? 'Pending Collections' : `${getTerm('Student', user?.entityType)} Directory`}
                     </Animated.Text>
                     <View style={styles.headerActionsWrapper}>
                         <HeaderActions />
@@ -136,7 +139,7 @@ export default function MembersScreen() {
                 </View>
                 <Animated.View style={[styles.heroContent, { opacity: headerOpacity }]}>
                     <View style={styles.heroTextContent}>
-                        <Text style={styles.heroTitle}>{isPendingFeesFilter ? 'Pending Collections' : 'Student Directory'}</Text>
+                        <Text style={styles.heroTitle}>{isPendingFeesFilter ? 'Pending Collections' : `${getTerm('Student', user?.entityType)} Directory`}</Text>
                         <Text style={styles.heroSubtitle}>
                             {isPendingFeesFilter ? `${displayedMembers.length} deficits` : `${displayedMembers.length} enrolled`}
                         </Text>
@@ -170,7 +173,7 @@ export default function MembersScreen() {
                             <View style={styles.emptyContainer}>
                                 <Ionicons name="people-outline" size={64} color={theme.colors.border} />
                                 <Text style={globalStyles.emptyText}>
-                                    {isPendingFeesFilter ? 'All fees are clear!' : 'No students found.'}
+                                    {isPendingFeesFilter ? 'All fees are clear!' : `No ${getTerm('Students', user?.entityType).toLowerCase()} found.`}
                                 </Text>
                             </View>
                         }

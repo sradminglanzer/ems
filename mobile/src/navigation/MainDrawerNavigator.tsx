@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
 import { DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
 import { AuthContext } from '../context/AuthContext';
+import { getTerm } from '../utils/terminology';
 
 type DrawerParamList = {
     DashboardHome: undefined;
@@ -107,6 +108,7 @@ export default function MainDrawerNavigator() {
                 name="Students"
                 component={MembersScreen}
                 options={{
+                    title: getTerm('Students', user?.entityType),
                     drawerIcon: ({ color, size }) => <Ionicons name="people-outline" size={size} color={color} />
                 }}
             />
@@ -124,7 +126,7 @@ export default function MainDrawerNavigator() {
                 name="FeeGroups"
                 component={FeeGroupsScreen}
                 options={{
-                    title: 'Fee Groups',
+                    title: getTerm('Classes', user?.entityType),
                     drawerIcon: ({ color }) => <Ionicons name="layers-outline" size={22} color={color} />,
                     headerRight: () => <HeaderActions />
                 }}
@@ -134,21 +136,23 @@ export default function MainDrawerNavigator() {
                     name="FeeStructures"
                     component={FeeStructureScreen}
                     options={{
-                        title: 'Fee Structures',
+                        title: user?.entityType === 'gym' ? 'Billing Plans' : 'Fee Structures',
                         drawerIcon: ({ color, size }) => <Ionicons name="card-outline" size={size} color={color} />
                     }}
                 />
             )}
-            <Drawer.Screen
-                name="Exams"
-                component={ExamsScreen}
-                options={{
-                    title: 'Exams & Results',
-                    drawerIcon: ({ color }) => <Ionicons name="document-text-outline" size={24} color={color} />,
-                    headerRight: () => <HeaderActions />
-                }}
-            />
-            {(user?.role === 'admin' || user?.role === 'owner') && (
+            {user?.entityType !== 'gym' && (
+                <Drawer.Screen
+                    name="Exams"
+                    component={ExamsScreen}
+                    options={{
+                        title: 'Exams & Results',
+                        drawerIcon: ({ color }) => <Ionicons name="document-text-outline" size={24} color={color} />,
+                        headerRight: () => <HeaderActions />
+                    }}
+                />
+            )}
+            {(user?.role === 'admin' || user?.role === 'owner') && user?.entityType !== 'gym' && (
                 <Drawer.Screen
                     name="AcademicYears"
                     component={AcademicYearsScreen}
