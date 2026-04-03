@@ -25,6 +25,8 @@ export default function AddMemberScreen() {
 
     const [feeGroupId, setFeeGroupId] = useState(initialFeeGroupId || '');
     const [groupsList, setGroupsList] = useState<any[]>([]);
+    const [addonFeeIds, setAddonFeeIds] = useState<string[]>(memberToEdit?.addonFeeIds || []);
+    const [globalFees, setGlobalFees] = useState<any[]>([]);
 
     const [firstName, setFirstName] = useState(memberToEdit?.firstName || '');
     const [middleName, setMiddleName] = useState(memberToEdit?.middleName || '');
@@ -43,9 +45,19 @@ export default function AddMemberScreen() {
 
     useEffect(() => {
         if (!initialFeeGroupId && !memberToEdit) {
-            api.get('/fee-groups')
-               .then(res => setGroupsList(res.data))
-               .catch(() => console.log('Failed to fetch fee groups'));
+            Promise.all([
+                api.get('/fee-groups'),
+                api.get('/fee-structures')
+            ]).then(([groupRes, structRes]) => {
+                setGroupsList(groupRes.data);
+                const globals = structRes.data.filter((s: any) => !s.feeGroupId);
+                setGlobalFees(globals);
+            }).catch(() => console.log('Failed to fetch data'));
+        } else {
+            api.get('/fee-structures').then(res => {
+                const globals = res.data.filter((s: any) => !s.feeGroupId);
+                setGlobalFees(globals);
+            }).catch(() => console.log('Failed to fetch structures'));
         }
     }, [initialFeeGroupId, memberToEdit]);
 
@@ -64,6 +76,7 @@ export default function AddMemberScreen() {
                 dob: Platform.OS === 'web' ? dobStr : (dobDate ? dobDate.toISOString().split('T')[0] : ''), 
                 contact, altContact, fatherOccupation,
                 motherOccupation, address,
+                addonFeeIds,
                 ...(feeGroupId ? { feeGroupId, ...(user?.entityType !== 'gym' && selectedAcademicYearId ? { academicYearId: selectedAcademicYearId } : {}) } : {})
             };
 
@@ -237,7 +250,7 @@ export default function AddMemberScreen() {
                     </View>
                 </View>
 
-                {!memberToEdit && !initialFeeGroupId && groupsList.length > 0 && (
+                {!memberToEdit && !initialFeeGroupId && user?.entityType !== 'gym' && groupsList.length > 0 && (
                     <View style={styles.glassCard}>
                         <View style={styles.sectionHeader}>
                             <Ionicons name="fitness-outline" size={18} color={theme.colors.primary} />
@@ -254,6 +267,33 @@ export default function AddMemberScreen() {
                                     <Text style={[styles.pillText, feeGroupId === g._id && styles.pillTextActive]}>{g.name}</Text>
                                 </TouchableOpacity>
                             ))}
+                        </View>
+                    </View>
+                )}
+
+                {globalFees.length > 0 && (
+                    <View style={styles.glassCard}>
+                        <View style={styles.sectionHeader}>
+                            <Ionicons name="cart-outline" size={18} color={theme.colors.primary} />
+                            <Text style={styles.sectionTitle}>{user?.entityType === 'gym' ? 'Billing Plans' : 'Optional Add-Ons'}</Text>
+                        </View>
+                        <Text style={globalStyles.label}>{user?.entityType === 'gym' ? 'Select Subscriptions' : 'Select Extra Fees'}</Text>
+                        <View style={styles.mockPicker}>
+                            {globalFees.map(f => {
+                                const isSelected = addonFeeIds.includes(f._id);
+                                return (
+                                    <TouchableOpacity
+                                        key={f._id}
+                                        style={[styles.pill, isSelected && styles.pillActive]}
+                                        onPress={() => {
+                                            if (isSelected) setAddonFeeIds(prev => prev.filter(id => id !== f._id));
+                                            else setAddonFeeIds(prev => [...prev, f._id]);
+                                        }}
+                                    >
+                                        <Text style={[styles.pillText, isSelected && styles.pillTextActive]}>{f.name} (₹{f.amount})</Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
                         </View>
                     </View>
                 )}

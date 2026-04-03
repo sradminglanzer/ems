@@ -14,6 +14,7 @@ export class Member {
     motherOccupation?: string;
     address?: string;
     feeGroupId?: ObjectId;
+    addonFeeIds?: ObjectId[];
     createdAt?: Date;
     updatedAt?: Date;
 
@@ -33,6 +34,9 @@ export class Member {
         this.address = data.address;
         
         if (data.feeGroupId) this.feeGroupId = typeof data.feeGroupId === 'string' ? new ObjectId(data.feeGroupId) : data.feeGroupId;
+        if (Array.isArray(data.addonFeeIds)) {
+            this.addonFeeIds = data.addonFeeIds.map((id: any) => new ObjectId(id));
+        }
 
         this.createdAt = data.createdAt || new Date();
         this.updatedAt = data.updatedAt || new Date();

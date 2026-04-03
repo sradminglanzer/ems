@@ -122,15 +122,17 @@ export default function MainDrawerNavigator() {
                     }}
                 />
             )}
-            <Drawer.Screen
-                name="FeeGroups"
-                component={FeeGroupsScreen}
-                options={{
-                    title: getTerm('Classes', user?.entityType),
-                    drawerIcon: ({ color }) => <Ionicons name="layers-outline" size={22} color={color} />,
-                    headerRight: () => <HeaderActions />
-                }}
-            />
+            {user?.entityType !== 'gym' && (
+                <Drawer.Screen
+                    name="FeeGroups"
+                    component={FeeGroupsScreen}
+                    options={{
+                        title: getTerm('Classes', user?.entityType),
+                        drawerIcon: ({ color }) => <Ionicons name="layers-outline" size={22} color={color} />,
+                        headerRight: () => <HeaderActions />
+                    }}
+                />
+            )}
             {user?.role !== 'teacher' && (
                 <Drawer.Screen
                     name="FeeStructures"

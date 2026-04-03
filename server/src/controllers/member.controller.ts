@@ -37,7 +37,7 @@ export const getMembers = async (req: AuthRequest, res: Response, next: NextFunc
         // Calculate total structural fees per group
         const groupTotalFees: Record<string, number> = {};
         feeGroups.forEach(g => {
-            const groupStructures = feeStructures.filter(s => s.feeGroupId.toString() === g._id!.toString());
+            const groupStructures = feeStructures.filter(s => s.feeGroupId && s.feeGroupId.toString() === g._id!.toString());
             const totalFee = groupStructures.reduce((sum, s) => sum + s.amount, 0);
             groupTotalFees[g._id!.toString()] = totalFee;
         });
@@ -69,6 +69,13 @@ export const getMembers = async (req: AuthRequest, res: Response, next: NextFunc
                 groupName = group.name;
             }
 
+            let addonNames: string[] = [];
+            if (m.addonFeeIds && m.addonFeeIds.length > 0) {
+                const addons = feeStructures.filter(s => m.addonFeeIds!.some((id: any) => id.toString() === s._id!.toString()));
+                totalFee += addons.reduce((sum, s) => sum + s.amount, 0);
+                addonNames = addons.map(s => s.name);
+            }
+
             // find payments
             const memberPayments = feePayments.filter(p => p.memberId.toString() === mId);
             const totalPaid = memberPayments.reduce((sum, p) => sum + p.amount, 0);
@@ -76,6 +83,7 @@ export const getMembers = async (req: AuthRequest, res: Response, next: NextFunc
             return {
                 ...m,
                 groupName,
+                addonNames,
                 totalFee,
                 totalPaid,
                 pendingAmount: totalFee - totalPaid
@@ -184,7 +192,7 @@ export const updateMember = async (req: AuthRequest, res: Response, next: NextFu
 
         // Validation for partial update
         let updateData: any = { $set: {} };
-        const allowedFields = ['firstName', 'middleName', 'lastName', 'knownId', 'dob', 'contact', 'altContact', 'fatherOccupation', 'motherOccupation', 'address'];
+        const allowedFields = ['firstName', 'middleName', 'lastName', 'knownId', 'dob', 'contact', 'altContact', 'fatherOccupation', 'motherOccupation', 'address', 'addonFeeIds'];
         allowedFields.forEach(field => {
             if (req.body[field] !== undefined) {
                 updateData.$set[field] = req.body[field];

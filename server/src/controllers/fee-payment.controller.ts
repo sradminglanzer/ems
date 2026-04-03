@@ -24,6 +24,18 @@ export const getFeePayments = async (req: AuthRequest, res: Response, next: Next
 
 export const createFeePayment = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
+        if (req.body.payments && Array.isArray(req.body.payments)) {
+            const results = [];
+            for (let p of req.body.payments) {
+                const payment = new FeePayment({ ...p, entityId: req.user!.entityId });
+                if (payment.valid) {
+                    const result = await feePaymentService.insert(payment);
+                    results.push(result);
+                }
+            }
+            return res.status(HTTP_STATUS.CREATED).json(results);
+        }
+
         const payment = new FeePayment({ ...req.body, entityId: req.user!.entityId });
 
         if (!payment.valid) {

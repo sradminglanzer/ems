@@ -121,12 +121,12 @@ export default function DashboardScreen() {
                                 <Text style={styles.statLabelSmall}>Total {getTerm('Students', user?.entityType)}</Text>
                             </TouchableOpacity>
 
-                            <TouchableOpacity style={styles.glassCardSmall} activeOpacity={0.8} onPress={() => navigation.navigate('FeeGroups')}>
+                            <TouchableOpacity style={styles.glassCardSmall} activeOpacity={0.8} onPress={() => navigation.navigate(user?.entityType === 'gym' ? 'FeeStructures' : 'FeeGroups')}>
                                 <View style={[styles.iconBox, { backgroundColor: theme.colors.secondaryLight + '30' }]}>
-                                    <Ionicons name="school" size={24} color={theme.colors.secondary} />
+                                    <Ionicons name={user?.entityType === 'gym' ? 'card' : 'school'} size={24} color={theme.colors.secondary} />
                                 </View>
-                                <Text style={styles.statValueSmall}>{stats.totalFeeGroups}</Text>
-                                <Text style={styles.statLabelSmall}>Active {getTerm('Classes', user?.entityType)}</Text>
+                                <Text style={styles.statValueSmall}>{user?.entityType === 'gym' ? stats.totalFeeStructures || 0 : stats.totalFeeGroups || 0}</Text>
+                                <Text style={styles.statLabelSmall}>{user?.entityType === 'gym' ? 'Active Billing Plans' : `Active ${getTerm('Classes', user?.entityType)}`}</Text>
                             </TouchableOpacity>
                         </ScrollView>
 

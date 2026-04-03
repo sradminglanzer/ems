@@ -25,14 +25,16 @@ export default function MemberDetailsScreen() {
     const [results, setResults] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
-    // Collect Fee Modal
+    // Collect Fee Modal Checkout Cart
     const [feeModalVisible, setFeeModalVisible] = useState(false);
-    const [feeAmount, setFeeAmount] = useState('');
-    const [feeNotes, setFeeNotes] = useState('');
-    const [nextPaymentDate, setNextPaymentDate] = useState<Date | null>(null);
-    const [nextPaymentDateStr, setNextPaymentDateStr] = useState('');
-    const [showDatePicker, setShowDatePicker] = useState(false);
-    const [selectedStructureId, setSelectedStructureId] = useState('');
+    const [cartPayments, setCartPayments] = useState<Record<string, {
+        amount: string,
+        nextPaymentDate: Date | null,
+        nextPaymentDateStr: string,
+        showPicker: boolean,
+        notes: string,
+        checked: boolean
+    }>>({});
     const [feeStructures, setFeeStructures] = useState<any[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -51,12 +53,13 @@ export default function MemberDetailsScreen() {
             setPayments(payRes.data);
             setResults(resRes.data);
             
-            // Filter structures if member belongs to a specific group, else show all
-            if (member.feeGroupId) {
-                setFeeStructures(structRes.data.filter((s: any) => s.feeGroupId === member.feeGroupId));
-            } else {
-                setFeeStructures(structRes.data);
-            }
+            // Filter structures to only those assigned to the member (Group + Add-ons)
+            setFeeStructures(structRes.data.filter((s: any) => {
+                const isGroupFee = member.feeGroupId && s.feeGroupId === member.feeGroupId;
+                const isAddonFee = !s.feeGroupId && member.addonFeeIds?.includes(s._id);
+                // If member hasn't set up group yet, show all to prevent empty list, but ideally they shouldn't collect until group set
+                return isGroupFee || isAddonFee || (!member.feeGroupId && !member.addonFeeIds?.length); 
+            }));
         } catch (error) {
             console.error('Error loading member data:', error);
         } finally {
@@ -77,40 +80,52 @@ export default function MemberDetailsScreen() {
 
     const handleOpenFeeModal = () => {
         setFeeModalVisible(true);
-        if (user?.entityType === 'gym' && feeStructures.length > 0) {
-            const s = feeStructures[0];
-            setSelectedStructureId(s._id);
-            setFeeAmount(String(s.amount));
+        const newCart: any = {};
+        feeStructures.forEach(s => {
             const nextD = calculateNextDate(s.frequency);
-            setNextPaymentDate(nextD);
             const tzOffset = new Date().getTimezoneOffset() * 60000;
             const localISOTime = new Date(nextD.getTime() - tzOffset).toISOString().slice(0, 10);
-            setNextPaymentDateStr(localISOTime);
-        } else {
-            setSelectedStructureId('');
-            setFeeAmount('');
-            setNextPaymentDate(null);
-            setNextPaymentDateStr('');
-        }
+            
+            newCart[s._id] = {
+                amount: String(s.amount),
+                nextPaymentDate: nextD,
+                nextPaymentDateStr: localISOTime,
+                showPicker: false,
+                notes: '',
+                checked: true
+            };
+        });
+        setCartPayments(newCart);
     };
 
     const handleCollectFee = async () => {
-        if (!feeAmount) return alert('Amount is required!');
+        const paymentsToSubmit = feeStructures
+            .filter(s => cartPayments[s._id]?.checked)
+            .map(s => {
+                const cartItem = cartPayments[s._id];
+                return {
+                    memberId: member._id,
+                    feeStructureId: s._id,
+                    ...(s.feeGroupId ? { feeGroupId: s.feeGroupId } : {}),
+                    amount: parseFloat(cartItem.amount || '0'),
+                    notes: cartItem.notes,
+                    ...(user?.entityType !== 'gym' && selectedAcademicYearId ? { academicYearId: selectedAcademicYearId } : {}),
+                    nextPaymentDate: Platform.OS === 'web' 
+                        ? (cartItem.nextPaymentDateStr || undefined) 
+                        : (cartItem.nextPaymentDate ? cartItem.nextPaymentDate.toISOString().split('T')[0] : undefined)
+                };
+            })
+            .filter(p => !isNaN(p.amount) && p.amount > 0);
+
+        if (paymentsToSubmit.length === 0) {
+            return alert('Please select at least one package and enter a valid amount.');
+        }
+
         setIsSubmitting(true);
         try {
-            await api.post('/fee-payments', {
-                memberId: member._id,
-                amount: parseFloat(feeAmount),
-                notes: feeNotes,
-                ...(user?.entityType !== 'gym' && selectedAcademicYearId ? { academicYearId: selectedAcademicYearId } : {}),
-                nextPaymentDate: Platform.OS === 'web' ? (nextPaymentDateStr || undefined) : (nextPaymentDate ? nextPaymentDate.toISOString().split('T')[0] : undefined)
-            });
+            await api.post('/fee-payments', { payments: paymentsToSubmit });
             setFeeModalVisible(false);
-            setFeeAmount('');
-            setFeeNotes('');
-            setSelectedStructureId('');
-            setNextPaymentDate(null);
-            setNextPaymentDateStr('');
+            setCartPayments({});
             loadData();
         } catch (error) {
             console.error(error);
@@ -172,11 +187,18 @@ export default function MemberDetailsScreen() {
                                 <Text style={styles.detailValue}>{member.knownId}</Text>
                             </View>
                         )}
-                        {member.groupName && (
+                        {user?.entityType === 'gym' ? (
                             <View style={styles.detailItem}>
-                                <Text style={styles.detailLabel}>{getTerm('Class', user?.entityType)} Enrolled</Text>
-                                <Text style={styles.detailValue}>{member.groupName}</Text>
+                                <Text style={styles.detailLabel}>Active Plans</Text>
+                                <Text style={styles.detailValue}>{(member.addonNames && member.addonNames.length > 0) ? member.addonNames.join(', ') : 'None'}</Text>
                             </View>
+                        ) : (
+                            member.groupName ? (
+                                <View style={styles.detailItem}>
+                                    <Text style={styles.detailLabel}>{getTerm('Class', user?.entityType)} Enrolled</Text>
+                                    <Text style={styles.detailValue}>{member.groupName}</Text>
+                                </View>
+                            ) : null
                         )}
                         {member.dob && (
                             <View style={styles.detailItem}>
@@ -437,75 +459,71 @@ export default function MemberDetailsScreen() {
                             </TouchableOpacity>
                         </View>
 
-                        <Text style={globalStyles.label}>Select Package</Text>
-                        <View style={styles.mockPicker}>
-                            {feeStructures.map(s => (
-                                <TouchableOpacity
-                                    key={s._id}
-                                    style={[styles.pill, selectedStructureId === s._id && styles.pillActive]}
-                                    onPress={() => {
-                                        setSelectedStructureId(s._id);
-                                        setFeeAmount(String(s.amount));
+                        <ScrollView style={{ maxHeight: '80%' }} showsVerticalScrollIndicator={false}>
+                            {feeStructures.map(s => {
+                                const cartItem = cartPayments[s._id];
+                                if (!cartItem) return null;
+                                return (
+                                    <View key={s._id} style={{ marginBottom: 16, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 8, padding: 12 }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: cartItem.checked ? 12 : 0 }}>
+                                            <TouchableOpacity onPress={() => setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], checked: !cartItem.checked } }))}>
+                                                <Ionicons name={cartItem.checked ? "checkbox" : "square-outline"} size={24} color={cartItem.checked ? theme.colors.primary : theme.colors.textMuted} />
+                                            </TouchableOpacity>
+                                            <Text style={{ fontWeight: 'bold', color: theme.colors.textPrimary, marginLeft: 8, flex: 1 }}>{s.name} ({s.frequency})</Text>
+                                        </View>
                                         
-                                        const nextD = calculateNextDate(s.frequency);
-                                        setNextPaymentDate(nextD);
-                                        
-                                        // Use local offset so Web YYYY-MM-DD doesn't shift by 1 day
-                                        const tzOffset = new Date().getTimezoneOffset() * 60000;
-                                        const localISOTime = new Date(nextD.getTime() - tzOffset).toISOString().slice(0, 10);
-                                        setNextPaymentDateStr(localISOTime);
-                                    }}
-                                >
-                                    <Text style={[styles.pillText, selectedStructureId === s._id && styles.pillTextActive]}>
-                                        {s.name} ({s.frequency})
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
+                                        {cartItem.checked && (
+                                            <>
+                                                <Text style={globalStyles.label}>Amount (₹)</Text>
+                                                <TextInput style={globalStyles.input} keyboardType="numeric" value={cartItem.amount} onChangeText={(val) => setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], amount: val } }))} />
+
+                                                <Text style={globalStyles.label}>Next Renewal Date</Text>
+                                                {Platform.OS === 'web' ? (
+                                                    // @ts-ignore
+                                                    <TextInput style={globalStyles.input} placeholder="YYYY-MM-DD" value={cartItem.nextPaymentDateStr} onChangeText={(val) => {
+                                                        const d = new Date(val);
+                                                        setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], nextPaymentDateStr: val, nextPaymentDate: !isNaN(d.getTime()) ? d : prev[s._id].nextPaymentDate } }));
+                                                    }} type="date" />
+                                                ) : (
+                                                    <>
+                                                        <TouchableOpacity style={[globalStyles.input, { justifyContent: 'center' }]} onPress={() => setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], showPicker: true } }))}>
+                                                            <Text style={{ color: cartItem.nextPaymentDate ? theme.colors.textPrimary : theme.colors.textMuted }}>
+                                                                {cartItem.nextPaymentDate ? cartItem.nextPaymentDate.toISOString().split('T')[0] : "Select Renewal Date"}
+                                                            </Text>
+                                                        </TouchableOpacity>
+                                                        {cartItem.showPicker && (
+                                                            <DateTimePicker
+                                                                value={cartItem.nextPaymentDate || new Date()}
+                                                                mode="date"
+                                                                display="default"
+                                                                onChange={(event, selectedDate) => {
+                                                                    setCartPayments(prev => {
+                                                                        const ns = { ...prev };
+                                                                        ns[s._id].showPicker = Platform.OS === 'ios';
+                                                                        if (selectedDate) ns[s._id].nextPaymentDate = selectedDate;
+                                                                        return ns;
+                                                                    });
+                                                                }}
+                                                            />
+                                                        )}
+                                                    </>
+                                                )}
+                                                
+                                                <Text style={globalStyles.label}>Notes</Text>
+                                                <TextInput style={globalStyles.input} placeholder="Payment notes..." value={cartItem.notes} onChangeText={(val) => setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], notes: val } }))} />
+                                            </>
+                                        )}
+                                    </View>
+                                )
+                            })}
+                        </ScrollView>
+
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 16 }}>
+                            <Text style={{ fontWeight: 'bold', fontSize: 16 }}>Total Selected:</Text>
+                            <Text style={{ fontWeight: 'bold', fontSize: 20, color: theme.colors.success }}>
+                                ₹{feeStructures.filter(s => cartPayments[s._id]?.checked).reduce((sum, s) => sum + parseFloat(cartPayments[s._id]?.amount || '0'), 0).toLocaleString('en-IN')}
+                            </Text>
                         </View>
-
-                        <Text style={globalStyles.label}>Amount (₹)</Text>
-                        <TextInput style={globalStyles.input} placeholder="e.g. 5000" keyboardType="numeric" value={feeAmount} onChangeText={setFeeAmount} />
-
-                        <Text style={globalStyles.label}>Next Renewal Date</Text>
-                        {Platform.OS === 'web' ? (
-                            <TextInput
-                                style={globalStyles.input}
-                                placeholder="YYYY-MM-DD"
-                                value={nextPaymentDateStr}
-                                onChangeText={(text) => {
-                                    setNextPaymentDateStr(text);
-                                    const parsedOptions = new Date(text);
-                                    if (!isNaN(parsedOptions.getTime())) setNextPaymentDate(parsedOptions);
-                                }}
-                                // @ts-ignore
-                                type="date"
-                            />
-                        ) : (
-                            <>
-                                <TouchableOpacity
-                                    style={[globalStyles.input, { justifyContent: 'center' }]}
-                                    onPress={() => setShowDatePicker(true)}
-                                >
-                                    <Text style={{ color: nextPaymentDate ? theme.colors.textPrimary : theme.colors.textMuted }}>
-                                        {nextPaymentDate ? nextPaymentDate.toISOString().split('T')[0] : "Select Renewal Date"}
-                                    </Text>
-                                </TouchableOpacity>
-                                {showDatePicker && (
-                                    <DateTimePicker
-                                        value={nextPaymentDate || new Date()}
-                                        mode="date"
-                                        display="default"
-                                        onChange={(event, selectedDate) => {
-                                            setShowDatePicker(Platform.OS === 'ios');
-                                            if (selectedDate) setNextPaymentDate(selectedDate);
-                                        }}
-                                    />
-                                )}
-                            </>
-                        )}
-
-                        <Text style={globalStyles.label}>Notes</Text>
-                        <TextInput style={globalStyles.input} placeholder="Term 1 Fee..." value={feeNotes} onChangeText={setFeeNotes} />
 
                         <TouchableOpacity style={[globalStyles.submitButton, isSubmitting && globalStyles.disabledButton]} onPress={handleCollectFee} disabled={isSubmitting}>
                             {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={globalStyles.submitButtonText}>Confirm Payment</Text>}

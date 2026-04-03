@@ -96,8 +96,12 @@ export default function MembersScreen() {
                     <View style={styles.cardInfo}>
                         <Text style={styles.memberName} numberOfLines={1}>{item.firstName} {item.lastName}</Text>
                         <View style={styles.badgeRow}>
-                            <View style={styles.groupBadge}>
-                                <Text style={styles.groupBadgeText}>{item.groupName || 'Unassigned'}</Text>
+                            <View style={[styles.groupBadge, user?.entityType === 'gym' && (!item.addonNames || item.addonNames.length === 0) && { backgroundColor: theme.colors.border }]}>
+                                <Text style={[styles.groupBadgeText, user?.entityType === 'gym' && (!item.addonNames || item.addonNames.length === 0) && { color: theme.colors.textMuted }]}>
+                                    {user?.entityType === 'gym' 
+                                        ? ((item.addonNames && item.addonNames.length > 0) ? item.addonNames.join(', ') : 'No Active Plan')
+                                        : (item.groupName || 'Unassigned')}
+                                </Text>
                             </View>
                             <Text style={styles.detailsText}>ID: {item.knownId}</Text>
                         </View>
@@ -180,6 +184,19 @@ export default function MembersScreen() {
                     />
                 )}
             </View>
+
+            <TouchableOpacity 
+                style={[globalStyles.fab, { bottom: 24, right: 24, ...theme.shadows.lg }]} 
+                onPress={() => navigation.navigate('AddMember')} 
+                activeOpacity={0.9}
+            >
+                <LinearGradient
+                    colors={theme.gradients.primary}
+                    style={{ width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center' }}
+                >
+                    <Ionicons name="person-add" size={28} color={theme.colors.surface} />
+                </LinearGradient>
+            </TouchableOpacity>
         </View>
     );
 }

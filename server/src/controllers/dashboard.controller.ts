@@ -29,7 +29,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
 
             const groupTotalFees: Record<string, number> = {};
             feeGroups.forEach(g => {
-                const groupStructures = feeStructures.filter(s => s.feeGroupId.toString() === g._id!.toString());
+                const groupStructures = feeStructures.filter(s => s.feeGroupId && s.feeGroupId.toString() === g._id!.toString());
                 const totalFee = groupStructures.reduce((sum, s) => sum + s.amount, 0);
                 groupTotalFees[g._id!.toString()] = totalFee;
             });
@@ -57,14 +57,37 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
                     groupName = group.name;
                 }
 
+                if (m.addonFeeIds && m.addonFeeIds.length > 0) {
+                    const addonAmount = feeStructures
+                        .filter(s => m.addonFeeIds!.some((id: any) => id.toString() === s._id!.toString()))
+                        .reduce((sum, s) => sum + s.amount, 0);
+                    totalFee += addonAmount;
+                }
+
                 const memberPayments = feePayments.filter(p => p.memberId.toString() === mId);
                 const totalPaid = memberPayments.reduce((sum, p) => sum + p.amount, 0);
 
                 let nextPaymentDate = null;
-                const sortedPayments = memberPayments.sort((a,b) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime());
-                const latestPayment = sortedPayments[0];
-                if (latestPayment && latestPayment.nextPaymentDate) {
-                    nextPaymentDate = latestPayment.nextPaymentDate;
+                const paymentsByStructure: Record<string, any[]> = {};
+                memberPayments.forEach(p => {
+                    const structId = p.feeStructureId ? p.feeStructureId.toString() : 'general';
+                    if (!paymentsByStructure[structId]) paymentsByStructure[structId] = [];
+                    paymentsByStructure[structId].push(p);
+                });
+
+                const nextDates: Date[] = [];
+                for (const structId in paymentsByStructure) {
+                    const structPayments = paymentsByStructure[structId] || [];
+                    const sortedStructPayments = structPayments.sort((a,b) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime());
+                    const latest = sortedStructPayments[0];
+                    if (latest && latest.nextPaymentDate) {
+                        nextDates.push(new Date(latest.nextPaymentDate));
+                    }
+                }
+                
+                if (nextDates.length > 0) {
+                    // Find earliest upcoming date
+                    nextPaymentDate = nextDates.sort((a,b) => a.getTime() - b.getTime())[0];
                 }
 
                 return {
@@ -89,7 +112,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
 
         const groupTotalFees: Record<string, number> = {};
         feeGroups.forEach(g => {
-            const groupStructures = feeStructures.filter(s => s.feeGroupId.toString() === g._id!.toString());
+            const groupStructures = feeStructures.filter(s => s.feeGroupId && s.feeGroupId.toString() === g._id!.toString());
             const totalFee = groupStructures.reduce((sum, s) => sum + s.amount, 0);
             groupTotalFees[g._id!.toString()] = totalFee;
         });
@@ -120,23 +143,42 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
                 systemTotalFees += (groupTotalFees[group._id!.toString()] || 0);
             }
 
-            // Find expiry
+            if (m.addonFeeIds && m.addonFeeIds.length > 0) {
+                const addonAmount = feeStructures
+                    .filter(s => m.addonFeeIds!.some((id: any) => id.toString() === s._id!.toString()))
+                    .reduce((sum, s) => sum + s.amount, 0);
+                systemTotalFees += addonAmount;
+            }
+
+            // Find expiry by structure
             const memberPayments = feePayments.filter(p => p.memberId.toString() === mId);
-            const sortedPayments = memberPayments.sort((a,b) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime());
-            const latestPayment = sortedPayments[0];
-            if (latestPayment && latestPayment.nextPaymentDate) {
-                const nextDate = new Date(latestPayment.nextPaymentDate);
-                // Within 7 days (can be slightly in the past if expired recently)
-                const daysDiff = (nextDate.getTime() - today.getTime()) / (1000 * 3600 * 24);
-                if (daysDiff <= 7 && daysDiff >= -30) { // arbitrary 30 days past allowed to show in "expiring soon/expired"
-                    expiringMembers.push({
-                        _id: m._id,
-                        firstName: m.firstName,
-                        lastName: m.lastName,
-                        knownId: m.knownId,
-                        contact: m.contact,
-                        nextPaymentDate: nextDate
-                    });
+            const paymentsByStructure: Record<string, any[]> = {};
+            memberPayments.forEach(p => {
+                const structId = p.feeStructureId ? p.feeStructureId.toString() : 'general';
+                if (!paymentsByStructure[structId]) paymentsByStructure[structId] = [];
+                paymentsByStructure[structId].push(p);
+            });
+
+            for (const structId in paymentsByStructure) {
+                const structPayments = paymentsByStructure[structId] || [];
+                const sortedStructPayments = structPayments.sort((a,b) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime());
+                const latestPayment = sortedStructPayments[0];
+                if (latestPayment && latestPayment.nextPaymentDate) {
+                    const nextDate = new Date(latestPayment.nextPaymentDate);
+                    const daysDiff = (nextDate.getTime() - today.getTime()) / (1000 * 3600 * 24);
+                    if (daysDiff <= 7 && daysDiff >= -30) {
+                        // Check if member already pushed to avoid duplicates
+                        if (!expiringMembers.some(em => em._id === m._id)) {
+                            expiringMembers.push({
+                                _id: m._id,
+                                firstName: m.firstName,
+                                lastName: m.lastName,
+                                knownId: m.knownId,
+                                contact: m.contact,
+                                nextPaymentDate: nextDate
+                            });
+                        }
+                    }
                 }
             }
         });
