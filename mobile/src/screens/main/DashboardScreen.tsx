@@ -151,15 +151,27 @@ export default function DashboardScreen() {
                                     </View>
                                 </TouchableOpacity>
 
-                                <View style={[styles.financeCard, { borderColor: theme.colors.successLight, borderWidth: 1 }]}>
-                                    <View style={styles.financeInfo}>
-                                        <Text style={styles.financeLabel}>Total Collection</Text>
-                                        <Text style={[styles.financeValue, { color: theme.colors.success }]}>
-                                            ₹{Math.max(0, stats.totalCollectedAmount).toLocaleString('en-IN')}
-                                        </Text>
+                                <View style={[styles.financeCard, { borderColor: theme.colors.successLight, borderWidth: 1, flexDirection: 'column', alignItems: 'stretch' }]}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+                                        <View style={[styles.iconBoxLarge, { backgroundColor: theme.colors.successLight + '40', width: 44, height: 44, borderRadius: 22 }]}>
+                                            <Ionicons name="wallet" size={24} color={theme.colors.success} />
+                                        </View>
+                                        <Text style={[styles.financeLabel, { marginLeft: 12, flex: 1, fontSize: 16 }]}>Collection Report</Text>
                                     </View>
-                                    <View style={[styles.iconBoxLarge, { backgroundColor: theme.colors.successLight + '40' }]}>
-                                        <Ionicons name="wallet" size={32} color={theme.colors.success} />
+                                    
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: theme.colors.border + '50', paddingBottom: 10, marginBottom: 10 }}>
+                                        <Text style={{ color: theme.colors.textSecondary, fontWeight: '500' }}>Collected Today</Text>
+                                        <Text style={{ fontWeight: 'bold', color: theme.colors.success, fontSize: 16 }}>₹{(stats.collectionToday || 0).toLocaleString('en-IN')}</Text>
+                                    </View>
+                                    
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: theme.colors.border + '50', paddingBottom: 10, marginBottom: 10 }}>
+                                        <Text style={{ color: theme.colors.textSecondary, fontWeight: '500' }}>This Month</Text>
+                                        <Text style={{ fontWeight: 'bold', color: theme.colors.success, fontSize: 16 }}>₹{(stats.collectionThisMonth || 0).toLocaleString('en-IN')}</Text>
+                                    </View>
+                                    
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                                        <Text style={{ color: theme.colors.textSecondary, fontWeight: '500' }}>Last Month</Text>
+                                        <Text style={{ fontWeight: 'bold', color: theme.colors.textPrimary, fontSize: 16 }}>₹{(stats.collectionLastMonth || 0).toLocaleString('en-IN')}</Text>
                                     </View>
                                 </View>
                             </View>

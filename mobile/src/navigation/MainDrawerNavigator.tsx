@@ -3,6 +3,7 @@ import { createDrawerNavigator } from '@react-navigation/drawer';
 import Constants from 'expo-constants';
 
 import DashboardScreen from '../screens/main/DashboardScreen';
+import ReportsScreen from '../screens/main/ReportsScreen';
 import StaffScreen from '../screens/main/StaffScreen';
 import FeeGroupsScreen from '../screens/main/FeeGroupsScreen';
 import FeeStructureScreen from '../screens/main/FeeStructureScreen';
@@ -20,6 +21,7 @@ import { getTerm } from '../utils/terminology';
 
 type DrawerParamList = {
     DashboardHome: undefined;
+    Reports: undefined;
     Students: undefined;
     Staff: undefined;
     FeeGroups: undefined;
@@ -102,6 +104,14 @@ export default function MainDrawerNavigator() {
                     title: 'Dashboard',
                     drawerIcon: ({ color, size }) => <Ionicons name="home-outline" size={size} color={color} />,
                     headerRight: () => <HeaderActions />
+                }}
+            />
+            <Drawer.Screen
+                name="Reports"
+                component={ReportsScreen}
+                options={{
+                    title: 'Business Reports',
+                    drawerIcon: ({ color, size }) => <Ionicons name="bar-chart-outline" size={size} color={color} />
                 }}
             />
             <Drawer.Screen
