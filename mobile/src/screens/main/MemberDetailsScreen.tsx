@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity,
-    ActivityIndicator, FlatList, Platform, Modal, TextInput, Alert, Animated, ScrollView
+    ActivityIndicator, FlatList, Platform, Modal, TextInput, Alert, Animated, ScrollView, Image
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import api from '../../services/api';

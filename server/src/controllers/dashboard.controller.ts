@@ -78,16 +78,16 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
                 const nextDates: Date[] = [];
                 for (const structId in paymentsByStructure) {
                     const structPayments = paymentsByStructure[structId] || [];
-                    const sortedStructPayments = structPayments.sort((a,b) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime());
+                    const sortedStructPayments = structPayments.sort((a, b) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime());
                     const latest = sortedStructPayments[0];
                     if (latest && latest.nextPaymentDate) {
                         nextDates.push(new Date(latest.nextPaymentDate));
                     }
                 }
-                
+
                 if (nextDates.length > 0) {
                     // Find earliest upcoming date
-                    nextPaymentDate = nextDates.sort((a,b) => a.getTime() - b.getTime())[0];
+                    nextPaymentDate = nextDates.sort((a, b) => a.getTime() - b.getTime())[0];
                 }
 
                 return {
@@ -118,6 +118,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
         });
 
         let systemTotalFees = 0;
+        let systemTotalPendingDeficits = 0;
         const expiringMembers: any[] = [];
         const today = new Date();
         const nextWeek = new Date();
@@ -134,24 +135,35 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
                 });
             } else {
                 group = feeGroups.find(g => {
-                    return (g.members && g.members.some((id: any) => id.toString() === mId)) || 
-                           (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)));
+                    return (g.members && g.members.some((id: any) => id.toString() === mId)) ||
+                        (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)));
                 });
             }
 
+            let memberTotalFee = 0;
             if (group) {
-                systemTotalFees += (groupTotalFees[group._id!.toString()] || 0);
+                memberTotalFee += (groupTotalFees[group._id!.toString()] || 0);
             }
 
             if (m.addonFeeIds && m.addonFeeIds.length > 0) {
                 const addonAmount = feeStructures
                     .filter(s => m.addonFeeIds!.some((id: any) => id.toString() === s._id!.toString()))
                     .reduce((sum, s) => sum + s.amount, 0);
-                systemTotalFees += addonAmount;
+                memberTotalFee += addonAmount;
+            }
+
+            systemTotalFees += memberTotalFee;
+
+            // Find individual member deficit
+            const memberPayments = feePayments.filter(p => p.memberId.toString() === mId);
+            const memberTotalPaid = memberPayments.reduce((sum, p) => sum + p.amount, 0);
+
+            const individualDeficit = memberTotalFee - memberTotalPaid;
+            if (individualDeficit > 0) {
+                systemTotalPendingDeficits += individualDeficit;
             }
 
             // Find expiry by structure
-            const memberPayments = feePayments.filter(p => p.memberId.toString() === mId);
             const paymentsByStructure: Record<string, any[]> = {};
             memberPayments.forEach(p => {
                 const structId = p.feeStructureId ? p.feeStructureId.toString() : 'general';
@@ -161,7 +173,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
 
             for (const structId in paymentsByStructure) {
                 const structPayments = paymentsByStructure[structId] || [];
-                const sortedStructPayments = structPayments.sort((a,b) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime());
+                const sortedStructPayments = structPayments.sort((a, b) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime());
                 const latestPayment = sortedStructPayments[0];
                 if (latestPayment && latestPayment.nextPaymentDate) {
                     const nextDate = new Date(latestPayment.nextPaymentDate);
@@ -190,10 +202,10 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
 
         const todayDate = new Date();
         const pad = (n: number) => n < 10 ? '0' + n : n;
-        
+
         const todayStr = `${todayDate.getFullYear()}-${pad(todayDate.getMonth() + 1)}-${pad(todayDate.getDate())}`;
         const thisMonthStr = `${todayDate.getFullYear()}-${pad(todayDate.getMonth() + 1)}`;
-        
+
         const lastMonthDate = new Date(todayDate.getFullYear(), todayDate.getMonth() - 1, 1);
         const lastMonthStr = `${lastMonthDate.getFullYear()}-${pad(lastMonthDate.getMonth() + 1)}`;
 
@@ -206,7 +218,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
             const d = new Date(p.paymentDate || p.createdAt || todayDate);
             return `${d.getFullYear()}-${pad(d.getMonth() + 1)}` === thisMonthStr;
         }).reduce((sum, p) => sum + p.amount, 0);
-        
+
         const collectionLastMonth = feePayments.filter(p => {
             const d = new Date(p.paymentDate || p.createdAt || todayDate);
             return `${d.getFullYear()}-${pad(d.getMonth() + 1)}` === lastMonthStr;
@@ -215,7 +227,8 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
         const stats = {
             totalMembers: members.length,
             totalFeeGroups: feeGroups.length,
-            totalPendingAmount: systemTotalFees - systemTotalPaid,
+            totalFeeStructures: feeStructures.length,
+            totalPendingAmount: systemTotalPendingDeficits,
             totalCollectedAmount: systemTotalPaid,
             collectionToday,
             collectionThisMonth,
@@ -317,6 +330,6 @@ export const getDashboardReports = async (req: AuthRequest, res: Response, next:
 };
 
 function currentMonthDateLabel(date: Date) {
-    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return `${months[date.getMonth()]} ${date.getFullYear()}`;
 }

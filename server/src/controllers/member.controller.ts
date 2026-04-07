@@ -3,6 +3,7 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import memberService from '../services/member.service';
 import { Member } from '../models/member.model';
 import { User } from '../models/user.model';
+import { FeePayment } from '../models/fee-payment.model';
 import { AppError } from '../utils/AppError';
 import { HTTP_STATUS } from '../utils/constants';
 import { ObjectId } from 'mongodb';
@@ -179,6 +180,31 @@ export const createMember = async (req: AuthRequest, res: Response, next: NextFu
             console.error('Error auto-creating parent user:', e);
         }
 
+        // POS Onboarding: Inject Fee Payment
+        if (req.body.initialPayment) {
+            try {
+                const { amount, paymentMethod, nextPaymentDateStr, referenceDocumentUrl } = req.body.initialPayment;
+                const payment = new FeePayment({
+                    entityId: new ObjectId(req.user!.entityId),
+                    memberId: new ObjectId(result.insertedId.toString()),
+                    amount: amount,
+                    paymentMethod: paymentMethod || 'cash',
+                    referenceDocumentUrl: referenceDocumentUrl,
+                    paymentDate: new Date(), // Today
+                    nextPaymentDate: nextPaymentDateStr ? new Date(nextPaymentDateStr) : undefined,
+                    notes: 'POS Initial Onboarding Payment'
+                });
+
+                if (payment.valid) {
+                    await feePaymentService.insert(payment);
+                } else {
+                    console.error('Initial payment payload invalid:', payment);
+                }
+            } catch (e: any) {
+                console.error('Error recording POS initial payment:', e);
+            }
+        }
+
         res.status(HTTP_STATUS.CREATED).json(result);
     } catch (error) {
         next(error);
@@ -192,7 +218,7 @@ export const updateMember = async (req: AuthRequest, res: Response, next: NextFu
 
         // Validation for partial update
         let updateData: any = { $set: {} };
-        const allowedFields = ['firstName', 'middleName', 'lastName', 'knownId', 'dob', 'contact', 'altContact', 'fatherOccupation', 'motherOccupation', 'address', 'addonFeeIds'];
+        const allowedFields = ['firstName', 'middleName', 'lastName', 'knownId', 'dob', 'contact', 'altContact', 'fatherOccupation', 'motherOccupation', 'address', 'addonFeeIds', 'profilePicUrl'];
         allowedFields.forEach(field => {
             if (req.body[field] !== undefined) {
                 updateData.$set[field] = req.body[field];

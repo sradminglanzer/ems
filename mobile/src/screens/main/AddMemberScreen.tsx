@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useContext } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity,
-    TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Animated
+    TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Animated, Image
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import api from '../../services/api';
+import api, { getUploadUrl } from '../../services/api';
 import { theme, globalStyles } from '../../theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -41,7 +42,31 @@ export default function AddMemberScreen() {
     const [motherOccupation, setMotherOccupation] = useState(memberToEdit?.motherOccupation || '');
     const [address, setAddress] = useState(memberToEdit?.address || '');
 
+    const [profilePicUrl, setProfilePicUrl] = useState(memberToEdit?.profilePicUrl || '');
+    const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // POS Onboarding States
+    const [posPaymentMethod, setPosPaymentMethod] = useState('cash');
+    const [posAmountCollected, setPosAmountCollected] = useState('');
+    const [posNextRenewalDateStr, setPosNextRenewalDateStr] = useState('');
+    const [posNextRenewalDate, setPosNextRenewalDate] = useState<Date | null>(null);
+    const [showPosRenewalPicker, setShowPosRenewalPicker] = useState(false);
+    const [posReferenceDocumentUrl, setPosReferenceDocumentUrl] = useState('');
+    const [isUploadingProof, setIsUploadingProof] = useState(false);
+
+    useEffect(() => {
+        if (user?.entityType === 'gym' && !memberToEdit) {
+            const selectedFees = globalFees.filter(f => addonFeeIds.includes(f._id));
+            const total = selectedFees.reduce((sum, f) => sum + f.amount, 0);
+            if (total > 0) {
+                setPosAmountCollected(total.toString());
+            } else {
+                setPosAmountCollected('');
+            }
+        }
+    }, [addonFeeIds, globalFees, user?.entityType]);
 
     useEffect(() => {
         if (!initialFeeGroupId && !memberToEdit) {
@@ -61,6 +86,82 @@ export default function AddMemberScreen() {
         }
     }, [initialFeeGroupId, memberToEdit]);
 
+    const handlePickImage = async () => {
+        try {
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.5,
+            });
+
+            if (!result.canceled && result.assets[0]) {
+                const imgUri = result.assets[0].uri;
+                setIsUploadingPhoto(true);
+
+                // 1) Get secure presigned URL
+                const ext = imgUri.split('.').pop() || 'jpg';
+                const filename = `avatar.${ext}`;
+                const urlRes = await getUploadUrl(filename, 'image/jpeg');
+                const { uploadUrl, publicUrl } = urlRes.data;
+
+                // 2) Convert local URI to Blob
+                const response = await fetch(imgUri);
+                const blob = await response.blob();
+
+                // 3) PUT directly to S3
+                await fetch(uploadUrl, {
+                    method: 'PUT',
+                    body: blob,
+                    headers: { 'Content-Type': 'image/jpeg' },
+                });
+
+                // 4) Set successful URL
+                setProfilePicUrl(publicUrl);
+            }
+        } catch (error) {
+            console.error('Failed to upload image:', error);
+            alert('Failed to upload image securely.');
+        } finally {
+            setIsUploadingPhoto(false);
+        }
+    };
+
+    const handlePickProof = async () => {
+        try {
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                quality: 0.6,
+            });
+
+            if (!result.canceled && result.assets[0]) {
+                const imgUri = result.assets[0].uri;
+                setIsUploadingProof(true);
+
+                const ext = imgUri.split('.').pop() || 'jpg';
+                const filename = `proof-${Date.now()}.${ext}`;
+                const urlRes = await getUploadUrl(filename, 'image/jpeg');
+                const { uploadUrl, publicUrl } = urlRes.data;
+
+                const response = await fetch(imgUri);
+                const blob = await response.blob();
+
+                await fetch(uploadUrl, {
+                    method: 'PUT',
+                    body: blob,
+                    headers: { 'Content-Type': 'image/jpeg' },
+                });
+
+                setPosReferenceDocumentUrl(publicUrl);
+            }
+        } catch (error) {
+            console.error('Failed to upload proof:', error);
+            alert('Failed to upload payment proof securely.');
+        } finally {
+            setIsUploadingProof(false);
+        }
+    };
+
     const handleCreate = async () => {
         const finalKnownId = (user?.entityType === 'gym' && !knownId) ? `GYM-${Date.now().toString().slice(-6)}` : knownId;
 
@@ -77,7 +178,16 @@ export default function AddMemberScreen() {
                 contact, altContact, fatherOccupation,
                 motherOccupation, address,
                 addonFeeIds,
-                ...(feeGroupId ? { feeGroupId, ...(user?.entityType !== 'gym' && selectedAcademicYearId ? { academicYearId: selectedAcademicYearId } : {}) } : {})
+                profilePicUrl,
+                ...(feeGroupId ? { feeGroupId, ...(user?.entityType !== 'gym' && selectedAcademicYearId ? { academicYearId: selectedAcademicYearId } : {}) } : {}),
+                ...(user?.entityType === 'gym' && !memberToEdit && posAmountCollected ? {
+                    initialPayment: {
+                        amount: Number(posAmountCollected),
+                        paymentMethod: posPaymentMethod,
+                        nextPaymentDateStr: posNextRenewalDateStr || (posNextRenewalDate ? posNextRenewalDate.toISOString().split('T')[0] : ''),
+                        referenceDocumentUrl: posReferenceDocumentUrl
+                    }
+                } : {})
             };
 
             if (memberToEdit) {
@@ -138,9 +248,20 @@ export default function AddMemberScreen() {
                 </View>
 
                 <Animated.View style={[styles.heroContent, { opacity: headerOpacity }]}>
-                    <View style={styles.iconBg}>
-                        <Ionicons name={memberToEdit ? "pencil" : "person-add"} size={32} color={theme.colors.primary} />
-                    </View>
+                    <TouchableOpacity style={styles.iconBg} onPress={handlePickImage} disabled={isUploadingPhoto}>
+                        {isUploadingPhoto ? (
+                            <ActivityIndicator color={theme.colors.primary} />
+                        ) : profilePicUrl ? (
+                            <Image source={{ uri: profilePicUrl }} style={{ width: 64, height: 64, borderRadius: 32 }} />
+                        ) : (
+                            <View style={{ alignItems: 'center' }}>
+                                <Ionicons name={"camera"} size={22} color={theme.colors.primary} />
+                            </View>
+                        )}
+                        <View style={styles.editBadge}>
+                            <Ionicons name="pencil" size={12} color={theme.colors.surface} />
+                        </View>
+                    </TouchableOpacity>
                     <Text style={styles.heroTitle}>{memberToEdit ? `Edit ${getTerm('Student', user?.entityType)}` : `Add New ${getTerm('Student', user?.entityType)}`}</Text>
                     <Text style={styles.heroSubtitle}>
                         {memberToEdit ? `Update records and details` : `Register a new ${getTerm('Student', user?.entityType).toLowerCase()} into the system`}
@@ -298,6 +419,93 @@ export default function AddMemberScreen() {
                     </View>
                 )}
 
+                {user?.entityType === 'gym' && addonFeeIds.length > 0 && !memberToEdit && (
+                    <View style={styles.glassCard}>
+                        <View style={styles.sectionHeader}>
+                            <Ionicons name="card-outline" size={18} color={theme.colors.success} />
+                            <Text style={styles.sectionTitle}>Initial POS Payment</Text>
+                        </View>
+                        
+                        <Text style={globalStyles.label}>Amount Collected (₹)</Text>
+                        <TextInput
+                            style={[globalStyles.input, { borderColor: theme.colors.success + '50', borderWidth: 1 }]}
+                            placeholder="0"
+                            keyboardType="numeric"
+                            value={posAmountCollected}
+                            onChangeText={setPosAmountCollected}
+                            placeholderTextColor={theme.colors.textMuted}
+                        />
+
+                        <Text style={globalStyles.label}>Payment Method</Text>
+                        <View style={styles.mockPicker}>
+                            {['cash', 'upi', 'card'].map(method => (
+                                <TouchableOpacity
+                                    key={method}
+                                    style={[styles.pill, posPaymentMethod === method && { borderColor: theme.colors.success, backgroundColor: theme.colors.success + '15' }]}
+                                    onPress={() => setPosPaymentMethod(method)}
+                                >
+                                    <Text style={[styles.pillText, posPaymentMethod === method && { color: theme.colors.success, fontWeight: 'bold' }]}>{method.toUpperCase()}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+
+                        <Text style={globalStyles.label}>Next Renewal Date</Text>
+                        <View style={{ marginBottom: 12 }}>
+                            {Platform.OS === 'web' ? (
+                                <TextInput
+                                    style={globalStyles.input}
+                                    placeholder="YYYY-MM-DD"
+                                    value={posNextRenewalDateStr}
+                                    onChangeText={(text) => {
+                                        setPosNextRenewalDateStr(text);
+                                        const parsedDate = new Date(text);
+                                        if (!isNaN(parsedDate.getTime())) {
+                                            setPosNextRenewalDate(parsedDate);
+                                        }
+                                    }}
+                                    // @ts-ignore
+                                    type="date"
+                                    placeholderTextColor={theme.colors.textMuted}
+                                />
+                            ) : (
+                                <>
+                                    <TouchableOpacity
+                                        style={[globalStyles.input, { justifyContent: 'center' }]}
+                                        onPress={() => setShowPosRenewalPicker(true)}
+                                    >
+                                        <Text style={{ color: posNextRenewalDate ? theme.colors.textPrimary : theme.colors.textMuted }}>
+                                            {posNextRenewalDate ? posNextRenewalDate.toISOString().split('T')[0] : "Select Expiry Date"}
+                                        </Text>
+                                    </TouchableOpacity>
+                                    {showPosRenewalPicker ? (
+                                        <DateTimePicker
+                                            value={posNextRenewalDate || new Date()}
+                                            mode="date"
+                                            display="default"
+                                            onChange={(event, selectedDate) => {
+                                                setShowPosRenewalPicker(Platform.OS === 'ios');
+                                                if (selectedDate) setPosNextRenewalDate(selectedDate);
+                                            }}
+                                        />
+                                    ) : null}
+                                </>
+                            )}
+                        </View>
+
+                        {(posPaymentMethod === 'upi' || posPaymentMethod === 'card') && (
+                            <View>
+                                <Text style={globalStyles.label}>Upload Payment Proof</Text>
+                                <TouchableOpacity style={[styles.pill, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12 }]} onPress={handlePickProof} disabled={isUploadingProof}>
+                                    <Ionicons name={posReferenceDocumentUrl ? "checkmark-circle" : "cloud-upload-outline"} size={20} color={posReferenceDocumentUrl ? theme.colors.success : theme.colors.primary} style={{ marginRight: 8 }} />
+                                    <Text style={[styles.pillText, posReferenceDocumentUrl && { color: theme.colors.success, fontWeight: 'bold' }]}>
+                                        {isUploadingProof ? "Uploading..." : posReferenceDocumentUrl ? "Proof Uploaded" : "Attach Screenshot"}
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+                        )}
+                    </View>
+                )}
+
                 <View style={styles.glassCard}>
                     <View style={styles.sectionHeader}>
                         <Ionicons name="call-outline" size={18} color={theme.colors.secondary} />
@@ -419,15 +627,22 @@ const styles = StyleSheet.create({
     heroContent: {
         alignItems: 'center',
         position: 'absolute',
-        top: Platform.OS === 'ios' ? 90 : 70,
+        top: Platform.OS === 'ios' ? 70 : 50,
         left: 0,
         right: 0,
     },
     iconBg: {
-        width: 48, height: 48, borderRadius: 24,
+        width: 64, height: 64, borderRadius: 32,
         backgroundColor: theme.colors.surface,
         justifyContent: 'center', alignItems: 'center',
         marginBottom: 8, ...theme.shadows.sm,
+    },
+    editBadge: {
+        position: 'absolute', bottom: -2, right: -2,
+        width: 24, height: 24, borderRadius: 12,
+        backgroundColor: theme.colors.primary,
+        justifyContent: 'center', alignItems: 'center',
+        borderWidth: 2, borderColor: theme.colors.surface
     },
     heroTitle: { fontSize: 22, fontWeight: 'bold', color: theme.colors.surface, letterSpacing: 0.5 },
     heroSubtitle: { fontSize: 14, color: 'rgba(255,255,255,0.8)', marginTop: 4, fontWeight: '500' },

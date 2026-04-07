@@ -15,6 +15,7 @@ export class Member {
     address?: string;
     feeGroupId?: ObjectId;
     addonFeeIds?: ObjectId[];
+    profilePicUrl?: string;
     createdAt?: Date;
     updatedAt?: Date;
 
@@ -37,6 +38,7 @@ export class Member {
         if (Array.isArray(data.addonFeeIds)) {
             this.addonFeeIds = data.addonFeeIds.map((id: any) => new ObjectId(id));
         }
+        this.profilePicUrl = data.profilePicUrl;
 
         this.createdAt = data.createdAt || new Date();
         this.updatedAt = data.updatedAt || new Date();

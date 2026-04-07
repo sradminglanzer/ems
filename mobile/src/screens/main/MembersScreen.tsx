@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
     View, Text, StyleSheet, FlatList, TouchableOpacity,
-    ActivityIndicator, Platform, Animated
+    ActivityIndicator, Platform, Animated, Image
 } from 'react-native';
 import api from '../../services/api';
 import { theme, globalStyles } from '../../theme';
@@ -86,12 +86,16 @@ export default function MembersScreen() {
             >
                 <View style={styles.cardHeader}>
                     <View style={styles.avatarContainer}>
-                        <LinearGradient
-                            colors={isPendingFeesFilter ? theme.gradients.danger : theme.gradients.primary}
-                            style={styles.avatarGradient}
-                        >
-                            <Text style={styles.avatarText}>{initials}</Text>
-                        </LinearGradient>
+                        {item.profilePicUrl ? (
+                            <Image source={{ uri: item.profilePicUrl }} style={styles.avatarImage} />
+                        ) : (
+                            <LinearGradient
+                                colors={isPendingFeesFilter ? theme.gradients.danger : theme.gradients.primary}
+                                style={styles.avatarGradient}
+                            >
+                                <Text style={styles.avatarText}>{initials}</Text>
+                            </LinearGradient>
+                        )}
                     </View>
                     <View style={styles.cardInfo}>
                         <Text style={styles.memberName} numberOfLines={1}>{item.firstName} {item.lastName}</Text>
@@ -302,8 +306,13 @@ const styles = StyleSheet.create({
     },
     avatarText: {
         color: theme.colors.surface,
-        fontSize: 14,
         fontWeight: 'bold',
+        fontSize: 16,
+    },
+    avatarImage: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
     },
     cardInfo: {
         flex: 1

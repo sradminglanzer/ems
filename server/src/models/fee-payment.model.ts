@@ -9,6 +9,8 @@ export class FeePayment {
     feeStructureId?: ObjectId;
     amount: number;
     notes?: string;
+    paymentMethod?: string;
+    referenceDocumentUrl?: string;
     paymentDate: Date;
     nextPaymentDate?: Date;
     createdAt?: Date;
@@ -23,6 +25,8 @@ export class FeePayment {
         if (data.feeStructureId) this.feeStructureId = new ObjectId(data.feeStructureId);
         this.amount = Number(data.amount);
         this.notes = data.notes;
+        this.paymentMethod = data.paymentMethod || 'cash';
+        this.referenceDocumentUrl = data.referenceDocumentUrl;
         this.paymentDate = data.paymentDate ? new Date(data.paymentDate) : new Date();
         if (data.nextPaymentDate) this.nextPaymentDate = new Date(data.nextPaymentDate);
         this.createdAt = data.createdAt || new Date();
