@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity,
-    ActivityIndicator, FlatList, Platform, Modal, TextInput, Alert, Animated, ScrollView, Image
+    ActivityIndicator, FlatList, Platform, Modal, TextInput, Alert, Animated, ScrollView, Image, Linking
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import api from '../../services/api';
@@ -12,6 +12,7 @@ import { AuthContext } from '../../context/AuthContext';
 import { useContext } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getTerm } from '../../utils/terminology';
+import { generateAndShareInvoice } from '../../utils/InvoiceGenerator';
 
 export default function MemberDetailsScreen() {
     const { user, selectedAcademicYearId } = useContext(AuthContext);
@@ -24,6 +25,8 @@ export default function MemberDetailsScreen() {
     const [payments, setPayments] = useState<any[]>([]);
     const [results, setResults] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+
+    const [successModalData, setSuccessModalData] = useState<any | null>(null);
 
     // Collect Fee Modal Checkout Cart
     const [feeModalVisible, setFeeModalVisible] = useState(false);
@@ -123,7 +126,35 @@ export default function MemberDetailsScreen() {
 
         setIsSubmitting(true);
         try {
-            await api.post('/fee-payments', { payments: paymentsToSubmit });
+            const response = await api.post('/fee-payments', { payments: paymentsToSubmit });
+            const assignedReceiptNo = response.data?.[0]?.receiptNo || `REC-${Date.now().toString().slice(-6)}`;
+            
+            // Trigger Receipt Generation
+            if (user?.entityType === 'gym') {
+                const selectedItems = feeStructures.filter(s => cartPayments[s._id]?.checked);
+                const totalAmount = paymentsToSubmit.reduce((sum, p) => sum + p.amount, 0);
+                const nextDates = paymentsToSubmit.map(p => p.nextPaymentDate).filter(Boolean);
+                const representativeRenewal = nextDates.length > 0 ? nextDates[0] : undefined;
+                
+                setSuccessModalData({
+                    receiptNo: assignedReceiptNo,
+                    date: new Date(),
+                    member: {
+                        name: `${member.firstName} ${member.lastName}`.trim(),
+                        knownId: member.knownId || 'N/A',
+                        contact: member.contact || 'N/A'
+                    },
+                    gymName: user?.entityName || 'Gym',
+                    items: selectedItems.map(s => ({
+                        description: s.name,
+                        amount: parseFloat(cartPayments[s._id].amount || '0')
+                    })),
+                    totalPaid: totalAmount,
+                    paymentMethod: 'Manual Payment',
+                    nextRenewalDate: representativeRenewal ? new Date(representativeRenewal) : undefined
+                });
+            }
+
             setFeeModalVisible(false);
             setCartPayments({});
             loadData();
@@ -132,6 +163,32 @@ export default function MemberDetailsScreen() {
             alert('Failed to record payment');
         } finally {
             setIsSubmitting(false);
+        }
+    };
+
+    const handlePrintPastInvoice = async (item: any) => {
+        try {
+            const structureName = feeStructures.find(s => s._id === item.feeStructureId)?.name || 'Fee Payment';
+            await generateAndShareInvoice({
+                receiptNo: item.receiptNo || 'N/A',
+                date: new Date(item.paymentDate),
+                member: {
+                    name: `${member.firstName} ${member.lastName}`.trim(),
+                    knownId: member.knownId || 'N/A',
+                    contact: member.contact || 'N/A'
+                },
+                gymName: user?.entityName || 'Gym',
+                items: [{
+                    description: structureName,
+                    amount: item.amount
+                }],
+                totalPaid: item.amount,
+                paymentMethod: item.paymentMethod || 'cash',
+                nextRenewalDate: item.nextPaymentDate ? new Date(item.nextPaymentDate) : undefined
+            });
+        } catch (e) {
+            console.error('Invoice print error:', e);
+            alert('Failed to print receipt.');
         }
     };
 
@@ -437,11 +494,22 @@ export default function MemberDetailsScreen() {
                                 </View>
                                 <View style={styles.paymentInfo}>
                                     <Text style={styles.paymentAmount}>₹{item.amount.toLocaleString('en-IN')}</Text>
-                                    <Text style={styles.paymentDate}>{new Date(item.paymentDate).toLocaleDateString()}</Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <Text style={styles.paymentDate}>{new Date(item.paymentDate).toLocaleDateString()}</Text>
+                                        {item.receiptNo ? <Text style={[styles.paymentDate, { marginLeft: 8, fontWeight: 'bold' }]}>#{item.receiptNo}</Text> : null}
+                                    </View>
                                     {item.notes ? (
                                         <Text style={styles.notesText}>{item.notes}</Text>
                                     ) : null}
                                 </View>
+                                {user?.role !== 'parent' && (
+                                    <TouchableOpacity 
+                                        style={styles.printIconButton} 
+                                        onPress={() => handlePrintPastInvoice(item)}
+                                    >
+                                        <Ionicons name="print-outline" size={20} color={theme.colors.primary} />
+                                    </TouchableOpacity>
+                                )}
                             </View>
                         )}
                     />
@@ -479,11 +547,10 @@ export default function MemberDetailsScreen() {
 
                                                 <Text style={globalStyles.label}>Next Renewal Date</Text>
                                                 {Platform.OS === 'web' ? (
-                                                    // @ts-ignore
                                                     <TextInput style={globalStyles.input} placeholder="YYYY-MM-DD" value={cartItem.nextPaymentDateStr} onChangeText={(val) => {
                                                         const d = new Date(val);
                                                         setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], nextPaymentDateStr: val, nextPaymentDate: !isNaN(d.getTime()) ? d : prev[s._id].nextPaymentDate } }));
-                                                    }} type="date" />
+                                                    }} {...{ type: "date" } as any} />
                                                 ) : (
                                                     <>
                                                         <TouchableOpacity style={[globalStyles.input, { justifyContent: 'center' }]} onPress={() => setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], showPicker: true } }))}>
@@ -528,6 +595,42 @@ export default function MemberDetailsScreen() {
                         <TouchableOpacity style={[globalStyles.submitButton, isSubmitting && globalStyles.disabledButton]} onPress={handleCollectFee} disabled={isSubmitting}>
                             {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={globalStyles.submitButtonText}>Confirm Payment</Text>}
                         </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Payment Success Modal */}
+            <Modal animationType="fade" transparent={true} visible={!!successModalData} onRequestClose={() => setSuccessModalData(null)}>
+                <View style={globalStyles.modalOverlay}>
+                    <View style={[globalStyles.modalContent, { alignItems: 'center', paddingVertical: 32 }]}>
+                        <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: theme.colors.success + '20', justifyContent: 'center', alignItems: 'center', marginBottom: 16 }}>
+                            <Ionicons name="checkmark-circle" size={48} color={theme.colors.success} />
+                        </View>
+                        <Text style={{ fontSize: 24, fontWeight: 'bold', color: theme.colors.textPrimary, marginBottom: 8 }}>Payment Successful!</Text>
+                        <Text style={{ fontSize: 16, color: theme.colors.textSecondary, marginBottom: 24 }}>Amount: ₹{successModalData?.totalPaid}  |  #{successModalData?.receiptNo}</Text>
+
+                        <View style={{ width: '100%', gap: 12 }}>
+                            <TouchableOpacity style={[globalStyles.submitButton, { backgroundColor: theme.colors.primary, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 }]} onPress={() => {
+                                generateAndShareInvoice(successModalData);
+                            }}>
+                                <Ionicons name="print-outline" size={20} color={theme.colors.surface} />
+                                <Text style={globalStyles.submitButtonText}>Print / Save Receipt</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity style={[globalStyles.submitButton, { backgroundColor: '#25D366', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 }]} onPress={() => {
+                                const msg = `Hello ${successModalData?.member?.name},\nYour payment of ₹${successModalData?.totalPaid} for ${successModalData?.gymName} is successful. Receipt No: ${successModalData?.receiptNo}. Thank you!`;
+                                Linking.openURL(`whatsapp://send?text=${encodeURIComponent(msg)}`).catch(() => {
+                                    alert('WhatsApp is not installed on your device.');
+                                });
+                            }}>
+                                <Ionicons name="logo-whatsapp" size={20} color={theme.colors.surface} />
+                                <Text style={globalStyles.submitButtonText}>Share via WhatsApp</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity style={[globalStyles.submitButton, { backgroundColor: theme.colors.background, borderWidth: 1, borderColor: theme.colors.border }]} onPress={() => setSuccessModalData(null)}>
+                                <Text style={[globalStyles.submitButtonText, { color: theme.colors.textPrimary }]}>Done</Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 </View>
             </Modal>
@@ -863,6 +966,15 @@ const styles = StyleSheet.create({
         fontSize: 13,
         color: theme.colors.textSecondary,
         marginBottom: 4,
+    },
+    printIconButton: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: theme.colors.primary + '15',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginLeft: 8,
     },
     notesText: {
         fontSize: 13,

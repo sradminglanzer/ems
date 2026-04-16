@@ -9,7 +9,8 @@ import { ObjectId } from 'mongodb';
 export const getUsers = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
         const users = await userService.getUsersByEntity(req.user!.entityId);
-        res.status(HTTP_STATUS.OK).json(users);
+        const staff = users.filter((u: any) => u.role !== 'parent');
+        res.status(HTTP_STATUS.OK).json(staff);
     } catch (error) {
         next(error);
     }

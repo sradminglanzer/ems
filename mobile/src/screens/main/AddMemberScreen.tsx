@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity,
-    TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Animated, Image
+    TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Animated, Image, Modal, Linking
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -13,6 +13,7 @@ import { AuthContext } from '../../context/AuthContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getTerm } from '../../utils/terminology';
+import { generateAndShareInvoice } from '../../utils/InvoiceGenerator';
 
 export default function AddMemberScreen() {
     const { selectedAcademicYearId, user } = useContext(AuthContext);
@@ -46,6 +47,7 @@ export default function AddMemberScreen() {
     const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
 
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [successModalData, setSuccessModalData] = useState<any | null>(null);
 
     // POS Onboarding States
     const [posPaymentMethod, setPosPaymentMethod] = useState('cash');
@@ -193,13 +195,33 @@ export default function AddMemberScreen() {
             if (memberToEdit) {
                 // Update
                 await api.put(`/members/${memberToEdit._id}`, payload);
+                navigation.goBack();
             } else {
                 // Create
-                await api.post('/members', payload);
+                const response = await api.post('/members', payload);
+                const assignedReceiptNo = response.data?.receiptNo || `REC-${Date.now().toString().slice(-6)}`;
+                
+                // Trigger Receipt Generation
+                if (user?.entityType === 'gym' && posAmountCollected && Number(posAmountCollected) > 0) {
+                    const selectedFees = globalFees.filter(f => addonFeeIds.includes(f._id));
+                    setSuccessModalData({
+                        receiptNo: assignedReceiptNo,
+                        date: new Date(),
+                        member: {
+                            name: `${firstName} ${lastName}`.trim(),
+                            knownId: finalKnownId,
+                            contact: contact || 'N/A'
+                        },
+                        gymName: user?.entityName || 'Gym',
+                        items: selectedFees.map((f: any) => ({ description: f.name, amount: f.amount })),
+                        totalPaid: Number(posAmountCollected),
+                        paymentMethod: posPaymentMethod,
+                        nextRenewalDate: posNextRenewalDateStr ? new Date(posNextRenewalDateStr) : (posNextRenewalDate || undefined)
+                    });
+                } else {
+                    navigation.goBack();
+                }
             }
-
-            // Go back to the previous screen (Members list)
-            navigation.goBack();
         } catch (error: any) {
             alert(error.response?.data?.message || `Failed to save ${getTerm('Student', user?.entityType).toLowerCase()} details`);
         } finally {
@@ -588,6 +610,48 @@ export default function AddMemberScreen() {
                     )}
                 </TouchableOpacity>
             </View>
+
+            {/* Payment Success Modal */}
+            <Modal animationType="fade" transparent={true} visible={!!successModalData} onRequestClose={() => {
+                setSuccessModalData(null);
+                navigation.goBack();
+            }}>
+                <View style={globalStyles.modalOverlay}>
+                    <View style={[globalStyles.modalContent, { alignItems: 'center', paddingVertical: 32 }]}>
+                        <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: theme.colors.success + '20', justifyContent: 'center', alignItems: 'center', marginBottom: 16 }}>
+                            <Ionicons name="checkmark-circle" size={48} color={theme.colors.success} />
+                        </View>
+                        <Text style={{ fontSize: 24, fontWeight: 'bold', color: theme.colors.textPrimary, marginBottom: 8 }}>Payment Successful!</Text>
+                        <Text style={{ fontSize: 16, color: theme.colors.textSecondary, marginBottom: 24 }}>Amount: ₹{successModalData?.totalPaid}  |  #{successModalData?.receiptNo}</Text>
+
+                        <View style={{ width: '100%', gap: 12 }}>
+                            <TouchableOpacity style={[globalStyles.submitButton, { backgroundColor: theme.colors.primary, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 }]} onPress={() => {
+                                generateAndShareInvoice(successModalData);
+                            }}>
+                                <Ionicons name="print-outline" size={20} color={theme.colors.surface} />
+                                <Text style={globalStyles.submitButtonText}>Print / Save Receipt</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity style={[globalStyles.submitButton, { backgroundColor: '#25D366', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 }]} onPress={() => {
+                                const msg = `Hello ${successModalData?.member?.name},\nYour registration and payment of ₹${successModalData?.totalPaid} for ${successModalData?.gymName} is successful. Receipt No: ${successModalData?.receiptNo}. Welcome!`;
+                                Linking.openURL(`whatsapp://send?text=${encodeURIComponent(msg)}`).catch(() => {
+                                    alert('WhatsApp is not installed on your device.');
+                                });
+                            }}>
+                                <Ionicons name="logo-whatsapp" size={20} color={theme.colors.surface} />
+                                <Text style={globalStyles.submitButtonText}>Share via WhatsApp</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity style={[globalStyles.submitButton, { backgroundColor: theme.colors.background, borderWidth: 1, borderColor: theme.colors.border }]} onPress={() => {
+                                setSuccessModalData(null);
+                                navigation.goBack();
+                            }}>
+                                <Text style={[globalStyles.submitButtonText, { color: theme.colors.textPrimary }]}>Done</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </KeyboardAvoidingView>
     );
 }

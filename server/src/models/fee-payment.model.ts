@@ -11,6 +11,7 @@ export class FeePayment {
     notes?: string;
     paymentMethod?: string;
     referenceDocumentUrl?: string;
+    receiptNo?: string;
     paymentDate: Date;
     nextPaymentDate?: Date;
     createdAt?: Date;
@@ -27,6 +28,7 @@ export class FeePayment {
         this.notes = data.notes;
         this.paymentMethod = data.paymentMethod || 'cash';
         this.referenceDocumentUrl = data.referenceDocumentUrl;
+        if (data.receiptNo) this.receiptNo = data.receiptNo;
         this.paymentDate = data.paymentDate ? new Date(data.paymentDate) : new Date();
         if (data.nextPaymentDate) this.nextPaymentDate = new Date(data.nextPaymentDate);
         this.createdAt = data.createdAt || new Date();

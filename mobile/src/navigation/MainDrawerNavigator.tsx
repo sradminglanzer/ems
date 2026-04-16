@@ -11,6 +11,7 @@ import ExamsScreen from '../screens/main/ExamsScreen';
 import MembersScreen from '../screens/main/MembersScreen';
 import CreateExamScreen from '../screens/main/CreateExamScreen';
 import AcademicYearsScreen from '../screens/main/AcademicYearsScreen';
+import SettingsScreen from '../screens/main/SettingsScreen';
 import HeaderActions from '../components/HeaderActions';
 import { theme } from '../theme';
 import { Ionicons } from '@expo/vector-icons';
@@ -171,6 +172,17 @@ export default function MainDrawerNavigator() {
                     options={{
                         drawerIcon: ({ color, size }) => <Ionicons name="calendar-outline" size={size} color={color} />,
                         title: 'Academic Years',
+                        drawerItemStyle: { marginTop: 16, borderTopWidth: 1, borderTopColor: theme.colors.border, paddingTop: 16 }
+                    }}
+                />
+            )}
+            {(user?.role === 'admin' || user?.role === 'owner') && (
+                <Drawer.Screen
+                    name="Settings"
+                    component={SettingsScreen}
+                    options={{
+                        drawerIcon: ({ color, size }) => <Ionicons name="settings-outline" size={size} color={color} />,
+                        title: 'Business Settings',
                         drawerItemStyle: { marginTop: 16, borderTopWidth: 1, borderTopColor: theme.colors.border, paddingTop: 16 }
                     }}
                 />

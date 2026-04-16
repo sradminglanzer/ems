@@ -180,6 +180,7 @@ export const createMember = async (req: AuthRequest, res: Response, next: NextFu
             console.error('Error auto-creating parent user:', e);
         }
 
+        let generatedReceiptNo;
         // POS Onboarding: Inject Fee Payment
         if (req.body.initialPayment) {
             try {
@@ -196,6 +197,8 @@ export const createMember = async (req: AuthRequest, res: Response, next: NextFu
                 });
 
                 if (payment.valid) {
+                    payment.receiptNo = await feePaymentService.getNextSequence(req.user!.entityId);
+                    generatedReceiptNo = payment.receiptNo;
                     await feePaymentService.insert(payment);
                 } else {
                     console.error('Initial payment payload invalid:', payment);
@@ -205,7 +208,7 @@ export const createMember = async (req: AuthRequest, res: Response, next: NextFu
             }
         }
 
-        res.status(HTTP_STATUS.CREATED).json(result);
+        res.status(HTTP_STATUS.CREATED).json({ insertedId: result.insertedId, receiptNo: generatedReceiptNo });
     } catch (error) {
         next(error);
     }
