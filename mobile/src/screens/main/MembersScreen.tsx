@@ -1,17 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import {
     View, Text, StyleSheet, FlatList, TouchableOpacity,
-    ActivityIndicator, Platform, Animated
+    ActivityIndicator, Platform, Animated, Image
 } from 'react-native';
 import api from '../../services/api';
 import { theme, globalStyles } from '../../theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef, useContext } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import HeaderActions from '../../components/HeaderActions';
+import { AuthContext } from '../../context/AuthContext';
+import { getTerm } from '../../utils/terminology';
 
 export default function MembersScreen() {
+    const { user } = useContext(AuthContext);
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
     const [members, setMembers] = useState([]);
@@ -83,18 +86,26 @@ export default function MembersScreen() {
             >
                 <View style={styles.cardHeader}>
                     <View style={styles.avatarContainer}>
-                        <LinearGradient
-                            colors={isPendingFeesFilter ? theme.gradients.danger : theme.gradients.primary}
-                            style={styles.avatarGradient}
-                        >
-                            <Text style={styles.avatarText}>{initials}</Text>
-                        </LinearGradient>
+                        {item.profilePicUrl ? (
+                            <Image source={{ uri: item.profilePicUrl }} style={styles.avatarImage} />
+                        ) : (
+                            <LinearGradient
+                                colors={isPendingFeesFilter ? theme.gradients.danger : theme.gradients.primary}
+                                style={styles.avatarGradient}
+                            >
+                                <Text style={styles.avatarText}>{initials}</Text>
+                            </LinearGradient>
+                        )}
                     </View>
                     <View style={styles.cardInfo}>
                         <Text style={styles.memberName} numberOfLines={1}>{item.firstName} {item.lastName}</Text>
                         <View style={styles.badgeRow}>
-                            <View style={styles.groupBadge}>
-                                <Text style={styles.groupBadgeText}>{item.groupName || 'Unassigned'}</Text>
+                            <View style={[styles.groupBadge, user?.entityType === 'gym' && (!item.addonNames || item.addonNames.length === 0) && { backgroundColor: theme.colors.border }]}>
+                                <Text style={[styles.groupBadgeText, user?.entityType === 'gym' && (!item.addonNames || item.addonNames.length === 0) && { color: theme.colors.textMuted }]}>
+                                    {user?.entityType === 'gym' 
+                                        ? ((item.addonNames && item.addonNames.length > 0) ? item.addonNames.join(', ') : 'No Active Plan')
+                                        : (item.groupName || 'Unassigned')}
+                                </Text>
                             </View>
                             <Text style={styles.detailsText}>ID: {item.knownId}</Text>
                         </View>
@@ -128,7 +139,7 @@ export default function MembersScreen() {
                         <Ionicons name="menu" size={24} color={theme.colors.surface} />
                     </TouchableOpacity>
                     <Animated.Text style={[styles.stickyTitle, { opacity: headerTitleOpacity }]}>
-                        {isPendingFeesFilter ? 'Pending Collections' : 'Student Directory'}
+                        {isPendingFeesFilter ? 'Pending Collections' : `${getTerm('Student', user?.entityType)} Directory`}
                     </Animated.Text>
                     <View style={styles.headerActionsWrapper}>
                         <HeaderActions />
@@ -136,7 +147,7 @@ export default function MembersScreen() {
                 </View>
                 <Animated.View style={[styles.heroContent, { opacity: headerOpacity }]}>
                     <View style={styles.heroTextContent}>
-                        <Text style={styles.heroTitle}>{isPendingFeesFilter ? 'Pending Collections' : 'Student Directory'}</Text>
+                        <Text style={styles.heroTitle}>{isPendingFeesFilter ? 'Pending Collections' : `${getTerm('Student', user?.entityType)} Directory`}</Text>
                         <Text style={styles.heroSubtitle}>
                             {isPendingFeesFilter ? `${displayedMembers.length} deficits` : `${displayedMembers.length} enrolled`}
                         </Text>
@@ -170,13 +181,26 @@ export default function MembersScreen() {
                             <View style={styles.emptyContainer}>
                                 <Ionicons name="people-outline" size={64} color={theme.colors.border} />
                                 <Text style={globalStyles.emptyText}>
-                                    {isPendingFeesFilter ? 'All fees are clear!' : 'No students found.'}
+                                    {isPendingFeesFilter ? 'All fees are clear!' : `No ${getTerm('Students', user?.entityType).toLowerCase()} found.`}
                                 </Text>
                             </View>
                         }
                     />
                 )}
             </View>
+
+            <TouchableOpacity 
+                style={[globalStyles.fab, { bottom: 24, right: 24, ...theme.shadows.lg }]} 
+                onPress={() => navigation.navigate('AddMember')} 
+                activeOpacity={0.9}
+            >
+                <LinearGradient
+                    colors={theme.gradients.primary}
+                    style={{ width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center' }}
+                >
+                    <Ionicons name="person-add" size={28} color={theme.colors.surface} />
+                </LinearGradient>
+            </TouchableOpacity>
         </View>
     );
 }
@@ -282,8 +306,13 @@ const styles = StyleSheet.create({
     },
     avatarText: {
         color: theme.colors.surface,
-        fontSize: 14,
         fontWeight: 'bold',
+        fontSize: 16,
+    },
+    avatarImage: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
     },
     cardInfo: {
         flex: 1

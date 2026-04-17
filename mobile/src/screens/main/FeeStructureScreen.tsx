@@ -7,12 +7,15 @@ import api from '../../services/api';
 import { theme, globalStyles } from '../../theme';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRef } from 'react';
+import { useRef, useContext } from 'react';
+import { AuthContext } from '../../context/AuthContext';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import HeaderActions from '../../components/HeaderActions';
+import { getTerm } from '../../utils/terminology';
 
 export default function FeeStructureScreen() {
+    const { user } = useContext(AuthContext);
     const navigation = useNavigation<any>();
     const insets = useSafeAreaInsets();
     const [structures, setStructures] = useState<any[]>([]);
@@ -25,6 +28,7 @@ export default function FeeStructureScreen() {
     const [amount, setAmount] = useState('');
     const [frequency, setFrequency] = useState('monthly');
     const [selectedGroup, setSelectedGroup] = useState('');
+    const [isGlobal, setIsGlobal] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const fetchData = async () => {
@@ -74,7 +78,8 @@ export default function FeeStructureScreen() {
     });
 
     const handleCreate = async () => {
-        if (!name || !amount || !selectedGroup) {
+        const finalIsGlobal = user?.entityType === 'gym' ? true : isGlobal;
+        if (!name || !amount || (!selectedGroup && !finalIsGlobal)) {
             Alert.alert('Validation Error', 'All fields are required');
             return;
         }
@@ -85,12 +90,13 @@ export default function FeeStructureScreen() {
                 name,
                 amount: Number(amount),
                 frequency,
-                feeGroupId: selectedGroup
+                ...(finalIsGlobal ? {} : { feeGroupId: selectedGroup })
             });
             fetchData();
             setModalVisible(false);
             setName('');
             setAmount('');
+            setIsGlobal(false);
         } catch (error: any) {
             Alert.alert('Error', error.response?.data?.message || 'Failed to create fee structure');
         } finally {
@@ -141,7 +147,7 @@ export default function FeeStructureScreen() {
 
                 <View style={styles.detailsRow}>
                     <Ionicons name="people-outline" size={14} color={theme.colors.textSecondary} />
-                    <Text style={styles.details}>Class: {item.groupDetails?.name || 'Unknown'}</Text>
+                    <Text style={styles.details}>{item.feeGroupId ? `${getTerm('Class', user?.entityType)}: ${item.groupDetails?.name || 'Unknown'}` : 'Global Add-on Fee'}</Text>
                 </View>
 
                 <View style={styles.detailsRow}>
@@ -243,9 +249,16 @@ export default function FeeStructureScreen() {
                             <Text style={globalStyles.label}>Amount (₹)</Text>
                             <TextInput style={globalStyles.input} placeholder="5000" value={amount} onChangeText={setAmount} keyboardType="numeric" placeholderTextColor={theme.colors.textMuted} />
 
-                            {groupsList.length > 0 && (
+                            {user?.entityType !== 'gym' && (
+                                <TouchableOpacity style={{flexDirection: 'row', alignItems: 'center', marginBottom: 16}} onPress={() => setIsGlobal(!isGlobal)}>
+                                    <Ionicons name={isGlobal ? 'checkbox' : 'square-outline'} size={24} color={isGlobal ? theme.colors.primary : theme.colors.textMuted} />
+                                    <Text style={[globalStyles.label, {marginBottom: 0, marginLeft: 8}]}>Is this an Optional Global Add-on?</Text>
+                                </TouchableOpacity>
+                            )}
+
+                            {user?.entityType !== 'gym' && !isGlobal && groupsList.length > 0 && (
                                 <>
-                                    <Text style={globalStyles.label}>Assign to Class</Text>
+                                    <Text style={globalStyles.label}>Assign to {getTerm('Class', user?.entityType)}</Text>
                                     <View style={styles.mockPicker}>
                                         {groupsList.map(g => (
                                             <TouchableOpacity

@@ -9,7 +9,8 @@ import { ObjectId } from 'mongodb';
 export const getUsers = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
         const users = await userService.getUsersByEntity(req.user!.entityId);
-        res.status(HTTP_STATUS.OK).json(users);
+        const staff = users.filter((u: any) => u.role !== 'parent');
+        res.status(HTTP_STATUS.OK).json(staff);
     } catch (error) {
         next(error);
     }
@@ -52,6 +53,22 @@ export const deleteUser = async (req: AuthRequest, res: Response, next: NextFunc
 
         await userService.delete({ _id: new ObjectId(userId as string) });
         res.status(HTTP_STATUS.OK).json({ message: 'User deleted successfully' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updatePushToken = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const { expoPushToken } = req.body;
+        if (!expoPushToken) {
+            throw new AppError('expoPushToken is required', HTTP_STATUS.BAD_REQUEST);
+        }
+
+        const userId = new ObjectId(req.user!.userId);
+        await userService.update({ _id: userId }, { $set: { expoPushToken } });
+
+        res.status(HTTP_STATUS.OK).json({ message: 'Push token updated successfully' });
     } catch (error) {
         next(error);
     }

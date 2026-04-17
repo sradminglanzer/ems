@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity,
-    ActivityIndicator, FlatList, Platform, Modal, TextInput, Alert, Animated
+    ActivityIndicator, FlatList, Platform, Modal, TextInput, Alert, Animated, ScrollView, Image, Linking
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import api from '../../services/api';
 import { theme, globalStyles } from '../../theme';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,6 +11,8 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { AuthContext } from '../../context/AuthContext';
 import { useContext } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
+import { getTerm } from '../../utils/terminology';
+import { generateAndShareInvoice } from '../../utils/InvoiceGenerator';
 
 export default function MemberDetailsScreen() {
     const { user, selectedAcademicYearId } = useContext(AuthContext);
@@ -23,10 +26,19 @@ export default function MemberDetailsScreen() {
     const [results, setResults] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
-    // Collect Fee Modal
+    const [successModalData, setSuccessModalData] = useState<any | null>(null);
+
+    // Collect Fee Modal Checkout Cart
     const [feeModalVisible, setFeeModalVisible] = useState(false);
-    const [feeAmount, setFeeAmount] = useState('');
-    const [feeNotes, setFeeNotes] = useState('');
+    const [cartPayments, setCartPayments] = useState<Record<string, {
+        amount: string,
+        nextPaymentDate: Date | null,
+        nextPaymentDateStr: string,
+        showPicker: boolean,
+        notes: string,
+        checked: boolean
+    }>>({});
+    const [feeStructures, setFeeStructures] = useState<any[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
@@ -36,12 +48,21 @@ export default function MemberDetailsScreen() {
     const loadData = async () => {
         try {
             const params = selectedAcademicYearId ? { academicYearId: selectedAcademicYearId } : {};
-            const [payRes, resRes] = await Promise.all([
+            const [payRes, resRes, structRes] = await Promise.all([
                 api.get(`/fee-payments?memberId=${member._id}`, { params }),
-                api.get(`/exams/member/${member._id}/results`, { params })
+                api.get(`/exams/member/${member._id}/results`, { params }),
+                api.get('/fee-structures')
             ]);
             setPayments(payRes.data);
             setResults(resRes.data);
+            
+            // Filter structures to only those assigned to the member (Group + Add-ons)
+            setFeeStructures(structRes.data.filter((s: any) => {
+                const isGroupFee = member.feeGroupId && s.feeGroupId === member.feeGroupId;
+                const isAddonFee = !s.feeGroupId && member.addonFeeIds?.includes(s._id);
+                // If member hasn't set up group yet, show all to prevent empty list, but ideally they shouldn't collect until group set
+                return isGroupFee || isAddonFee || (!member.feeGroupId && !member.addonFeeIds?.length); 
+            }));
         } catch (error) {
             console.error('Error loading member data:', error);
         } finally {
@@ -49,25 +70,125 @@ export default function MemberDetailsScreen() {
         }
     };
 
+    const calculateNextDate = (frequency: string) => {
+        const d = new Date();
+        if (frequency === 'monthly') d.setMonth(d.getMonth() + 1);
+        else if (frequency === 'quarterly') d.setMonth(d.getMonth() + 3);
+        else if (frequency === 'half-yearly') d.setMonth(d.getMonth() + 6);
+        else if (frequency === 'annual' || frequency === 'yearly') d.setFullYear(d.getFullYear() + 1);
+        else if (frequency === 'weekly') d.setDate(d.getDate() + 7);
+        else if (frequency === 'daily') d.setDate(d.getDate() + 1);
+        return d;
+    };
+
+    const handleOpenFeeModal = () => {
+        setFeeModalVisible(true);
+        const newCart: any = {};
+        feeStructures.forEach(s => {
+            const nextD = calculateNextDate(s.frequency);
+            const tzOffset = new Date().getTimezoneOffset() * 60000;
+            const localISOTime = new Date(nextD.getTime() - tzOffset).toISOString().slice(0, 10);
+            
+            newCart[s._id] = {
+                amount: String(s.amount),
+                nextPaymentDate: nextD,
+                nextPaymentDateStr: localISOTime,
+                showPicker: false,
+                notes: '',
+                checked: true
+            };
+        });
+        setCartPayments(newCart);
+    };
+
     const handleCollectFee = async () => {
-        if (!feeAmount) return alert('Amount is required!');
+        const paymentsToSubmit = feeStructures
+            .filter(s => cartPayments[s._id]?.checked)
+            .map(s => {
+                const cartItem = cartPayments[s._id];
+                return {
+                    memberId: member._id,
+                    feeStructureId: s._id,
+                    ...(s.feeGroupId ? { feeGroupId: s.feeGroupId } : {}),
+                    amount: parseFloat(cartItem.amount || '0'),
+                    notes: cartItem.notes,
+                    ...(user?.entityType !== 'gym' && selectedAcademicYearId ? { academicYearId: selectedAcademicYearId } : {}),
+                    nextPaymentDate: Platform.OS === 'web' 
+                        ? (cartItem.nextPaymentDateStr || undefined) 
+                        : (cartItem.nextPaymentDate ? cartItem.nextPaymentDate.toISOString().split('T')[0] : undefined)
+                };
+            })
+            .filter(p => !isNaN(p.amount) && p.amount > 0);
+
+        if (paymentsToSubmit.length === 0) {
+            return alert('Please select at least one package and enter a valid amount.');
+        }
+
         setIsSubmitting(true);
         try {
-            await api.post('/fee-payments', {
-                memberId: member._id,
-                amount: parseFloat(feeAmount),
-                notes: feeNotes,
-                academicYearId: selectedAcademicYearId
-            });
+            const response = await api.post('/fee-payments', { payments: paymentsToSubmit });
+            const assignedReceiptNo = response.data?.[0]?.receiptNo || `REC-${Date.now().toString().slice(-6)}`;
+            
+            // Trigger Receipt Generation
+            if (user?.entityType === 'gym') {
+                const selectedItems = feeStructures.filter(s => cartPayments[s._id]?.checked);
+                const totalAmount = paymentsToSubmit.reduce((sum, p) => sum + p.amount, 0);
+                const nextDates = paymentsToSubmit.map(p => p.nextPaymentDate).filter(Boolean);
+                const representativeRenewal = nextDates.length > 0 ? nextDates[0] : undefined;
+                
+                setSuccessModalData({
+                    receiptNo: assignedReceiptNo,
+                    date: new Date(),
+                    member: {
+                        name: `${member.firstName} ${member.lastName}`.trim(),
+                        knownId: member.knownId || 'N/A',
+                        contact: member.contact || 'N/A'
+                    },
+                    gymName: user?.entityName || 'Gym',
+                    items: selectedItems.map(s => ({
+                        description: s.name,
+                        amount: parseFloat(cartPayments[s._id].amount || '0')
+                    })),
+                    totalPaid: totalAmount,
+                    paymentMethod: 'Manual Payment',
+                    nextRenewalDate: representativeRenewal ? new Date(representativeRenewal) : undefined
+                });
+            }
+
             setFeeModalVisible(false);
-            setFeeAmount('');
-            setFeeNotes('');
+            setCartPayments({});
             loadData();
         } catch (error) {
             console.error(error);
             alert('Failed to record payment');
         } finally {
             setIsSubmitting(false);
+        }
+    };
+
+    const handlePrintPastInvoice = async (item: any) => {
+        try {
+            const structureName = feeStructures.find(s => s._id === item.feeStructureId)?.name || 'Fee Payment';
+            await generateAndShareInvoice({
+                receiptNo: item.receiptNo || 'N/A',
+                date: new Date(item.paymentDate),
+                member: {
+                    name: `${member.firstName} ${member.lastName}`.trim(),
+                    knownId: member.knownId || 'N/A',
+                    contact: member.contact || 'N/A'
+                },
+                gymName: user?.entityName || 'Gym',
+                items: [{
+                    description: structureName,
+                    amount: item.amount
+                }],
+                totalPaid: item.amount,
+                paymentMethod: item.paymentMethod || 'cash',
+                nextRenewalDate: item.nextPaymentDate ? new Date(item.nextPaymentDate) : undefined
+            });
+        } catch (e) {
+            console.error('Invoice print error:', e);
+            alert('Failed to print receipt.');
         }
     };
 
@@ -87,13 +208,13 @@ export default function MemberDetailsScreen() {
         };
 
         if (Platform.OS === 'web') {
-            if (window.confirm("Are you sure you want to completely remove this student?")) {
+            if (window.confirm(`Are you sure you want to completely remove this ${getTerm('Student', user?.entityType).toLowerCase()}?`)) {
                 executeDelete();
             }
         } else {
             Alert.alert(
-                "Delete Student",
-                "Are you sure you want to completely remove this student?",
+                `Delete ${getTerm('Student', user?.entityType)}`,
+                `Are you sure you want to completely remove this ${getTerm('Student', user?.entityType).toLowerCase()}?`,
                 [
                     { text: "Cancel", style: "cancel" },
                     { text: "Delete", style: "destructive", onPress: executeDelete }
@@ -117,15 +238,24 @@ export default function MemberDetailsScreen() {
                     </View>
 
                     <View style={styles.detailsGrid}>
-                        <View style={styles.detailItem}>
-                            <Text style={styles.detailLabel}>Roll No</Text>
-                            <Text style={styles.detailValue}>{member.knownId}</Text>
-                        </View>
-                        {member.groupName && (
+                        {user?.entityType !== 'gym' && (
                             <View style={styles.detailItem}>
-                                <Text style={styles.detailLabel}>Class Enrolled</Text>
-                                <Text style={styles.detailValue}>{member.groupName}</Text>
+                                <Text style={styles.detailLabel}>{getTerm('Roll No', user?.entityType)}</Text>
+                                <Text style={styles.detailValue}>{member.knownId}</Text>
                             </View>
+                        )}
+                        {user?.entityType === 'gym' ? (
+                            <View style={styles.detailItem}>
+                                <Text style={styles.detailLabel}>Active Plans</Text>
+                                <Text style={styles.detailValue}>{(member.addonNames && member.addonNames.length > 0) ? member.addonNames.join(', ') : 'None'}</Text>
+                            </View>
+                        ) : (
+                            member.groupName ? (
+                                <View style={styles.detailItem}>
+                                    <Text style={styles.detailLabel}>{getTerm('Class', user?.entityType)} Enrolled</Text>
+                                    <Text style={styles.detailValue}>{member.groupName}</Text>
+                                </View>
+                            ) : null
                         )}
                         {member.dob && (
                             <View style={styles.detailItem}>
@@ -197,7 +327,7 @@ export default function MemberDetailsScreen() {
                 )}
 
                 {/* Exam Results */}
-                {results.length > 0 && (
+                {results.length > 0 && user?.entityType !== 'gym' && (
                     <View style={styles.glassCard}>
                         <View style={styles.sectionHeader}>
                             <Ionicons name="school-outline" size={20} color={theme.colors.primary} />
@@ -260,7 +390,7 @@ export default function MemberDetailsScreen() {
                         </View>
 
                         {user?.role !== 'parent' && (
-                            <TouchableOpacity style={styles.collectButton} onPress={() => setFeeModalVisible(true)}>
+                            <TouchableOpacity style={styles.collectButton} onPress={handleOpenFeeModal}>
                                 <Ionicons name="add" size={16} color={theme.colors.surface} />
                                 <Text style={styles.collectButtonText}>Collect</Text>
                             </TouchableOpacity>
@@ -326,7 +456,9 @@ export default function MemberDetailsScreen() {
                         </View>
                     </View>
                     <Text style={styles.heroTitle}>{member.firstName} {member.lastName}</Text>
-                    <Text style={styles.heroSubtitle}>Roll No: {member.knownId}</Text>
+                    {user?.entityType !== 'gym' && (
+                        <Text style={styles.heroSubtitle}>Roll No: {member.knownId}</Text>
+                    )}
                 </Animated.View>
             </Animated.View>
 
@@ -362,11 +494,22 @@ export default function MemberDetailsScreen() {
                                 </View>
                                 <View style={styles.paymentInfo}>
                                     <Text style={styles.paymentAmount}>₹{item.amount.toLocaleString('en-IN')}</Text>
-                                    <Text style={styles.paymentDate}>{new Date(item.paymentDate).toLocaleDateString()}</Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <Text style={styles.paymentDate}>{new Date(item.paymentDate).toLocaleDateString()}</Text>
+                                        {item.receiptNo ? <Text style={[styles.paymentDate, { marginLeft: 8, fontWeight: 'bold' }]}>#{item.receiptNo}</Text> : null}
+                                    </View>
                                     {item.notes ? (
                                         <Text style={styles.notesText}>{item.notes}</Text>
                                     ) : null}
                                 </View>
+                                {user?.role !== 'parent' && (
+                                    <TouchableOpacity 
+                                        style={styles.printIconButton} 
+                                        onPress={() => handlePrintPastInvoice(item)}
+                                    >
+                                        <Ionicons name="print-outline" size={20} color={theme.colors.primary} />
+                                    </TouchableOpacity>
+                                )}
                             </View>
                         )}
                     />
@@ -384,15 +527,110 @@ export default function MemberDetailsScreen() {
                             </TouchableOpacity>
                         </View>
 
-                        <Text style={globalStyles.label}>Amount (₹)</Text>
-                        <TextInput style={globalStyles.input} placeholder="e.g. 5000" keyboardType="numeric" value={feeAmount} onChangeText={setFeeAmount} />
+                        <ScrollView style={{ maxHeight: '80%' }} showsVerticalScrollIndicator={false}>
+                            {feeStructures.map(s => {
+                                const cartItem = cartPayments[s._id];
+                                if (!cartItem) return null;
+                                return (
+                                    <View key={s._id} style={{ marginBottom: 16, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 8, padding: 12 }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: cartItem.checked ? 12 : 0 }}>
+                                            <TouchableOpacity onPress={() => setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], checked: !cartItem.checked } }))}>
+                                                <Ionicons name={cartItem.checked ? "checkbox" : "square-outline"} size={24} color={cartItem.checked ? theme.colors.primary : theme.colors.textMuted} />
+                                            </TouchableOpacity>
+                                            <Text style={{ fontWeight: 'bold', color: theme.colors.textPrimary, marginLeft: 8, flex: 1 }}>{s.name} ({s.frequency})</Text>
+                                        </View>
+                                        
+                                        {cartItem.checked && (
+                                            <>
+                                                <Text style={globalStyles.label}>Amount (₹)</Text>
+                                                <TextInput style={globalStyles.input} keyboardType="numeric" value={cartItem.amount} onChangeText={(val) => setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], amount: val } }))} />
 
-                        <Text style={globalStyles.label}>Notes</Text>
-                        <TextInput style={globalStyles.input} placeholder="Term 1 Fee..." value={feeNotes} onChangeText={setFeeNotes} />
+                                                <Text style={globalStyles.label}>Next Renewal Date</Text>
+                                                {Platform.OS === 'web' ? (
+                                                    <TextInput style={globalStyles.input} placeholder="YYYY-MM-DD" value={cartItem.nextPaymentDateStr} onChangeText={(val) => {
+                                                        const d = new Date(val);
+                                                        setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], nextPaymentDateStr: val, nextPaymentDate: !isNaN(d.getTime()) ? d : prev[s._id].nextPaymentDate } }));
+                                                    }} {...{ type: "date" } as any} />
+                                                ) : (
+                                                    <>
+                                                        <TouchableOpacity style={[globalStyles.input, { justifyContent: 'center' }]} onPress={() => setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], showPicker: true } }))}>
+                                                            <Text style={{ color: cartItem.nextPaymentDate ? theme.colors.textPrimary : theme.colors.textMuted }}>
+                                                                {cartItem.nextPaymentDate ? cartItem.nextPaymentDate.toISOString().split('T')[0] : "Select Renewal Date"}
+                                                            </Text>
+                                                        </TouchableOpacity>
+                                                        {cartItem.showPicker && (
+                                                            <DateTimePicker
+                                                                value={cartItem.nextPaymentDate || new Date()}
+                                                                mode="date"
+                                                                display="default"
+                                                                onChange={(event, selectedDate) => {
+                                                                    setCartPayments(prev => {
+                                                                        const ns = { ...prev };
+                                                                        ns[s._id].showPicker = Platform.OS === 'ios';
+                                                                        if (selectedDate) ns[s._id].nextPaymentDate = selectedDate;
+                                                                        return ns;
+                                                                    });
+                                                                }}
+                                                            />
+                                                        )}
+                                                    </>
+                                                )}
+                                                
+                                                <Text style={globalStyles.label}>Notes</Text>
+                                                <TextInput style={globalStyles.input} placeholder="Payment notes..." value={cartItem.notes} onChangeText={(val) => setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], notes: val } }))} />
+                                            </>
+                                        )}
+                                    </View>
+                                )
+                            })}
+                        </ScrollView>
+
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 16 }}>
+                            <Text style={{ fontWeight: 'bold', fontSize: 16 }}>Total Selected:</Text>
+                            <Text style={{ fontWeight: 'bold', fontSize: 20, color: theme.colors.success }}>
+                                ₹{feeStructures.filter(s => cartPayments[s._id]?.checked).reduce((sum, s) => sum + parseFloat(cartPayments[s._id]?.amount || '0'), 0).toLocaleString('en-IN')}
+                            </Text>
+                        </View>
 
                         <TouchableOpacity style={[globalStyles.submitButton, isSubmitting && globalStyles.disabledButton]} onPress={handleCollectFee} disabled={isSubmitting}>
                             {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={globalStyles.submitButtonText}>Confirm Payment</Text>}
                         </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Payment Success Modal */}
+            <Modal animationType="fade" transparent={true} visible={!!successModalData} onRequestClose={() => setSuccessModalData(null)}>
+                <View style={globalStyles.modalOverlay}>
+                    <View style={[globalStyles.modalContent, { alignItems: 'center', paddingVertical: 32 }]}>
+                        <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: theme.colors.success + '20', justifyContent: 'center', alignItems: 'center', marginBottom: 16 }}>
+                            <Ionicons name="checkmark-circle" size={48} color={theme.colors.success} />
+                        </View>
+                        <Text style={{ fontSize: 24, fontWeight: 'bold', color: theme.colors.textPrimary, marginBottom: 8 }}>Payment Successful!</Text>
+                        <Text style={{ fontSize: 16, color: theme.colors.textSecondary, marginBottom: 24 }}>Amount: ₹{successModalData?.totalPaid}  |  #{successModalData?.receiptNo}</Text>
+
+                        <View style={{ width: '100%', gap: 12 }}>
+                            <TouchableOpacity style={[globalStyles.submitButton, { backgroundColor: theme.colors.primary, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 }]} onPress={() => {
+                                generateAndShareInvoice(successModalData);
+                            }}>
+                                <Ionicons name="print-outline" size={20} color={theme.colors.surface} />
+                                <Text style={globalStyles.submitButtonText}>Print / Save Receipt</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity style={[globalStyles.submitButton, { backgroundColor: '#25D366', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 }]} onPress={() => {
+                                const msg = `Hello ${successModalData?.member?.name},\nYour payment of ₹${successModalData?.totalPaid} for ${successModalData?.gymName} is successful. Receipt No: ${successModalData?.receiptNo}. Thank you!`;
+                                Linking.openURL(`whatsapp://send?text=${encodeURIComponent(msg)}`).catch(() => {
+                                    alert('WhatsApp is not installed on your device.');
+                                });
+                            }}>
+                                <Ionicons name="logo-whatsapp" size={20} color={theme.colors.surface} />
+                                <Text style={globalStyles.submitButtonText}>Share via WhatsApp</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity style={[globalStyles.submitButton, { backgroundColor: theme.colors.background, borderWidth: 1, borderColor: theme.colors.border }]} onPress={() => setSuccessModalData(null)}>
+                                <Text style={[globalStyles.submitButtonText, { color: theme.colors.textPrimary }]}>Done</Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 </View>
             </Modal>
@@ -729,6 +967,15 @@ const styles = StyleSheet.create({
         color: theme.colors.textSecondary,
         marginBottom: 4,
     },
+    printIconButton: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: theme.colors.primary + '15',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginLeft: 8,
+    },
     notesText: {
         fontSize: 13,
         color: theme.colors.textMuted,
@@ -751,4 +998,17 @@ const styles = StyleSheet.create({
         borderColor: theme.colors.border,
         marginHorizontal: theme.spacing.xs,
     },
+    mockPicker: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4, marginBottom: 16 },
+    pill: {
+        paddingHorizontal: 16, paddingVertical: 10,
+        borderRadius: theme.borderRadius.round,
+        borderWidth: 1, borderColor: theme.colors.border,
+        backgroundColor: theme.colors.background
+    },
+    pillActive: {
+        borderColor: theme.colors.primary,
+        backgroundColor: theme.colors.primary + '15'
+    },
+    pillText: { color: theme.colors.textSecondary, fontWeight: '500', fontSize: 13 },
+    pillTextActive: { color: theme.colors.primary, fontWeight: 'bold' }
 });

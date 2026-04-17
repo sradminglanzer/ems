@@ -33,17 +33,19 @@ class AuthService extends BaseService<User> {
         }
 
         let entityName = 'EMS Portal';
+        let entityType = 'school';
         try {
             const db = getDB();
             if (db) {
                 const entityCol = db.collection('entities');
                 const entityDoc = await entityCol.findOne({ _id: user.entityId });
-                if (entityDoc && entityDoc.name) {
-                    entityName = entityDoc.name;
+                if (entityDoc) {
+                    if (entityDoc.name) entityName = entityDoc.name;
+                    if (entityDoc.type) entityType = entityDoc.type;
                 }
             }
         } catch (e) {
-            console.error('Error fetching entity name during login', e);
+            console.error('Error fetching entity name/type during login', e);
         }
 
         // Setup Flow
@@ -64,7 +66,7 @@ class AuthService extends BaseService<User> {
             return {
                 message: MESSAGES.SUCCESS.MPIN_SETUP_SUCCESS,
                 token,
-                user: this.formatUserResponse(user as User, activeYear, entityName)
+                user: this.formatUserResponse(user as User, activeYear, entityName, entityType)
             };
         }
 
@@ -85,7 +87,7 @@ class AuthService extends BaseService<User> {
         return {
             message: MESSAGES.SUCCESS.LOGIN_SUCCESS,
             token,
-            user: this.formatUserResponse(user as User, activeYear, entityName)
+            user: this.formatUserResponse(user as User, activeYear, entityName, entityType)
         };
     }
 
@@ -93,11 +95,12 @@ class AuthService extends BaseService<User> {
         return jwt.sign({ userId: user._id, role: user.role, entityId: user.entityId }, JWT_SECRET, { expiresIn: '7d' });
     }
 
-    private formatUserResponse(user: User, activeYear?: any, entityName?: string) {
+    private formatUserResponse(user: User, activeYear?: any, entityName?: string, entityType?: string) {
         return {
             id: user._id,
             entityId: user.entityId,
             entityName: entityName,
+            entityType: entityType,
             name: user.name,
             role: user.role,
             contactNumber: user.contactNumber,

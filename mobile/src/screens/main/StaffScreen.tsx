@@ -10,8 +10,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRef } from 'react';
 import { useNavigation } from '@react-navigation/native';
 import HeaderActions from '../../components/HeaderActions';
+import { AuthContext } from '../../context/AuthContext';
 
 export default function StaffScreen() {
+    const { user } = React.useContext(AuthContext);
     const navigation = useNavigation<any>();
     const [staffList, setStaffList] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -77,7 +79,7 @@ export default function StaffScreen() {
             await api.post('/users', {
                 name: newName,
                 contactNumber: newContact,
-                role: newRole
+                role: (newRole as any) === 'trainer' ? 'teacher' : newRole
             });
             // If success, refresh list and close modal
             fetchStaff();
@@ -154,13 +156,15 @@ export default function StaffScreen() {
                             <Text style={styles.staffContact}>{item.contactNumber}</Text>
                         </View>
                         <View style={[styles.badgeContainer, { backgroundColor: roleBg }]}>
-                            <Text style={[styles.roleBadge, { color: roleColor }]}>{item.role}</Text>
+                            <Text style={[styles.roleBadge, { color: roleColor }]}>{item.role === 'teacher' && user?.entityType === 'gym' ? 'trainer' : item.role}</Text>
                         </View>
                     </View>
 
-                    <TouchableOpacity onPress={() => handleDeleteStaff(item._id)} style={styles.deleteButton} activeOpacity={0.7}>
-                        <Ionicons name="trash-outline" size={20} color={theme.colors.danger} />
-                    </TouchableOpacity>
+                    {item.role !== 'owner' && (
+                        <TouchableOpacity onPress={() => handleDeleteStaff(item._id)} style={styles.deleteButton} activeOpacity={0.7}>
+                            <Ionicons name="trash-outline" size={20} color={theme.colors.danger} />
+                        </TouchableOpacity>
+                    )}
                 </View>
             </View>
         );
@@ -254,7 +258,7 @@ export default function StaffScreen() {
 
                         <Text style={globalStyles.label}>Assign Role</Text>
                         <View style={styles.roleContainer}>
-                            {['admin', 'staff', 'teacher'].map((r) => (
+                            {(user?.entityType === 'gym' ? ['admin', 'staff', 'trainer'] : ['admin', 'staff', 'teacher']).map((r) => (
                                 <TouchableOpacity
                                     key={r}
                                     style={[styles.roleOption, newRole === r && styles.roleOptionSelected]}

@@ -3,6 +3,7 @@ import { createDrawerNavigator } from '@react-navigation/drawer';
 import Constants from 'expo-constants';
 
 import DashboardScreen from '../screens/main/DashboardScreen';
+import ReportsScreen from '../screens/main/ReportsScreen';
 import StaffScreen from '../screens/main/StaffScreen';
 import FeeGroupsScreen from '../screens/main/FeeGroupsScreen';
 import FeeStructureScreen from '../screens/main/FeeStructureScreen';
@@ -10,15 +11,18 @@ import ExamsScreen from '../screens/main/ExamsScreen';
 import MembersScreen from '../screens/main/MembersScreen';
 import CreateExamScreen from '../screens/main/CreateExamScreen';
 import AcademicYearsScreen from '../screens/main/AcademicYearsScreen';
+import SettingsScreen from '../screens/main/SettingsScreen';
 import HeaderActions from '../components/HeaderActions';
 import { theme } from '../theme';
 import { Ionicons } from '@expo/vector-icons';
 import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
 import { DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
 import { AuthContext } from '../context/AuthContext';
+import { getTerm } from '../utils/terminology';
 
 type DrawerParamList = {
     DashboardHome: undefined;
+    Reports: undefined;
     Students: undefined;
     Staff: undefined;
     FeeGroups: undefined;
@@ -104,9 +108,18 @@ export default function MainDrawerNavigator() {
                 }}
             />
             <Drawer.Screen
+                name="Reports"
+                component={ReportsScreen}
+                options={{
+                    title: 'Business Reports',
+                    drawerIcon: ({ color, size }) => <Ionicons name="bar-chart-outline" size={size} color={color} />
+                }}
+            />
+            <Drawer.Screen
                 name="Students"
                 component={MembersScreen}
                 options={{
+                    title: getTerm('Students', user?.entityType),
                     drawerIcon: ({ color, size }) => <Ionicons name="people-outline" size={size} color={color} />
                 }}
             />
@@ -120,41 +133,56 @@ export default function MainDrawerNavigator() {
                     }}
                 />
             )}
-            <Drawer.Screen
-                name="FeeGroups"
-                component={FeeGroupsScreen}
-                options={{
-                    title: 'Fee Groups',
-                    drawerIcon: ({ color }) => <Ionicons name="layers-outline" size={22} color={color} />,
-                    headerRight: () => <HeaderActions />
-                }}
-            />
+            {user?.entityType !== 'gym' && (
+                <Drawer.Screen
+                    name="FeeGroups"
+                    component={FeeGroupsScreen}
+                    options={{
+                        title: getTerm('Classes', user?.entityType),
+                        drawerIcon: ({ color }) => <Ionicons name="layers-outline" size={22} color={color} />,
+                        headerRight: () => <HeaderActions />
+                    }}
+                />
+            )}
             {user?.role !== 'teacher' && (
                 <Drawer.Screen
                     name="FeeStructures"
                     component={FeeStructureScreen}
                     options={{
-                        title: 'Fee Structures',
+                        title: user?.entityType === 'gym' ? 'Billing Plans' : 'Fee Structures',
                         drawerIcon: ({ color, size }) => <Ionicons name="card-outline" size={size} color={color} />
                     }}
                 />
             )}
-            <Drawer.Screen
-                name="Exams"
-                component={ExamsScreen}
-                options={{
-                    title: 'Exams & Results',
-                    drawerIcon: ({ color }) => <Ionicons name="document-text-outline" size={24} color={color} />,
-                    headerRight: () => <HeaderActions />
-                }}
-            />
-            {(user?.role === 'admin' || user?.role === 'owner') && (
+            {user?.entityType !== 'gym' && (
+                <Drawer.Screen
+                    name="Exams"
+                    component={ExamsScreen}
+                    options={{
+                        title: 'Exams & Results',
+                        drawerIcon: ({ color }) => <Ionicons name="document-text-outline" size={24} color={color} />,
+                        headerRight: () => <HeaderActions />
+                    }}
+                />
+            )}
+            {(user?.role === 'admin' || user?.role === 'owner') && user?.entityType !== 'gym' && (
                 <Drawer.Screen
                     name="AcademicYears"
                     component={AcademicYearsScreen}
                     options={{
                         drawerIcon: ({ color, size }) => <Ionicons name="calendar-outline" size={size} color={color} />,
                         title: 'Academic Years',
+                        drawerItemStyle: { marginTop: 16, borderTopWidth: 1, borderTopColor: theme.colors.border, paddingTop: 16 }
+                    }}
+                />
+            )}
+            {(user?.role === 'admin' || user?.role === 'owner') && (
+                <Drawer.Screen
+                    name="Settings"
+                    component={SettingsScreen}
+                    options={{
+                        drawerIcon: ({ color, size }) => <Ionicons name="settings-outline" size={size} color={color} />,
+                        title: 'Business Settings',
                         drawerItemStyle: { marginTop: 16, borderTopWidth: 1, borderTopColor: theme.colors.border, paddingTop: 16 }
                     }}
                 />
