@@ -12,6 +12,9 @@ import MembersScreen from '../screens/main/MembersScreen';
 import CreateExamScreen from '../screens/main/CreateExamScreen';
 import AcademicYearsScreen from '../screens/main/AcademicYearsScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
+import ExpensesScreen from '../screens/main/ExpensesScreen';
+import AttendanceScreen from '../screens/main/AttendanceScreen';
+import DiaryScreen from '../screens/main/DiaryScreen';
 import HeaderActions from '../components/HeaderActions';
 import { theme } from '../theme';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,6 +32,10 @@ type DrawerParamList = {
     FeeStructures: undefined;
     Exams: undefined;
     AcademicYears: undefined;
+    Expenses: undefined;
+    Attendance: undefined;
+    DiaryFeed: undefined;
+    Settings: undefined;
 };
 
 const Drawer = createDrawerNavigator<DrawerParamList>();
@@ -115,6 +122,34 @@ export default function MainDrawerNavigator() {
                     drawerIcon: ({ color, size }) => <Ionicons name="bar-chart-outline" size={size} color={color} />
                 }}
             />
+            <Drawer.Screen
+                name="Expenses"
+                component={ExpensesScreen}
+                options={{
+                    title: 'Expenses',
+                    drawerIcon: ({ color, size }) => <Ionicons name="wallet-outline" size={size} color={color} />
+                }}
+            />
+            {user?.entityType !== 'gym' && (
+                <Drawer.Screen
+                    name="Attendance"
+                    component={AttendanceScreen}
+                    options={{
+                        title: 'Daily Attendance',
+                        drawerIcon: ({ color, size }) => <Ionicons name="checkbox-outline" size={size} color={color} />
+                    }}
+                />
+            )}
+            {user?.entityType !== 'gym' && (
+                <Drawer.Screen
+                    name="DiaryFeed"
+                    component={DiaryScreen}
+                    options={{
+                        title: 'Digital Diary',
+                        drawerIcon: ({ color, size }) => <Ionicons name="journal-outline" size={size} color={color} />
+                    }}
+                />
+            )}
             <Drawer.Screen
                 name="Students"
                 component={MembersScreen}

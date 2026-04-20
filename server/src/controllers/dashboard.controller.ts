@@ -4,6 +4,7 @@ import memberService from '../services/member.service';
 import feeGroupService from '../services/fee-group.service';
 import feeStructureService from '../services/fee-structure.service';
 import feePaymentService from '../services/fee-payment.service';
+import expenseService from '../services/expense.service';
 import userService from '../services/user.service';
 import { HTTP_STATUS } from '../utils/constants';
 import { ObjectId } from 'mongodb';
@@ -333,3 +334,108 @@ function currentMonthDateLabel(date: Date) {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return `${months[date.getMonth()]} ${date.getFullYear()}`;
 }
+
+export const getComprehensiveFinancials = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const entityId = req.user!.entityId.toString();
+        const academicYearId = req.query.academicYearId as string | undefined;
+        const startDate = req.query.startDate as string | undefined;
+        const endDate = req.query.endDate as string | undefined;
+
+        const dateFilter: any = {};
+        const expenseDateFilter: any = {};
+        if (startDate && endDate) {
+            dateFilter.paymentDate = { $gte: new Date(startDate), $lte: new Date(endDate) };
+            expenseDateFilter.expenseDate = { $gte: new Date(startDate), $lte: new Date(endDate) };
+        }
+
+        const expenseFilter: any = { entityId: new ObjectId(entityId), ...expenseDateFilter };
+        if (academicYearId) expenseFilter.academicYearId = new ObjectId(academicYearId);
+
+        const [members, feeGroups, feeStructures, feePayments, expenses] = await Promise.all([
+            memberService.getByEntity(entityId),
+            feeGroupService.getByEntity(entityId),
+            feeStructureService.getByEntity(entityId),
+            feePaymentService.getByEntity(entityId, academicYearId, dateFilter),
+            expenseService.get(expenseFilter)
+        ]);
+
+        const groupTotalFees: Record<string, number> = {};
+        feeGroups.forEach((g: any) => {
+            const groupStructures = feeStructures.filter((s: any) => s.feeGroupId && s.feeGroupId.toString() === g._id!.toString());
+            const totalFee = groupStructures.reduce((sum: number, s: any) => sum + s.amount, 0);
+            groupTotalFees[g._id!.toString()] = totalFee;
+        });
+
+        const classWiseData: Record<string, { groupName: string, collected: number, pending: number, memberCount: number }> = {};
+        feeGroups.forEach((g: any) => {
+            classWiseData[g._id!.toString()] = { groupName: g.name, collected: 0, pending: 0, memberCount: 0 };
+        });
+        classWiseData['unassigned'] = { groupName: 'Unassigned', collected: 0, pending: 0, memberCount: 0 };
+
+        members.forEach((m: any) => {
+            const mId = m._id!.toString();
+            let group: any;
+            if (academicYearId) {
+                group = feeGroups.find((g: any) => {
+                    const roster = g.yearlyRosters?.find((r: any) => r.academicYearId.toString() === academicYearId);
+                    return roster && roster.members && roster.members.some((id: any) => id.toString() === mId);
+                });
+            } else {
+                group = feeGroups.find((g: any) => {
+                    return (g.members && g.members.some((id: any) => id.toString() === mId)) ||
+                           (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)));
+                });
+            }
+
+            const groupId = group ? group._id!.toString() : 'unassigned';
+            if (classWiseData[groupId]) {
+                classWiseData[groupId].memberCount++;
+            }
+
+            let memberTotalFee = group ? (groupTotalFees[group._id!.toString()] || 0) : 0;
+            if (m.addonFeeIds && m.addonFeeIds.length > 0) {
+                const addonAmount = feeStructures
+                    .filter((s: any) => m.addonFeeIds!.some((id: any) => id.toString() === s._id!.toString()))
+                    .reduce((sum: number, s: any) => sum + s.amount, 0);
+                memberTotalFee += addonAmount;
+            }
+
+            const memberPayments = feePayments.filter((p: any) => p.memberId.toString() === mId);
+            const memberTotalPaid = memberPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
+
+            if (classWiseData[groupId]) {
+                classWiseData[groupId].collected += memberTotalPaid;
+                const individualDeficit = memberTotalFee - memberTotalPaid;
+                if (individualDeficit > 0) {
+                    classWiseData[groupId].pending += individualDeficit;
+                }
+            }
+        });
+
+        const totalCollected = feePayments.reduce((sum: number, p: any) => sum + p.amount, 0);
+        const totalExpenses = expenses.reduce((sum: number, exp: any) => sum + exp.amount, 0);
+        
+        const expenseByCategory: Record<string, number> = {};
+        expenses.forEach((exp: any) => {
+            if (!expenseByCategory[exp.category]) expenseByCategory[exp.category] = 0;
+            expenseByCategory[exp.category] += exp.amount;
+        });
+
+        const netBalance = totalCollected - totalExpenses;
+
+        res.status(HTTP_STATUS.OK).json({
+            summary: {
+                totalCollected,
+                totalExpenses,
+                netBalance
+            },
+            classWiseData: Object.values(classWiseData),
+            expensesByCategory: Object.entries(expenseByCategory).map(([category, amount]) => ({ category, amount })),
+            recentExpenses: expenses.sort((a: any, b: any) => new Date(b.expenseDate).getTime() - new Date(a.expenseDate).getTime()).slice(0, 10),
+            recentPayments: feePayments.sort((a: any, b: any) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime()).slice(0, 10)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
