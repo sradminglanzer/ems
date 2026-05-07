@@ -118,6 +118,7 @@ export const createMember = async (req: AuthRequest, res: Response, next: NextFu
                 
                 if (group) {
                     if (req.body.academicYearId) {
+                        // School: store in yearlyRosters
                         const yearId = new ObjectId(req.body.academicYearId as string);
                         let rosters = group.yearlyRosters || [];
                         const rosterIdx = rosters.findIndex((r: any) => r.academicYearId.toString() === yearId.toString());
@@ -140,8 +141,13 @@ export const createMember = async (req: AuthRequest, res: Response, next: NextFu
                             { _id: groupId, entityId: new ObjectId(req.user!.entityId) },
                             { $set: { yearlyRosters: rosters } }
                         );
+                        // Also store feeGroupId on the member for fast lookup
+                        await memberService.update(
+                            { _id: memberIdObj },
+                            { $set: { feeGroupId: groupId } }
+                        );
                     } else {
-                        // Decoupled flow for Gyms (no academicYearId passed)
+                        // Gym: store in feeGroup.members[] AND on member.feeGroupId
                         let directMembers = group.members || [];
                         const exists = directMembers.some((m: any) => m.toString() === memberIdObj.toString());
                         if (!exists) {
@@ -151,6 +157,11 @@ export const createMember = async (req: AuthRequest, res: Response, next: NextFu
                                 { $set: { members: directMembers } }
                             );
                         }
+                        // Always write feeGroupId back to the member for fast lookup
+                        await memberService.update(
+                            { _id: memberIdObj },
+                            { $set: { feeGroupId: groupId } }
+                        );
                     }
                 }
             } catch (e: any) {

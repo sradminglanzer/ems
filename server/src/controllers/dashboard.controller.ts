@@ -8,6 +8,7 @@ import expenseService from '../services/expense.service';
 import userService from '../services/user.service';
 import { HTTP_STATUS } from '../utils/constants';
 import { ObjectId } from 'mongodb';
+import { getDB } from '../config/db';
 
 export const getDashboardStats = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
@@ -352,12 +353,13 @@ export const getComprehensiveFinancials = async (req: AuthRequest, res: Response
         const expenseFilter: any = { entityId: new ObjectId(entityId), ...expenseDateFilter };
         if (academicYearId) expenseFilter.academicYearId = new ObjectId(academicYearId);
 
-        const [members, feeGroups, feeStructures, feePayments, expenses] = await Promise.all([
+        const [members, feeGroups, feeStructures, feePayments, expenses, entity] = await Promise.all([
             memberService.getByEntity(entityId),
             feeGroupService.getByEntity(entityId),
             feeStructureService.getByEntity(entityId),
             feePaymentService.getByEntity(entityId, academicYearId, dateFilter),
-            expenseService.get(expenseFilter)
+            expenseService.get(expenseFilter),
+            getDB().collection('entities').findOne({ _id: new ObjectId(entityId) })
         ]);
 
         const groupTotalFees: Record<string, number> = {};
@@ -377,15 +379,23 @@ export const getComprehensiveFinancials = async (req: AuthRequest, res: Response
             const mId = m._id!.toString();
             let group: any;
             if (academicYearId) {
+                // School mode: match via yearlyRosters
                 group = feeGroups.find((g: any) => {
                     const roster = g.yearlyRosters?.find((r: any) => r.academicYearId.toString() === academicYearId);
                     return roster && roster.members && roster.members.some((id: any) => id.toString() === mId);
                 });
             } else {
-                group = feeGroups.find((g: any) => {
-                    return (g.members && g.members.some((id: any) => id.toString() === mId)) ||
-                           (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)));
-                });
+                // Gym mode: use member's own feeGroupId first (fastest path)
+                if (m.feeGroupId) {
+                    group = feeGroups.find((g: any) => g._id!.toString() === m.feeGroupId.toString());
+                }
+                // Fallback: scan feeGroup.members[] and rosters (school style)
+                if (!group) {
+                    group = feeGroups.find((g: any) => {
+                        return (g.members && g.members.some((id: any) => id.toString() === mId)) ||
+                               (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)));
+                    });
+                }
             }
 
             const groupId = group ? group._id!.toString() : 'unassigned';
@@ -423,6 +433,8 @@ export const getComprehensiveFinancials = async (req: AuthRequest, res: Response
         });
 
         const netBalance = totalCollected - totalExpenses;
+        const entityType = entity?.type || 'gym'; // 'gym' | 'school'
+        const groupLabel = entityType === 'school' ? 'Class-wise Collections' : 'Plan-wise Collections';
 
         res.status(HTTP_STATUS.OK).json({
             summary: {
@@ -430,7 +442,9 @@ export const getComprehensiveFinancials = async (req: AuthRequest, res: Response
                 totalExpenses,
                 netBalance
             },
-            classWiseData: Object.values(classWiseData),
+            groupLabel,
+            entityType,
+            classWiseData: Object.values(classWiseData).filter((g: any) => g.groupName !== 'Unassigned' || g.memberCount > 0),
             expensesByCategory: Object.entries(expenseByCategory).map(([category, amount]) => ({ category, amount })),
             recentExpenses: expenses.sort((a: any, b: any) => new Date(b.expenseDate).getTime() - new Date(a.expenseDate).getTime()).slice(0, 10),
             recentPayments: feePayments.sort((a: any, b: any) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime()).slice(0, 10)

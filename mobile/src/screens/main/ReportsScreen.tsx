@@ -8,7 +8,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { LineChart, PieChart } from 'react-native-chart-kit';
+import { LineChart, PieChart, BarChart } from 'react-native-chart-kit';
 
 const { width } = Dimensions.get('window');
 
@@ -74,57 +74,215 @@ export default function ReportsScreen() {
 
     const exportToPDF = async () => {
         if (!financials) return;
-        
+
         try {
-            const html = `
-                <html>
-                <head>
-                    <style>
-                        body { font-family: 'Helvetica', sans-serif; padding: 20px; color: #333; }
-                        h1 { color: #2C3E50; text-align: center; }
-                        .summary { display: flex; justify-content: space-between; margin-top: 30px; font-size: 18px; border-bottom: 2px solid #EEE; padding-bottom: 20px;}
-                        .val { font-weight: bold; }
-                        .positive { color: #27AE60; }
-                        .negative { color: #E74C3C; }
-                        table { width: 100%; border-collapse: collapse; margin-top: 30px; }
-                        th, td { border: 1px solid #DDD; padding: 12px; text-align: left; }
-                        th { background-color: #F8F9F9; }
-                    </style>
-                </head>
-                <body>
-                    <h1>Business Financial Report</h1>
-                    <div style="text-align: center; color: #777; margin-bottom: 20px;">
-                        Report Filter: ${dateFilter.replace('_', ' ').toUpperCase()}
-                    </div>
-                    <div class="summary">
-                        <div>Total Collections: <span class="val positive">INR ${financials.summary.totalCollected.toLocaleString('en-IN')}</span></div>
-                        <div>Total Expenses: <span class="val negative">INR ${financials.summary.totalExpenses.toLocaleString('en-IN')}</span></div>
-                        <div>Net Balance: <span class="val ${financials.summary.netBalance >= 0 ? 'positive' : 'negative'}">INR ${financials.summary.netBalance.toLocaleString('en-IN')}</span></div>
-                    </div>
-                    <h2>Class-wise Collections</h2>
-                    <table>
-                        <tr><th>Class</th><th>Students</th><th>Collected</th><th>Pending</th></tr>
-                        ${financials.classWiseData.map((cls: any) => `
-                            <tr>
-                                <td>${cls.groupName}</td>
-                                <td>${cls.memberCount}</td>
-                                <td class="positive">${cls.collected.toLocaleString('en-IN')}</td>
-                                <td class="negative">${cls.pending.toLocaleString('en-IN')}</td>
-                            </tr>
-                        `).join('')}
-                    </table>
-                    <div style="margin-top: 50px; text-align: center; font-size: 12px; color: #777;">Generated securely by School/Gym EMS</div>
-                </body>
-                </html>
-            `;
-            const { uri } = await Print.printToFileAsync({ html });
-            if (await Sharing.isAvailableAsync()) {
-                await Sharing.shareAsync(uri);
+            const today = new Date();
+            const dateStr = today.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+            const filterLabel = dateFilter === 'all' ? 'All Time' :
+                dateFilter === 'this_month' ? 'This Month' :
+                dateFilter === 'last_month' ? 'Last Month' :
+                dateFilter === '3_months' ? 'Last 3 Months' :
+                dateFilter === '6_months' ? 'Last 6 Months' : 'Year to Date';
+
+            const groupHeading = financials.groupLabel || 'Plan-wise Collections';
+            const memberLabel = financials.entityType === 'school' ? 'Students' : 'Members';
+            const netPositive = financials.summary.netBalance >= 0;
+
+            const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"/>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #1a1a2e; background: #fff; }
+
+  /* ── HEADER LETTERHEAD ── */
+  .letterhead {
+    background: linear-gradient(135deg, #1abc9c 0%, #0e6655 100%);
+    padding: 36px 40px 28px;
+    color: white;
+  }
+  .letterhead-top { display: flex; justify-content: space-between; align-items: flex-start; }
+  .brand { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; }
+  .brand-sub { font-size: 11px; opacity: 0.8; margin-top: 3px; letter-spacing: 1px; text-transform: uppercase; }
+  .report-meta { text-align: right; font-size: 12px; opacity: 0.9; line-height: 1.8; }
+  .report-title { font-size: 14px; margin-top: 28px; opacity: 0.85; font-weight: 400; letter-spacing: 0.5px; text-transform: uppercase; }
+  .report-heading { font-size: 32px; font-weight: 800; margin-top: 4px; }
+
+  /* ── CONTENT WRAPPER ── */
+  .content { padding: 32px 40px; }
+
+  /* ── KPI BOXES ── */
+  .kpi-row { display: flex; gap: 16px; margin-bottom: 36px; }
+  .kpi { flex: 1; background: #f8fafc; border-radius: 12px; padding: 20px; border-left: 4px solid #ccc; }
+  .kpi.green { border-left-color: #27ae60; }
+  .kpi.red   { border-left-color: #e74c3c; }
+  .kpi.blue  { border-left-color: #2980b9; }
+  .kpi-label { font-size: 11px; font-weight: 600; color: #888; letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 8px; }
+  .kpi-value { font-size: 24px; font-weight: 800; }
+  .kpi.green .kpi-value { color: #27ae60; }
+  .kpi.red   .kpi-value { color: #e74c3c; }
+  .kpi.blue  .kpi-value { color: ${netPositive ? '#27ae60' : '#e74c3c'}; }
+
+  /* ── SECTION HEADERS ── */
+  .section-title {
+    font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+    color: #888; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 16px; margin-top: 32px;
+  }
+
+  /* ── TABLES ── */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead tr { background: #1abc9c; color: white; }
+  thead th { padding: 12px 14px; text-align: left; font-weight: 600; font-size: 12px; letter-spacing: 0.5px; }
+  tbody tr { border-bottom: 1px solid #f0f0f0; }
+  tbody tr:hover { background: #fafafa; }
+  tbody td { padding: 12px 14px; color: #333; }
+  .amount { font-weight: 700; }
+  .text-green { color: #27ae60; }
+  .text-red   { color: #e74c3c; }
+  .text-right { text-align: right; }
+  .text-center{ text-align: center; }
+
+  /* ── DIVIDER ── */
+  .divider { border: none; border-top: 2px solid #f0f0f0; margin: 32px 0; }
+
+  /* ── FOOTER ── */
+  .footer {
+    margin-top: 60px; padding: 24px 40px;
+    background: #f8fafc; border-top: 1px solid #e8e8e8;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .footer-brand { font-size: 13px; font-weight: 700; color: #1abc9c; }
+  .footer-note  { font-size: 11px; color: #aaa; }
+  .footer-page  { font-size: 11px; color: #aaa; }
+</style>
+</head>
+<body>
+
+<!-- LETTERHEAD -->
+<div class="letterhead">
+  <div class="letterhead-top">
+    <div>
+      <div class="brand">EMS</div>
+      <div class="brand-sub">Enterprise Management System</div>
+    </div>
+    <div class="report-meta">
+      <div><strong>Report Date:</strong> ${dateStr}</div>
+      <div><strong>Period:</strong> ${filterLabel}</div>
+      <div><strong>Generated By:</strong> Owner</div>
+    </div>
+  </div>
+  <div class="report-title">Financial Statement</div>
+  <div class="report-heading">Business Report</div>
+</div>
+
+<!-- CONTENT -->
+<div class="content">
+
+  <!-- KPI SUMMARY -->
+  <div class="section-title">Executive Summary</div>
+  <div class="kpi-row">
+    <div class="kpi green">
+      <div class="kpi-label">Total Collections</div>
+      <div class="kpi-value">₹${financials.summary.totalCollected.toLocaleString('en-IN')}</div>
+    </div>
+    <div class="kpi red">
+      <div class="kpi-label">Total Expenses</div>
+      <div class="kpi-value">₹${financials.summary.totalExpenses.toLocaleString('en-IN')}</div>
+    </div>
+    <div class="kpi blue">
+      <div class="kpi-label">Net Balance</div>
+      <div class="kpi-value">${netPositive ? '+' : '-'}₹${Math.abs(financials.summary.netBalance).toLocaleString('en-IN')}</div>
+    </div>
+  </div>
+
+  <!-- GROUP-WISE TABLE -->
+  <div class="section-title">${groupHeading}</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Group / Plan</th>
+        <th class="text-center">${memberLabel}</th>
+        <th class="text-right">Collected (₹)</th>
+        <th class="text-right">Pending (₹)</th>
+        <th class="text-right">Collection %</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${financials.classWiseData.map((cls: any) => {
+          const total = cls.collected + cls.pending;
+          const pct = total > 0 ? Math.round((cls.collected / total) * 100) : 0;
+          return `<tr>
+            <td><strong>${cls.groupName}</strong></td>
+            <td class="text-center">${cls.memberCount}</td>
+            <td class="text-right amount text-green">₹${cls.collected.toLocaleString('en-IN')}</td>
+            <td class="text-right amount text-red">₹${cls.pending.toLocaleString('en-IN')}</td>
+            <td class="text-right amount">${pct}%</td>
+          </tr>`;
+      }).join('')}
+    </tbody>
+  </table>
+
+  ${financials.expensesByCategory && financials.expensesByCategory.length > 0 ? `
+  <!-- EXPENSE BREAKDOWN -->
+  <div class="section-title">Expense Breakdown by Category</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Category</th>
+        <th class="text-right">Amount (₹)</th>
+        <th class="text-right">% of Total Expenses</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${financials.expensesByCategory.sort((a: any, b: any) => b.amount - a.amount).map((cat: any) => {
+          const pct = financials.summary.totalExpenses > 0 ? Math.round((cat.amount / financials.summary.totalExpenses) * 100) : 0;
+          return `<tr>
+            <td>${cat.category}</td>
+            <td class="text-right amount text-red">₹${cat.amount.toLocaleString('en-IN')}</td>
+            <td class="text-right">${pct}%</td>
+          </tr>`;
+      }).join('')}
+    </tbody>
+  </table>
+  ` : ''}
+
+  <!-- DISCLAIMER -->
+  <hr class="divider"/>
+  <p style="font-size:11px; color:#aaa; line-height:1.8;">
+    This report is auto-generated and intended for internal review purposes only.
+    All figures are based on data recorded in the EMS system as of the report date.
+    Please verify with your accountant before filing.
+  </p>
+</div>
+
+<!-- FOOTER -->
+<div class="footer">
+  <div class="footer-brand">EMS — Enterprise Management System</div>
+  <div class="footer-note">Confidential — For Internal Use Only</div>
+  <div class="footer-page">Generated: ${dateStr}</div>
+</div>
+
+</body>
+</html>`;
+
+            if (Platform.OS === 'web') {
+                // On web: open HTML in a new tab so user can Save as PDF via browser
+                const blob = new Blob([html], { type: 'text/html' });
+                const url = URL.createObjectURL(blob);
+                window.open(url, '_blank');
+            } else {
+                // On native (iOS/Android): generate PDF file and share
+                const { uri } = await Print.printToFileAsync({ html, base64: false });
+                if (await Sharing.isAvailableAsync()) {
+                    await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Export Financial Report' });
+                }
             }
         } catch (error) {
             console.error("PDF Export failed", error);
         }
     };
+
 
     const renderHeader = () => (
         <LinearGradient
@@ -352,26 +510,48 @@ export default function ReportsScreen() {
                 )}
 
                 <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>Class-wise Collections</Text>
+                    <Text style={styles.sectionTitle}>{financials.groupLabel || 'Plan-wise Collections'}</Text>
                 </View>
-                {financials.classWiseData.map((cls: any, i: number) => (
-                    <View key={i} style={styles.card}>
-                        <Text style={styles.shortcutTitle}>{cls.groupName}</Text>
-                        <Text style={styles.shortcutDesc}>{cls.memberCount} Students</Text>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 }}>
-                            <View>
-                                <Text style={styles.paymentStructure}>Collected</Text>
-                                <Text style={styles.paymentAmount}>₹{cls.collected.toLocaleString('en-IN')}</Text>
+                {financials.classWiseData && financials.classWiseData.map((cls: any, i: number) => {
+                    const total = cls.collected + cls.pending;
+                    const collectedPct = total > 0 ? (cls.collected / total) * 100 : 0;
+                    const pendingPct = total > 0 ? (cls.pending / total) * 100 : 0;
+                    return (
+                        <View key={i} style={styles.card}>
+                            {/* Top row: class name + member count */}
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                                <Text style={styles.shortcutTitle}>{cls.groupName}</Text>
+                                <View style={{ backgroundColor: theme.colors.primaryLight + '20', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 3 }}>
+                                    <Text style={{ fontSize: 12, color: theme.colors.primary, fontWeight: '600' }}>{cls.memberCount} {financials.entityType === 'school' ? 'Students' : 'Members'}</Text>
+                                </View>
                             </View>
-                            <View style={{ alignItems: 'flex-end' }}>
-                                <Text style={styles.paymentStructure}>Pending</Text>
-                                <Text style={[styles.paymentAmount, { color: theme.colors.danger }]}>
-                                    ₹{cls.pending.toLocaleString('en-IN')}
-                                </Text>
+
+                            {/* Stacked bar */}
+                            <View style={{ height: 10, borderRadius: 5, flexDirection: 'row', overflow: 'hidden', backgroundColor: '#F0F0F0', marginBottom: 12 }}>
+                                {collectedPct > 0 && (
+                                    <View style={{ width: `${collectedPct}%`, backgroundColor: theme.colors.success, borderRadius: 5 }} />
+                                )}
+                                {pendingPct > 0 && (
+                                    <View style={{ width: `${pendingPct}%`, backgroundColor: theme.colors.danger, borderRadius: 5 }} />
+                                )}
+                            </View>
+
+                            {/* Legend row */}
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: theme.colors.success }} />
+                                    <Text style={{ fontSize: 13, color: theme.colors.textSecondary }}>Collected</Text>
+                                    <Text style={{ fontSize: 13, fontWeight: 'bold', color: theme.colors.success }}>₹{cls.collected.toLocaleString('en-IN')}</Text>
+                                </View>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: theme.colors.danger }} />
+                                    <Text style={{ fontSize: 13, color: theme.colors.textSecondary }}>Pending</Text>
+                                    <Text style={{ fontSize: 13, fontWeight: 'bold', color: theme.colors.danger }}>₹{cls.pending.toLocaleString('en-IN')}</Text>
+                                </View>
                             </View>
                         </View>
-                    </View>
-                ))}
+                    );
+                })}
 
                 <View style={{ height: 40 }}/>
             </ScrollView>

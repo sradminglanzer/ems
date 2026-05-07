@@ -12,6 +12,8 @@ import FeeGroupDetailsScreen from '../screens/main/FeeGroupDetailsScreen';
 import MemberDetailsScreen from '../screens/main/MemberDetailsScreen';
 import CreateExamScreen from '../screens/main/CreateExamScreen';
 import ExamDetailsScreen from '../screens/main/ExamDetailsScreen';
+import ExamResultsScreen from '../screens/main/ExamResultsScreen';
+import ReportCardScreen from '../screens/main/ReportCardScreen';
 import ParentDashboardScreen from '../screens/main/ParentDashboardScreen';
 
 type RootStackParamList = {
@@ -23,6 +25,8 @@ type RootStackParamList = {
     MemberDetails: { member: any };
     CreateExam: undefined;
     ExamDetails: { exam: any };
+    ExamResults: { exam: any };
+    ReportCard: { member: any };
     ParentMain: undefined;
 };
 
@@ -63,6 +67,8 @@ export default function AppNavigator() {
                         <Stack.Screen name="MemberDetails" component={MemberDetailsScreen} />
                         <Stack.Screen name="CreateExam" component={CreateExamScreen} />
                         <Stack.Screen name="ExamDetails" component={ExamDetailsScreen} />
+                        <Stack.Screen name="ExamResults" component={ExamResultsScreen} />
+                        <Stack.Screen name="ReportCard" component={ReportCardScreen} />
                     </>
                 )}
             </Stack.Navigator>

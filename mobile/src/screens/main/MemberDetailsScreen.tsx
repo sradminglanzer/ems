@@ -381,6 +381,32 @@ export default function MemberDetailsScreen() {
                     </View>
                 )}
 
+                {/* Report Card Quick Access — school only */}
+                {user?.entityType !== 'gym' && (
+                    <TouchableOpacity
+                        style={{
+                            backgroundColor: theme.colors.surface,
+                            borderRadius: 16,
+                            padding: 16,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            borderWidth: 1,
+                            borderColor: theme.colors.primary + '40',
+                            ...theme.shadows.sm
+                        }}
+                        onPress={() => navigation.navigate('ReportCard', { member })}
+                    >
+                        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: theme.colors.primary + '15', justifyContent: 'center', alignItems: 'center', marginRight: 16 }}>
+                            <Ionicons name="ribbon-outline" size={24} color={theme.colors.primary} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 15, fontWeight: '700', color: theme.colors.textPrimary }}>View Report Card</Text>
+                            <Text style={{ fontSize: 13, color: theme.colors.textSecondary, marginTop: 2 }}>Full academic performance & PDF export</Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
+                    </TouchableOpacity>
+                )}
+
                 {/* Payment History Header */}
                 {user?.role !== 'teacher' && (
                     <View style={styles.paymentSectionHeader}>
