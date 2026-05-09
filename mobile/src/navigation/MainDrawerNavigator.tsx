@@ -51,7 +51,13 @@ function CustomDrawerContent(props: any) {
         <View style={{ flex: 1, backgroundColor: theme.colors.surface }}>
             <DrawerContentScrollView {...props} contentContainerStyle={{ backgroundColor: theme.colors.primary, paddingTop: 0 }}>
                 <View style={styles.drawerHeader}>
-                    <Ionicons name="school" size={60} color={theme.colors.surface} />
+                    {user?.entityLogoUrl ? (
+                        <View style={styles.drawerLogoContainer}>
+                            <Image source={{ uri: user.entityLogoUrl }} style={styles.drawerLogo} resizeMode="contain" />
+                        </View>
+                    ) : (
+                        <Ionicons name="school" size={60} color={theme.colors.surface} />
+                    )}
                     <Text style={styles.drawerTitle}>{appName}</Text>
                     <Text style={styles.drawerSubtitle}>{roleDisplay}</Text>
                 </View>
@@ -233,6 +239,20 @@ const styles = StyleSheet.create({
         paddingTop: 48,
         alignItems: 'center',
         borderBottomRightRadius: 24,
+    },
+    drawerLogoContainer: {
+        width: 72,
+        height: 72,
+        borderRadius: 36,
+        backgroundColor: 'rgba(255,255,255,0.95)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        overflow: 'hidden',
+    },
+    drawerLogo: {
+        width: 60,
+        height: 60,
+        borderRadius: 30,
     },
     drawerTitle: {
         color: theme.colors.surface,

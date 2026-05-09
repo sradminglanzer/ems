@@ -7,6 +7,7 @@ export type UserContextType = {
     entityId: string;
     entityName?: string;
     entityType?: string;
+    entityLogoUrl?: string;
     name: string;
     role: string;
     activeAcademicYearId?: string;
