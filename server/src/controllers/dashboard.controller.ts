@@ -362,63 +362,115 @@ export const getComprehensiveFinancials = async (req: AuthRequest, res: Response
             getDB().collection('entities').findOne({ _id: new ObjectId(entityId) })
         ]);
 
-        const groupTotalFees: Record<string, number> = {};
-        feeGroups.forEach((g: any) => {
-            const groupStructures = feeStructures.filter((s: any) => s.feeGroupId && s.feeGroupId.toString() === g._id!.toString());
-            const totalFee = groupStructures.reduce((sum: number, s: any) => sum + s.amount, 0);
-            groupTotalFees[g._id!.toString()] = totalFee;
-        });
+        // === GYM MODE: no fee_groups exist — use fee_structures directly as plans ===
+        // === SCHOOL MODE: fee_groups exist — existing group-based logic ===
+        const isGymMode = !academicYearId && feeGroups.length === 0;
 
+        const groupTotalFees: Record<string, number> = {};
         const classWiseData: Record<string, { groupName: string, collected: number, pending: number, memberCount: number }> = {};
-        feeGroups.forEach((g: any) => {
-            classWiseData[g._id!.toString()] = { groupName: g.name, collected: 0, pending: 0, memberCount: 0 };
-        });
+
+        if (isGymMode) {
+            // Each fee_structure is its own "plan" in gym mode
+            feeStructures.forEach((s: any) => {
+                const sId = s._id!.toString();
+                classWiseData[sId] = { groupName: s.name, collected: 0, pending: 0, memberCount: 0 };
+                groupTotalFees[sId] = s.amount;
+            });
+        } else {
+            // School mode: build from fee_groups
+            feeGroups.forEach((g: any) => {
+                const groupStructures = feeStructures.filter((s: any) => s.feeGroupId && s.feeGroupId.toString() === g._id!.toString());
+                const totalFee = groupStructures.reduce((sum: number, s: any) => sum + s.amount, 0);
+                groupTotalFees[g._id!.toString()] = totalFee;
+                classWiseData[g._id!.toString()] = { groupName: g.name, collected: 0, pending: 0, memberCount: 0 };
+            });
+        }
         classWiseData['unassigned'] = { groupName: 'Unassigned', collected: 0, pending: 0, memberCount: 0 };
 
         members.forEach((m: any) => {
             const mId = m._id!.toString();
-            let group: any;
-            if (academicYearId) {
-                // School mode: match via yearlyRosters
-                group = feeGroups.find((g: any) => {
-                    const roster = g.yearlyRosters?.find((r: any) => r.academicYearId.toString() === academicYearId);
-                    return roster && roster.members && roster.members.some((id: any) => id.toString() === mId);
-                });
-            } else {
-                // Gym mode: use member's own feeGroupId first (fastest path)
-                if (m.feeGroupId) {
-                    group = feeGroups.find((g: any) => g._id!.toString() === m.feeGroupId.toString());
-                }
-                // Fallback: scan feeGroup.members[] and rosters (school style)
-                if (!group) {
-                    group = feeGroups.find((g: any) => {
-                        return (g.members && g.members.some((id: any) => id.toString() === mId)) ||
-                               (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)));
-                    });
-                }
-            }
-
-            const groupId = group ? group._id!.toString() : 'unassigned';
-            if (classWiseData[groupId]) {
-                classWiseData[groupId].memberCount++;
-            }
-
-            let memberTotalFee = group ? (groupTotalFees[group._id!.toString()] || 0) : 0;
-            if (m.addonFeeIds && m.addonFeeIds.length > 0) {
-                const addonAmount = feeStructures
-                    .filter((s: any) => m.addonFeeIds!.some((id: any) => id.toString() === s._id!.toString()))
-                    .reduce((sum: number, s: any) => sum + s.amount, 0);
-                memberTotalFee += addonAmount;
-            }
-
             const memberPayments = feePayments.filter((p: any) => p.memberId.toString() === mId);
             const memberTotalPaid = memberPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
 
-            if (classWiseData[groupId]) {
-                classWiseData[groupId].collected += memberTotalPaid;
-                const individualDeficit = memberTotalFee - memberTotalPaid;
-                if (individualDeficit > 0) {
-                    classWiseData[groupId].pending += individualDeficit;
+            if (isGymMode) {
+                // Gym mode: addonFeeIds[] holds the plan (fee_structure) IDs the member is subscribed to
+                const memberPlanIds: string[] = (m.addonFeeIds || [])
+                    .map((id: any) => id.toString())
+                    .filter((id: string) => !!classWiseData[id]);
+
+                if (memberPlanIds.length === 0) {
+                    // No matching plans — count as unassigned
+                    const unassigned = classWiseData['unassigned'];
+                    if (unassigned) unassigned.memberCount++;
+                    return;
+                }
+
+                // Total expected fee across all plans this member is in
+                const totalExpected = memberPlanIds.reduce((sum, sId) => sum + (groupTotalFees[sId] || 0), 0);
+
+                memberPlanIds.forEach((sId) => {
+                    const planEntry = classWiseData[sId];
+                    if (!planEntry) return;
+
+                    const planAmount = groupTotalFees[sId] || 0;
+                    planEntry.memberCount++;
+
+                    // Distribute payments proportionally across plans by their amount ratio
+                    const ratio = totalExpected > 0 ? planAmount / totalExpected : 0;
+                    const allocatedPayment = memberTotalPaid * ratio;
+                    planEntry.collected += allocatedPayment;
+
+                    const deficit = planAmount - allocatedPayment;
+                    if (deficit > 0) planEntry.pending += deficit;
+                });
+
+            } else {
+                // School mode
+                let planId: string = 'unassigned';
+                let memberTotalFee = 0;
+
+                if (academicYearId) {
+                    // School mode: match via yearlyRosters
+                    const group = feeGroups.find((g: any) => {
+                        const roster = g.yearlyRosters?.find((r: any) => r.academicYearId.toString() === academicYearId);
+                        return roster && roster.members && roster.members.some((id: any) => id.toString() === mId);
+                    });
+                    if (group) {
+                        planId = group._id!.toString();
+                        memberTotalFee = groupTotalFees[planId] || 0;
+                    }
+                } else {
+                    // School mode (no academic year): match via feeGroupId or members[]
+                    let group: any;
+                    if (m.feeGroupId) {
+                        group = feeGroups.find((g: any) => g._id!.toString() === m.feeGroupId.toString());
+                    }
+                    if (!group) {
+                        group = feeGroups.find((g: any) =>
+                            (g.members && g.members.some((id: any) => id.toString() === mId)) ||
+                            (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)))
+                        );
+                    }
+                    if (group) {
+                        planId = group._id!.toString();
+                        memberTotalFee = groupTotalFees[planId] || 0;
+                    }
+                }
+
+                // Add addon fees on top of the base plan fee (school mode only)
+                if (m.addonFeeIds && m.addonFeeIds.length > 0) {
+                    const addonAmount = feeStructures
+                        .filter((s: any) => m.addonFeeIds!.some((id: any) => id.toString() === s._id!.toString()))
+                        .reduce((sum: number, s: any) => sum + s.amount, 0);
+                    memberTotalFee += addonAmount;
+                }
+
+                const planEntry = classWiseData[planId];
+                if (planEntry) {
+                    planEntry.memberCount++;
+                    planEntry.collected += memberTotalPaid;
+                    const deficit = memberTotalFee - memberTotalPaid;
+                    if (deficit > 0) planEntry.pending += deficit;
                 }
             }
         });
