@@ -22,6 +22,8 @@ export default function ReportsScreen() {
     const [historyCount, setHistoryCount] = useState(30);
     const [dateFilter, setDateFilter] = useState<'all' | 'this_month' | 'last_month' | '3_months' | '6_months' | 'ytd'>('all');
     const [tooltipData, setTooltipData] = useState<{ x: number, y: number, value: number, index: number } | null>(null);
+    const [planFilter, setPlanFilter] = useState<string>('all');
+    const [navigatingToMember, setNavigatingToMember] = useState<string | null>(null);
 
     useFocusEffect(
         useCallback(() => {
@@ -444,18 +446,42 @@ export default function ReportsScreen() {
         );
     };
 
-    const renderPaymentItem = ({ item }: { item: any }) => (
-        <View style={styles.paymentCard}>
-            <View style={styles.rowBetween}>
-                <Text style={styles.paymentName}>{item.memberName}</Text>
-                <Text style={styles.paymentAmount}>₹{item.amount.toLocaleString('en-IN')}</Text>
-            </View>
-            <View style={[styles.rowBetween, { marginTop: 8 }]}>
-                <Text style={styles.paymentStructure}>{item.structureName}</Text>
-                <Text style={styles.paymentDate}>{new Date(item.paymentDate).toLocaleDateString()}</Text>
-            </View>
-        </View>
-    );
+    const handlePaymentPress = async (item: any) => {
+        if (!item.memberId || navigatingToMember) return;
+        try {
+            setNavigatingToMember(item.memberId);
+            const res = await api.get(`/members/${item.memberId}`);
+            navigation.navigate('MemberDetails', { member: res.data });
+        } catch (e) {
+            console.error('Failed to load member', e);
+        } finally {
+            setNavigatingToMember(null);
+        }
+    };
+
+    const renderPaymentItem = ({ item }: { item: any }) => {
+        const isLoading = navigatingToMember === item.memberId;
+        return (
+            <TouchableOpacity
+                style={[styles.paymentCard, isLoading && { opacity: 0.6 }]}
+                activeOpacity={0.75}
+                onPress={() => handlePaymentPress(item)}
+                disabled={!!navigatingToMember}
+            >
+                <View style={styles.rowBetween}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                        <Text style={styles.paymentName} numberOfLines={1}>{item.memberName}</Text>
+                        {isLoading && <ActivityIndicator size="small" color={theme.colors.primary} />}
+                    </View>
+                    <Text style={styles.paymentAmount}>₹{item.amount.toLocaleString('en-IN')}</Text>
+                </View>
+                <View style={[styles.rowBetween, { marginTop: 8 }]}>
+                    <Text style={styles.paymentStructure}>{item.structureName}</Text>
+                    <Text style={styles.paymentDate}>{new Date(item.paymentDate).toLocaleDateString()}</Text>
+                </View>
+            </TouchableOpacity>
+        );
+    };
 
     const renderFinancials = () => {
         if (!financials) return null;
@@ -561,7 +587,17 @@ export default function ReportsScreen() {
     const renderHistory = () => {
         if (!reports || !reports.paymentHistory) return null;
 
-        const displayedHistory = reports.paymentHistory.slice(0, historyCount);
+        // Extract unique plan names from payment history
+        const allPlans: string[] = Array.from(
+            new Set(reports.paymentHistory.map((p: any) => p.structureName).filter(Boolean))
+        ) as string[];
+
+        const filteredHistory = planFilter === 'all'
+            ? reports.paymentHistory
+            : reports.paymentHistory.filter((p: any) => p.structureName === planFilter);
+
+        const displayedHistory = filteredHistory.slice(0, historyCount);
+        const totalFiltered = filteredHistory.reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
 
         return (
             <FlatList
@@ -570,11 +606,44 @@ export default function ReportsScreen() {
                 renderItem={renderPaymentItem}
                 contentContainerStyle={styles.listContainer}
                 showsVerticalScrollIndicator={false}
+                ListHeaderComponent={
+                    <>
+                        {/* Plan Filter Pills */}
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }} contentContainerStyle={{ gap: 8, paddingRight: 8 }}>
+                            <TouchableOpacity
+                                style={[styles.planPill, planFilter === 'all' && styles.planPillActive]}
+                                onPress={() => { setPlanFilter('all'); setHistoryCount(30); }}
+                            >
+                                <Text style={[styles.planPillText, planFilter === 'all' && styles.planPillTextActive]}>All Plans</Text>
+                            </TouchableOpacity>
+                            {allPlans.map(plan => (
+                                <TouchableOpacity
+                                    key={plan}
+                                    style={[styles.planPill, planFilter === plan && styles.planPillActive]}
+                                    onPress={() => { setPlanFilter(plan); setHistoryCount(30); }}
+                                >
+                                    <Text style={[styles.planPillText, planFilter === plan && styles.planPillTextActive]}>{plan}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+
+                        {/* Summary line */}
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                            <Text style={{ fontSize: 13, color: theme.colors.textSecondary }}>
+                                {filteredHistory.length} payment{filteredHistory.length !== 1 ? 's' : ''}
+                                {planFilter !== 'all' ? ` · ${planFilter}` : ''}
+                            </Text>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: theme.colors.success }}>
+                                ₹{totalFiltered.toLocaleString('en-IN')}
+                            </Text>
+                        </View>
+                    </>
+                }
                 ListFooterComponent={
                     <View style={{ paddingBottom: 40, paddingTop: 16, alignItems: 'center' }}>
-                        {historyCount < reports.paymentHistory.length && (
-                            <TouchableOpacity 
-                                style={styles.loadMoreBtn} 
+                        {historyCount < filteredHistory.length && (
+                            <TouchableOpacity
+                                style={styles.loadMoreBtn}
                                 onPress={() => setHistoryCount(c => c + 30)}
                             >
                                 <Text style={styles.loadMoreText}>Load More</Text>
@@ -797,5 +866,25 @@ const styles = StyleSheet.create({
         color: theme.colors.primary,
         fontWeight: 'bold',
         fontSize: 14,
-    }
+    },
+    planPill: {
+        paddingVertical: 7,
+        paddingHorizontal: 14,
+        borderRadius: 20,
+        backgroundColor: theme.colors.surface,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+    },
+    planPillActive: {
+        backgroundColor: theme.colors.primary,
+        borderColor: theme.colors.primary,
+    },
+    planPillText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: theme.colors.textSecondary,
+    },
+    planPillTextActive: {
+        color: theme.colors.surface,
+    },
 });

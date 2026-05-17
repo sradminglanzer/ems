@@ -12,6 +12,12 @@ import { AuthContext } from '../../context/AuthContext';
 import { useContext } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getTerm } from '../../utils/terminology';
+
+const FREQUENCY_LABELS: Record<string, string> = {
+    daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly',
+    quarterly: 'Quarterly', 'half-yearly': 'Half-Yearly',
+    annual: 'Annual', 'one-time': 'One-Time',
+};
 import { generateAndShareInvoice } from '../../utils/InvoiceGenerator';
 
 export default function MemberDetailsScreen() {
@@ -36,7 +42,10 @@ export default function MemberDetailsScreen() {
         nextPaymentDateStr: string,
         showPicker: boolean,
         notes: string,
-        checked: boolean
+        checked: boolean,
+        isOverriding: boolean,
+        autoNextDate: Date | null,
+        baseDate?: Date,
     }>>({});
     const [feeStructures, setFeeStructures] = useState<any[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -70,8 +79,8 @@ export default function MemberDetailsScreen() {
         }
     };
 
-    const calculateNextDate = (frequency: string) => {
-        const d = new Date();
+    const calculateNextDate = (frequency: string, baseDate?: Date) => {
+        const d = baseDate ? new Date(baseDate) : new Date();
         if (frequency === 'monthly') d.setMonth(d.getMonth() + 1);
         else if (frequency === 'quarterly') d.setMonth(d.getMonth() + 3);
         else if (frequency === 'half-yearly') d.setMonth(d.getMonth() + 6);
@@ -85,17 +94,26 @@ export default function MemberDetailsScreen() {
         setFeeModalVisible(true);
         const newCart: any = {};
         feeStructures.forEach(s => {
-            const nextD = calculateNextDate(s.frequency);
+            // Find the most recent payment for this specific fee structure
+            const lastPayment = [...payments]
+                .filter((p: any) => p.feeStructureId === s._id || p.feeStructureId?.toString() === s._id)
+                .sort((a: any, b: any) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())[0];
+
+            const baseDate = lastPayment ? new Date(lastPayment.paymentDate) : undefined;
+            const nextD = s.frequency === 'one-time' ? new Date() : calculateNextDate(s.frequency, baseDate);
             const tzOffset = new Date().getTimezoneOffset() * 60000;
             const localISOTime = new Date(nextD.getTime() - tzOffset).toISOString().slice(0, 10);
-            
+
             newCart[s._id] = {
                 amount: String(s.amount),
                 nextPaymentDate: nextD,
                 nextPaymentDateStr: localISOTime,
                 showPicker: false,
                 notes: '',
-                checked: true
+                checked: true,
+                isOverriding: false,
+                autoNextDate: nextD,
+                baseDate,
             };
         });
         setCartPayments(newCart);
@@ -563,7 +581,10 @@ export default function MemberDetailsScreen() {
                                             <TouchableOpacity onPress={() => setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], checked: !cartItem.checked } }))}>
                                                 <Ionicons name={cartItem.checked ? "checkbox" : "square-outline"} size={24} color={cartItem.checked ? theme.colors.primary : theme.colors.textMuted} />
                                             </TouchableOpacity>
-                                            <Text style={{ fontWeight: 'bold', color: theme.colors.textPrimary, marginLeft: 8, flex: 1 }}>{s.name} ({s.frequency})</Text>
+                                            <Text style={{ fontWeight: 'bold', color: theme.colors.textPrimary, marginLeft: 8, flex: 1 }}>
+                                                {s.name}
+                                                <Text style={{ fontWeight: '500', color: theme.colors.textSecondary }}> · {FREQUENCY_LABELS[s.frequency] || s.frequency}</Text>
+                                            </Text>
                                         </View>
                                         
                                         {cartItem.checked && (
@@ -572,33 +593,67 @@ export default function MemberDetailsScreen() {
                                                 <TextInput style={globalStyles.input} keyboardType="numeric" value={cartItem.amount} onChangeText={(val) => setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], amount: val } }))} />
 
                                                 <Text style={globalStyles.label}>Next Renewal Date</Text>
-                                                {Platform.OS === 'web' ? (
-                                                    <TextInput style={globalStyles.input} placeholder="YYYY-MM-DD" value={cartItem.nextPaymentDateStr} onChangeText={(val) => {
-                                                        const d = new Date(val);
-                                                        setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], nextPaymentDateStr: val, nextPaymentDate: !isNaN(d.getTime()) ? d : prev[s._id].nextPaymentDate } }));
-                                                    }} {...{ type: "date" } as any} />
+                                                {s.frequency === 'one-time' ? (
+                                                    <Text style={{ fontSize: 12, color: theme.colors.textMuted, marginBottom: 12 }}>One-time fee — no renewal date required</Text>
+                                                ) : !cartItem.isOverriding ? (
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                                                        <View style={{ flex: 1, backgroundColor: theme.colors.primaryLight + '15', borderRadius: 8, padding: 10, borderWidth: 1, borderColor: theme.colors.primaryLight + '40' }}>
+                                                            <Text style={{ color: theme.colors.primary, fontWeight: '700', fontSize: 15 }}>
+                                                                {cartItem.nextPaymentDate?.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                            </Text>
+                                                            <Text style={{ color: theme.colors.textMuted, fontSize: 12, marginTop: 2 }}>
+                                                                {cartItem.baseDate
+                                                                    ? `Last payment: ${new Date(cartItem.baseDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} + ${FREQUENCY_LABELS[s.frequency] || s.frequency}`
+                                                                    : `Today + ${FREQUENCY_LABELS[s.frequency] || s.frequency} (first payment)`}
+                                                            </Text>
+                                                        </View>
+                                                        <TouchableOpacity
+                                                            style={{ marginLeft: 8, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6, borderWidth: 1, borderColor: theme.colors.primary + '50' }}
+                                                            onPress={() => setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], isOverriding: true, showPicker: Platform.OS !== 'web' } }))}
+                                                        >
+                                                            <Text style={{ color: theme.colors.primary, fontWeight: '600', fontSize: 13 }}>Change</Text>
+                                                        </TouchableOpacity>
+                                                    </View>
                                                 ) : (
                                                     <>
-                                                        <TouchableOpacity style={[globalStyles.input, { justifyContent: 'center' }]} onPress={() => setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], showPicker: true } }))}>
-                                                            <Text style={{ color: cartItem.nextPaymentDate ? theme.colors.textPrimary : theme.colors.textMuted }}>
-                                                                {cartItem.nextPaymentDate ? cartItem.nextPaymentDate.toISOString().split('T')[0] : "Select Renewal Date"}
-                                                            </Text>
-                                                        </TouchableOpacity>
-                                                        {cartItem.showPicker && (
-                                                            <DateTimePicker
-                                                                value={cartItem.nextPaymentDate || new Date()}
-                                                                mode="date"
-                                                                display="default"
-                                                                onChange={(event, selectedDate) => {
-                                                                    setCartPayments(prev => {
-                                                                        const ns = { ...prev };
-                                                                        ns[s._id].showPicker = Platform.OS === 'ios';
-                                                                        if (selectedDate) ns[s._id].nextPaymentDate = selectedDate;
-                                                                        return ns;
-                                                                    });
-                                                                }}
-                                                            />
+                                                        {Platform.OS === 'web' ? (
+                                                            <TextInput style={globalStyles.input} placeholder="YYYY-MM-DD" value={cartItem.nextPaymentDateStr} onChangeText={(val) => {
+                                                                const d = new Date(val);
+                                                                setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], nextPaymentDateStr: val, nextPaymentDate: !isNaN(d.getTime()) ? d : prev[s._id].nextPaymentDate } }));
+                                                            }} {...{ type: 'date' } as any} />
+                                                        ) : (
+                                                            <>
+                                                                <TouchableOpacity style={[globalStyles.input, { justifyContent: 'center' }]} onPress={() => setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], showPicker: true } }))}>
+                                                                    <Text style={{ color: cartItem.nextPaymentDate ? theme.colors.textPrimary : theme.colors.textMuted }}>
+                                                                        {cartItem.nextPaymentDate ? cartItem.nextPaymentDate.toISOString().split('T')[0] : 'Select Renewal Date'}
+                                                                    </Text>
+                                                                </TouchableOpacity>
+                                                                {cartItem.showPicker && (
+                                                                    <DateTimePicker
+                                                                        value={cartItem.nextPaymentDate || new Date()}
+                                                                        mode="date"
+                                                                        display="default"
+                                                                        onChange={(event, selectedDate) => {
+                                                                            setCartPayments(prev => {
+                                                                                const ns = { ...prev };
+                                                                                ns[s._id].showPicker = Platform.OS === 'ios';
+                                                                                if (selectedDate) ns[s._id].nextPaymentDate = selectedDate;
+                                                                                return ns;
+                                                                            });
+                                                                        }}
+                                                                    />
+                                                                )}
+                                                            </>
                                                         )}
+                                                        <TouchableOpacity style={{ marginBottom: 8 }} onPress={() => {
+                                                            const autoDate = cartItem.autoNextDate;
+                                                            if (!autoDate) return;
+                                                            const tzOffset = new Date().getTimezoneOffset() * 60000;
+                                                            const localISOTime = new Date(autoDate.getTime() - tzOffset).toISOString().slice(0, 10);
+                                                            setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], isOverriding: false, showPicker: false, nextPaymentDate: autoDate, nextPaymentDateStr: localISOTime } }));
+                                                        }}>
+                                                            <Text style={{ color: theme.colors.textMuted, fontSize: 12 }}>↩ Reset to auto-calculated date</Text>
+                                                        </TouchableOpacity>
                                                     </>
                                                 )}
                                                 
