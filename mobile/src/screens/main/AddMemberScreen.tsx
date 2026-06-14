@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity,
-    TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Animated, Image, Modal, Linking
+    TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Animated, Image, Modal, Linking, Alert
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -25,7 +25,7 @@ export default function AddMemberScreen() {
     const memberToEdit = route.params?.memberToEdit;
     const initialFeeGroupId = route.params?.feeGroupId;
 
-    const [feeGroupId, setFeeGroupId] = useState(initialFeeGroupId || '');
+    const [feeGroupId, setFeeGroupId] = useState(initialFeeGroupId || memberToEdit?.feeGroupId || '');
     const [groupsList, setGroupsList] = useState<any[]>([]);
     const [addonFeeIds, setAddonFeeIds] = useState<string[]>(memberToEdit?.addonFeeIds || []);
     const [globalFees, setGlobalFees] = useState<any[]>([]);
@@ -55,23 +55,55 @@ export default function AddMemberScreen() {
     const [posNextRenewalDateStr, setPosNextRenewalDateStr] = useState('');
     const [posNextRenewalDate, setPosNextRenewalDate] = useState<Date | null>(null);
     const [showPosRenewalPicker, setShowPosRenewalPicker] = useState(false);
+    const [isOverridingRenewal, setIsOverridingRenewal] = useState(false);
+    const [autoNextDate, setAutoNextDate] = useState<Date | null>(null);
     const [posReferenceDocumentUrl, setPosReferenceDocumentUrl] = useState('');
     const [isUploadingProof, setIsUploadingProof] = useState(false);
+
+    const calculateNextDate = (frequency: string, baseDate?: Date) => {
+        const d = baseDate ? new Date(baseDate) : new Date();
+        if (frequency === 'monthly') d.setMonth(d.getMonth() + 1);
+        else if (frequency === 'quarterly') d.setMonth(d.getMonth() + 3);
+        else if (frequency === 'half-yearly') d.setMonth(d.getMonth() + 6);
+        else if (frequency === 'annual' || frequency === 'yearly') d.setFullYear(d.getFullYear() + 1);
+        else if (frequency === 'weekly') d.setDate(d.getDate() + 7);
+        else if (frequency === 'daily') d.setDate(d.getDate() + 1);
+        return d;
+    };
 
     useEffect(() => {
         if (user?.entityType === 'gym' && !memberToEdit) {
             const selectedFees = globalFees.filter(f => addonFeeIds.includes(f._id));
             const total = selectedFees.reduce((sum, f) => sum + f.amount, 0);
+            
+            // Auto-calculate renewal date based on first selected plan with a frequency
+            let nextD = null;
+            const recurringPlan = selectedFees.find(f => f.frequency && f.frequency !== 'one-time');
+            if (recurringPlan) {
+                nextD = calculateNextDate(recurringPlan.frequency);
+            }
+
             if (total > 0) {
                 setPosAmountCollected(total.toString());
             } else {
                 setPosAmountCollected('');
             }
+
+            setAutoNextDate(nextD);
+            if (!isOverridingRenewal) {
+                setPosNextRenewalDate(nextD);
+                if (nextD) {
+                    const tzOffset = new Date().getTimezoneOffset() * 60000;
+                    setPosNextRenewalDateStr(new Date(nextD.getTime() - tzOffset).toISOString().slice(0, 10));
+                } else {
+                    setPosNextRenewalDateStr('');
+                }
+            }
         }
-    }, [addonFeeIds, globalFees, user?.entityType]);
+    }, [addonFeeIds, globalFees, user?.entityType, isOverridingRenewal]);
 
     useEffect(() => {
-        if (!initialFeeGroupId && !memberToEdit) {
+        if (!initialFeeGroupId) {
             Promise.all([
                 api.get('/fee-groups'),
                 api.get('/fee-structures')
@@ -88,45 +120,96 @@ export default function AddMemberScreen() {
         }
     }, [initialFeeGroupId, memberToEdit]);
 
-    const handlePickImage = async () => {
-        try {
-            const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                allowsEditing: true,
-                aspect: [1, 1],
-                quality: 0.5,
-            });
+    const processImageResult = async (result: ImagePicker.ImagePickerResult) => {
+        if (!result.canceled && result.assets[0]) {
+            const imgUri = result.assets[0].uri;
+            setIsUploadingPhoto(true);
 
-            if (!result.canceled && result.assets[0]) {
-                const imgUri = result.assets[0].uri;
-                setIsUploadingPhoto(true);
-
-                // 1) Get secure presigned URL
+            try {
                 const ext = imgUri.split('.').pop() || 'jpg';
                 const filename = `avatar.${ext}`;
                 const urlRes = await getUploadUrl(filename, 'image/jpeg');
                 const { uploadUrl, publicUrl } = urlRes.data;
 
-                // 2) Convert local URI to Blob
                 const response = await fetch(imgUri);
                 const blob = await response.blob();
 
-                // 3) PUT directly to S3
                 await fetch(uploadUrl, {
                     method: 'PUT',
                     body: blob,
                     headers: { 'Content-Type': 'image/jpeg' },
                 });
 
-                // 4) Set successful URL
                 setProfilePicUrl(publicUrl);
+            } catch (error) {
+                console.error('Failed to upload image:', error);
+                alert('Failed to upload image securely.');
+            } finally {
+                setIsUploadingPhoto(false);
             }
-        } catch (error) {
-            console.error('Failed to upload image:', error);
-            alert('Failed to upload image securely.');
-        } finally {
-            setIsUploadingPhoto(false);
         }
+    };
+
+    const handlePickImage = async () => {
+        if (Platform.OS === 'web') {
+            // Web fallback: just open image library
+            try {
+                const result = await ImagePicker.launchImageLibraryAsync({
+                    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                    allowsEditing: true,
+                    aspect: [1, 1],
+                    quality: 0.5,
+                });
+                await processImageResult(result);
+            } catch (error) {
+                console.log(error);
+            }
+            return;
+        }
+
+        Alert.alert(
+            "Profile Photo",
+            "Choose an option",
+            [
+                {
+                    text: "Camera",
+                    onPress: async () => {
+                        try {
+                            const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+                            if (permissionResult.granted === false) {
+                                alert("You've refused to allow this app to access your camera!");
+                                return;
+                            }
+                            const result = await ImagePicker.launchCameraAsync({
+                                allowsEditing: true,
+                                aspect: [1, 1],
+                                quality: 0.5,
+                            });
+                            await processImageResult(result);
+                        } catch (error) {
+                            console.log(error);
+                        }
+                    }
+                },
+                {
+                    text: "Gallery",
+                    onPress: async () => {
+                        try {
+                            const result = await ImagePicker.launchImageLibraryAsync({
+                                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                                allowsEditing: true,
+                                aspect: [1, 1],
+                                quality: 0.5,
+                            });
+                            await processImageResult(result);
+                        } catch (error) {
+                            console.log(error);
+                        }
+                    }
+                },
+                { text: "Cancel", style: "cancel" }
+            ]
+        );
     };
 
     const handlePickProof = async () => {
@@ -393,7 +476,7 @@ export default function AddMemberScreen() {
                     </View>
                 </View>
 
-                {!memberToEdit && !initialFeeGroupId && user?.entityType !== 'gym' && groupsList.length > 0 && (
+                {!initialFeeGroupId && user?.entityType !== 'gym' && groupsList.length > 0 && (
                     <View style={styles.glassCard}>
                         <View style={styles.sectionHeader}>
                             <Ionicons name="fitness-outline" size={18} color={theme.colors.primary} />
@@ -471,48 +554,74 @@ export default function AddMemberScreen() {
                             ))}
                         </View>
 
-                        <Text style={globalStyles.label}>Next Renewal Date</Text>
-                        <View style={{ marginBottom: 12 }}>
-                            {Platform.OS === 'web' ? (
-                                <TextInput
-                                    style={globalStyles.input}
-                                    placeholder="YYYY-MM-DD"
-                                    value={posNextRenewalDateStr}
-                                    onChangeText={(text) => {
-                                        setPosNextRenewalDateStr(text);
-                                        const parsedDate = new Date(text);
-                                        if (!isNaN(parsedDate.getTime())) {
-                                            setPosNextRenewalDate(parsedDate);
-                                        }
-                                    }}
-                                    // @ts-ignore
-                                    type="date"
-                                    placeholderTextColor={theme.colors.textMuted}
-                                />
-                            ) : (
-                                <>
-                                    <TouchableOpacity
-                                        style={[globalStyles.input, { justifyContent: 'center' }]}
-                                        onPress={() => setShowPosRenewalPicker(true)}
-                                    >
-                                        <Text style={{ color: posNextRenewalDate ? theme.colors.textPrimary : theme.colors.textMuted }}>
-                                            {posNextRenewalDate ? posNextRenewalDate.toISOString().split('T')[0] : "Select Expiry Date"}
+                        {autoNextDate && !isOverridingRenewal ? (
+                            <View style={{ marginBottom: 12 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                                    <View style={{ flex: 1, backgroundColor: theme.colors.primaryLight + '15', borderRadius: 8, padding: 10, borderWidth: 1, borderColor: theme.colors.primaryLight + '40' }}>
+                                        <Text style={{ color: theme.colors.primary, fontWeight: '700', fontSize: 15 }}>
+                                            {posNextRenewalDate?.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                                         </Text>
+                                        <Text style={{ color: theme.colors.textMuted, fontSize: 12, marginTop: 2 }}>
+                                            Auto-calculated from selected plan
+                                        </Text>
+                                    </View>
+                                    <TouchableOpacity
+                                        style={{ marginLeft: 8, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6, borderWidth: 1, borderColor: theme.colors.primary + '50' }}
+                                        onPress={() => setIsOverridingRenewal(true)}
+                                    >
+                                        <Text style={{ color: theme.colors.primary, fontWeight: '600', fontSize: 13 }}>Change</Text>
                                     </TouchableOpacity>
-                                    {showPosRenewalPicker ? (
-                                        <DateTimePicker
-                                            value={posNextRenewalDate || new Date()}
-                                            mode="date"
-                                            display="default"
-                                            onChange={(event, selectedDate) => {
-                                                setShowPosRenewalPicker(Platform.OS === 'ios');
-                                                if (selectedDate) setPosNextRenewalDate(selectedDate);
-                                            }}
-                                        />
-                                    ) : null}
-                                </>
-                            )}
-                        </View>
+                                </View>
+                            </View>
+                        ) : (
+                            <View style={{ marginBottom: 12 }}>
+                                {Platform.OS === 'web' ? (
+                                    <TextInput
+                                        style={globalStyles.input}
+                                        placeholder="YYYY-MM-DD"
+                                        value={posNextRenewalDateStr}
+                                        onChangeText={(text) => {
+                                            setPosNextRenewalDateStr(text);
+                                            const parsedDate = new Date(text);
+                                            if (!isNaN(parsedDate.getTime())) {
+                                                setPosNextRenewalDate(parsedDate);
+                                            }
+                                        }}
+                                        // @ts-ignore
+                                        type="date"
+                                        placeholderTextColor={theme.colors.textMuted}
+                                    />
+                                ) : (
+                                    <>
+                                        <TouchableOpacity
+                                            style={[globalStyles.input, { justifyContent: 'center' }]}
+                                            onPress={() => setShowPosRenewalPicker(true)}
+                                        >
+                                            <Text style={{ color: posNextRenewalDate ? theme.colors.textPrimary : theme.colors.textMuted }}>
+                                                {posNextRenewalDate ? posNextRenewalDate.toISOString().split('T')[0] : "Select Expiry Date"}
+                                            </Text>
+                                        </TouchableOpacity>
+                                        {showPosRenewalPicker ? (
+                                            <DateTimePicker
+                                                value={posNextRenewalDate || new Date()}
+                                                mode="date"
+                                                display="default"
+                                                onChange={(event, selectedDate) => {
+                                                    setShowPosRenewalPicker(Platform.OS === 'ios');
+                                                    if (selectedDate) setPosNextRenewalDate(selectedDate);
+                                                }}
+                                            />
+                                        ) : null}
+                                    </>
+                                )}
+                                {autoNextDate && (
+                                    <TouchableOpacity style={{ marginBottom: 8 }} onPress={() => setIsOverridingRenewal(false)}>
+                                        <Text style={{ color: theme.colors.textMuted, fontSize: 12 }}>↩ Reset to auto-calculated date</Text>
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+                        )}
+
 
                         {(posPaymentMethod === 'upi' || posPaymentMethod === 'card') && (
                             <View>

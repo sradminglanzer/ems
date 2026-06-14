@@ -48,6 +48,8 @@ export default function MemberDetailsScreen() {
         baseDate?: Date,
     }>>({});
     const [feeStructures, setFeeStructures] = useState<any[]>([]);
+    const [allFeeStructures, setAllFeeStructures] = useState<any[]>([]);
+    const [activeAddons, setActiveAddons] = useState<string[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
@@ -66,6 +68,7 @@ export default function MemberDetailsScreen() {
             setResults(resRes.data);
             
             // Filter structures to only those assigned to the member (Group + Add-ons)
+            setAllFeeStructures(structRes.data);
             setFeeStructures(structRes.data.filter((s: any) => {
                 const isGroupFee = member.feeGroupId && s.feeGroupId === member.feeGroupId;
                 const isAddonFee = !s.feeGroupId && member.addonFeeIds?.includes(s._id);
@@ -92,8 +95,11 @@ export default function MemberDetailsScreen() {
 
     const handleOpenFeeModal = () => {
         setFeeModalVisible(true);
+        setActiveAddons(member.addonFeeIds || []);
+        
         const newCart: any = {};
-        feeStructures.forEach(s => {
+        // Initialize all structures in case they select a new one inside the modal
+        allFeeStructures.forEach(s => {
             // Find the most recent payment for this specific fee structure
             const lastPayment = [...payments]
                 .filter((p: any) => p.feeStructureId === s._id || p.feeStructureId?.toString() === s._id)
@@ -104,13 +110,17 @@ export default function MemberDetailsScreen() {
             const tzOffset = new Date().getTimezoneOffset() * 60000;
             const localISOTime = new Date(nextD.getTime() - tzOffset).toISOString().slice(0, 10);
 
+            const isGroupFee = member.feeGroupId && s.feeGroupId === member.feeGroupId;
+            const isAddonFee = !s.feeGroupId && (member.addonFeeIds?.includes(s._id) || false);
+            const isAssigned = isGroupFee || isAddonFee || (!member.feeGroupId && !member.addonFeeIds?.length);
+
             newCart[s._id] = {
                 amount: String(s.amount),
                 nextPaymentDate: nextD,
                 nextPaymentDateStr: localISOTime,
                 showPicker: false,
                 notes: '',
-                checked: true,
+                checked: isAssigned,
                 isOverriding: false,
                 autoNextDate: nextD,
                 baseDate,
@@ -120,7 +130,12 @@ export default function MemberDetailsScreen() {
     };
 
     const handleCollectFee = async () => {
-        const paymentsToSubmit = feeStructures
+        // Collect from either the newly selected active addons (gym) or standard fee structures (school)
+        const activeStructures = user?.entityType === 'gym' 
+            ? allFeeStructures.filter(s => activeAddons.includes(s._id))
+            : feeStructures;
+
+        const paymentsToSubmit = activeStructures
             .filter(s => cartPayments[s._id]?.checked)
             .map(s => {
                 const cartItem = cartPayments[s._id];
@@ -144,8 +159,14 @@ export default function MemberDetailsScreen() {
 
         setIsSubmitting(true);
         try {
+            // Save updated addons to member profile first
+            if (user?.entityType === 'gym') {
+                await api.put(`/members/${member._id}`, { addonFeeIds: activeAddons });
+            }
+
             const response = await api.post('/fee-payments', { payments: paymentsToSubmit });
             const assignedReceiptNo = response.data?.[0]?.receiptNo || `REC-${Date.now().toString().slice(-6)}`;
+
             
             // Trigger Receipt Generation
             if (user?.entityType === 'gym') {
@@ -275,13 +296,13 @@ export default function MemberDetailsScreen() {
                                 </View>
                             ) : null
                         )}
-                        {member.dob && (
+                        {!!member.dob && (
                             <View style={styles.detailItem}>
                                 <Text style={styles.detailLabel}>Date of Birth</Text>
                                 <Text style={styles.detailValue}>{new Date(member.dob).toLocaleDateString()}</Text>
                             </View>
                         )}
-                        {member.contact && (
+                        {!!member.contact && (
                             <View style={styles.detailItem}>
                                 <Text style={styles.detailLabel}>Contact Phone</Text>
                                 <Text style={styles.detailValue}>{member.contact}</Text>
@@ -289,24 +310,24 @@ export default function MemberDetailsScreen() {
                         )}
                     </View>
 
-                    {member.address && (
+                    {!!member.address && (
                         <View style={styles.fullWidthDetail}>
                             <Text style={styles.detailLabel}>Home Address</Text>
                             <Text style={styles.detailValue}>{member.address}</Text>
                         </View>
                     )}
 
-                    {(member.fatherOccupation || member.motherOccupation) && (
+                    {!!(member.fatherOccupation || member.motherOccupation) && (
                         <View style={styles.parentsSection}>
                             <Text style={styles.parentsTitle}>Parent Details</Text>
                             <View style={styles.detailsGrid}>
-                                {member.fatherOccupation && !['no', 'none', 'n/a', 'na', '-', 'nil'].includes(member.fatherOccupation.toLowerCase().trim()) && (
+                                {!!member.fatherOccupation && !['no', 'none', 'n/a', 'na', '-', 'nil'].includes(member.fatherOccupation.toLowerCase().trim()) && (
                                     <View style={styles.detailItem}>
                                         <Text style={styles.detailLabel}>Father Occupation</Text>
                                         <Text style={styles.detailValue}>{member.fatherOccupation}</Text>
                                     </View>
                                 )}
-                                {member.motherOccupation && !['no', 'none', 'n/a', 'na', '-', 'nil'].includes(member.motherOccupation.toLowerCase().trim()) && (
+                                {!!member.motherOccupation && !['no', 'none', 'n/a', 'na', '-', 'nil'].includes(member.motherOccupation.toLowerCase().trim()) && (
                                     <View style={styles.detailItem}>
                                         <Text style={styles.detailLabel}>Mother Occupation</Text>
                                         <Text style={styles.detailValue}>{member.motherOccupation}</Text>
@@ -356,7 +377,7 @@ export default function MemberDetailsScreen() {
                             <View key={r._id} style={styles.examResultCard}>
                                 <View style={styles.examHeader}>
                                     <Text style={styles.examName}>{r.examName || 'Exam'}</Text>
-                                    {r.remarks && <Text style={styles.examRemarks}>{r.remarks}</Text>}
+                                    {!!r.remarks && <Text style={styles.examRemarks}>{r.remarks}</Text>}
                                 </View>
 
                                 {Array.isArray(r.marks) && r.marks.length > 0 ? (
@@ -565,14 +586,43 @@ export default function MemberDetailsScreen() {
                 <View style={globalStyles.modalOverlay}>
                     <View style={globalStyles.modalContent}>
                         <View style={globalStyles.modalHeader}>
-                            <Text style={globalStyles.modalTitle}>Collect Fee</Text>
-                            <TouchableOpacity onPress={() => setFeeModalVisible(false)} style={globalStyles.closeButton}>
+                            <View>
+                                <Text style={globalStyles.modalTitle}>Collect Fee</Text>
+                            </View>
+                            <TouchableOpacity onPress={() => setFeeModalVisible(false)} style={[globalStyles.closeButton, { alignSelf: 'flex-start' }]}>
                                 <Ionicons name="close" size={24} color={theme.colors.textSecondary} />
                             </TouchableOpacity>
                         </View>
 
                         <ScrollView style={{ maxHeight: '80%' }} showsVerticalScrollIndicator={false}>
-                            {feeStructures.map(s => {
+                            {user?.entityType === 'gym' && (
+                                <View style={{ marginBottom: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: theme.colors.border }}>
+                                    <Text style={[globalStyles.label, { marginBottom: 8 }]}>Active Subscriptions (Tap to update level)</Text>
+                                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                                        {allFeeStructures.filter(s => !s.feeGroupId).map(s => {
+                                            const isActive = activeAddons.includes(s._id);
+                                            return (
+                                                <TouchableOpacity 
+                                                    key={s._id}
+                                                    style={[styles.pill, isActive && styles.pillActive]}
+                                                    onPress={() => {
+                                                        const newAddons = isActive ? activeAddons.filter(id => id !== s._id) : [...activeAddons, s._id];
+                                                        setActiveAddons(newAddons);
+                                                        setCartPayments(prev => ({
+                                                            ...prev,
+                                                            [s._id]: { ...prev[s._id], checked: !isActive }
+                                                        }));
+                                                    }}
+                                                >
+                                                    <Text style={[styles.pillText, isActive && styles.pillTextActive]}>{s.name}</Text>
+                                                </TouchableOpacity>
+                                            )
+                                        })}
+                                    </View>
+                                </View>
+                            )}
+
+                            {(user?.entityType === 'gym' ? allFeeStructures.filter(s => activeAddons.includes(s._id)) : feeStructures).map(s => {
                                 const cartItem = cartPayments[s._id];
                                 if (!cartItem) return null;
                                 return (
@@ -669,7 +719,7 @@ export default function MemberDetailsScreen() {
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 16 }}>
                             <Text style={{ fontWeight: 'bold', fontSize: 16 }}>Total Selected:</Text>
                             <Text style={{ fontWeight: 'bold', fontSize: 20, color: theme.colors.success }}>
-                                ₹{feeStructures.filter(s => cartPayments[s._id]?.checked).reduce((sum, s) => sum + parseFloat(cartPayments[s._id]?.amount || '0'), 0).toLocaleString('en-IN')}
+                                ₹{(user?.entityType === 'gym' ? allFeeStructures.filter(s => activeAddons.includes(s._id)) : feeStructures).filter(s => cartPayments[s._id]?.checked).reduce((sum, s) => sum + parseFloat(cartPayments[s._id]?.amount || '0'), 0).toLocaleString('en-IN')}
                             </Text>
                         </View>
 
