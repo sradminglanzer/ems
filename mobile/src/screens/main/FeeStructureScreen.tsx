@@ -14,6 +14,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import HeaderActions from '../../components/HeaderActions';
 import { getTerm } from '../../utils/terminology';
 
+const FREQUENCY_LABELS: Record<string, string> = {
+    daily: 'Daily',
+    weekly: 'Weekly',
+    monthly: 'Monthly',
+    quarterly: 'Quarterly',
+    'half-yearly': 'Half-Yearly',
+    annual: 'Annual',
+    'one-time': 'One-Time',
+};
+const GYM_FREQUENCIES = ['daily', 'weekly', 'monthly', 'quarterly', 'half-yearly', 'annual', 'one-time'];
+const SCHOOL_FREQUENCIES = ['monthly', 'annual', 'one-time'];
+
 export default function FeeStructureScreen() {
     const { user } = useContext(AuthContext);
     const navigation = useNavigation<any>();
@@ -152,7 +164,7 @@ export default function FeeStructureScreen() {
 
                 <View style={styles.detailsRow}>
                     <Ionicons name="time-outline" size={14} color={theme.colors.textSecondary} />
-                    <Text style={styles.frequency}>{item.frequency.toUpperCase()}</Text>
+                    <Text style={styles.frequency}>{FREQUENCY_LABELS[item.frequency] || item.frequency.toUpperCase()}</Text>
                 </View>
             </View>
             <View style={styles.amountBadge}>
@@ -275,13 +287,13 @@ export default function FeeStructureScreen() {
 
                             <Text style={globalStyles.label}>Frequency</Text>
                             <View style={styles.mockPicker}>
-                                {['monthly', 'term', 'annual', 'one-time'].map(f => (
+                                {(user?.entityType === 'gym' ? GYM_FREQUENCIES : SCHOOL_FREQUENCIES).map(f => (
                                     <TouchableOpacity
                                         key={f}
                                         style={[styles.pill, frequency === f && styles.pillActive]}
                                         onPress={() => setFrequency(f)}
                                     >
-                                        <Text style={[styles.pillText, frequency === f && styles.pillTextActive]}>{f}</Text>
+                                        <Text style={[styles.pillText, frequency === f && styles.pillTextActive]}>{FREQUENCY_LABELS[f]}</Text>
                                     </TouchableOpacity>
                                 ))}
                             </View>

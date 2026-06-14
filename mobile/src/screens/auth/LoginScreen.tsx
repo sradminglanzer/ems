@@ -1,5 +1,5 @@
 import React, { useState, useContext, useEffect, useRef } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, TouchableHighlight, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, SafeAreaView, Animated, Vibration } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, TouchableHighlight, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, SafeAreaView, Animated, Vibration, Image, Modal, FlatList } from 'react-native';
 import { AuthContext } from '../../context/AuthContext';
 import api from '../../services/api';
 import { theme } from '../../theme';
@@ -8,6 +8,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const STORE_KEY = '@ems_saved_contact';
+const STORE_ENTITY_KEY = '@ems_saved_entity_id';
+const isSharedMode = !process.env.EXPO_PUBLIC_ENTITY_ID;
 
 export default function LoginScreen({ navigation }: any) {
     const { signIn } = useContext(AuthContext);
@@ -18,6 +20,13 @@ export default function LoginScreen({ navigation }: any) {
     const [contactNumber, setContactNumber] = useState('');
     const [mpin, setMpin] = useState('');
     const [loading, setLoading] = useState(false);
+    const [brandingLogo, setBrandingLogo] = useState<string | null>(null);
+    const [brandingName, setBrandingName] = useState<string | null>(null);
+
+    // Shared mode state
+    const [resolvedEntityId, setResolvedEntityId] = useState<string | null>(null);
+    const [entityPickerVisible, setEntityPickerVisible] = useState(false);
+    const [entityPickerList, setEntityPickerList] = useState<any[]>([]);
 
     // Animations for MPIN dots
     const shakeAnim = useRef(new Animated.Value(0)).current;
@@ -31,6 +40,7 @@ export default function LoginScreen({ navigation }: any) {
 
     useEffect(() => {
         checkSavedNumber();
+        fetchBranding();
     }, []);
 
     const checkSavedNumber = async () => {
@@ -38,6 +48,11 @@ export default function LoginScreen({ navigation }: any) {
             const savedNumber = await AsyncStorage.getItem(STORE_KEY);
             if (savedNumber && savedNumber.length > 5) {
                 setContactNumber(savedNumber);
+                // In shared mode, restore the saved entity ID too
+                if (isSharedMode) {
+                    const savedEntityId = await AsyncStorage.getItem(STORE_ENTITY_KEY);
+                    if (savedEntityId) setResolvedEntityId(savedEntityId);
+                }
                 setFlowState('ENTER_MPIN');
                 triggerEntryAnimation();
             } else {
@@ -47,6 +62,26 @@ export default function LoginScreen({ navigation }: any) {
             setFlowState('ENTER_NUMBER');
         }
     };
+
+    const fetchBranding = async () => {
+        try {
+            // In shared mode, branding is fetched after phone number resolution, not on mount
+            const entityId = process.env.EXPO_PUBLIC_ENTITY_ID;
+            if (!entityId) return;
+            const response = await api.get(`/entities/${entityId}/branding`);
+            if (response.data?.logoUrl) {
+                setBrandingLogo(response.data.logoUrl);
+            }
+            if (response.data?.name) {
+                setBrandingName(response.data.name);
+            }
+        } catch (e) {
+            // Non-critical — silently fallback to icon
+        }
+    };
+
+    // Helper to get the effective entity ID for API calls
+    const getEntityId = () => resolvedEntityId || process.env.EXPO_PUBLIC_ENTITY_ID;
 
     const triggerEntryAnimation = () => {
         Animated.parallel([
@@ -72,19 +107,37 @@ export default function LoginScreen({ navigation }: any) {
 
         setLoading(true);
         try {
-            // Test if number exists without MPIN to route either to SETUP or MPIN Lock
-            const response = await api.post('/auth/login', {
-                entityId: process.env.EXPO_PUBLIC_ENTITY_ID,
-                contactNumber,
-            });
+            // Build payload — entityId is optional in shared mode
+            const payload: any = { contactNumber };
+            const envEntityId = process.env.EXPO_PUBLIC_ENTITY_ID;
+            if (envEntityId) payload.entityId = envEntityId;
 
+            const response = await api.post('/auth/login', payload);
             const data = response.data;
 
+            if (data.requiresEntitySelection) {
+                // Multiple entities found — show picker
+                setEntityPickerList(data.entities);
+                setEntityPickerVisible(true);
+                return;
+            }
+
+            // Set branding from the resolved entity
+            if (data.entity) {
+                if (data.entity.logoUrl) setBrandingLogo(data.entity.logoUrl);
+                if (data.entity.name) setBrandingName(data.entity.name);
+                if (data.entity.id) {
+                    setResolvedEntityId(String(data.entity.id));
+                    await AsyncStorage.setItem(STORE_ENTITY_KEY, String(data.entity.id));
+                }
+            }
+
             if (data.requiresSetup) {
-                // Number exists but no MPIN set -> proceed to setup, don't save yet until fully verified
-                navigation.navigate('SetupMpin', { contactNumber });
+                navigation.navigate('SetupMpin', {
+                    contactNumber,
+                    entityId: data.entity?.id ? String(data.entity.id) : envEntityId
+                });
             } else if (data.requiresMpin || data.token) {
-                // User has MPIN, save local identity and show Lock Screen
                 await AsyncStorage.setItem(STORE_KEY, contactNumber);
                 setMpin('');
                 setFlowState('ENTER_MPIN');
@@ -102,7 +155,7 @@ export default function LoginScreen({ navigation }: any) {
         setLoading(true);
         try {
             const response = await api.post('/auth/login', {
-                entityId: process.env.EXPO_PUBLIC_ENTITY_ID,
+                entityId: getEntityId(),
                 contactNumber,
                 mpin: fullMpin
             });
@@ -110,13 +163,15 @@ export default function LoginScreen({ navigation }: any) {
             const data = response.data;
 
             if (data.token && data.user) {
-                // Ensure number is definitely saved locally on success
                 await AsyncStorage.setItem(STORE_KEY, contactNumber);
+                if (resolvedEntityId) {
+                    await AsyncStorage.setItem(STORE_ENTITY_KEY, resolvedEntityId);
+                }
                 await signIn(data.token, data.user);
             }
         } catch (error: any) {
             triggerShake();
-            setMpin(''); // Clear failed pin
+            setMpin('');
             const message = error.response?.data?.message || 'Invalid MPIN. Please try again.';
             Alert.alert('Authentication Error', message);
         } finally {
@@ -156,9 +211,48 @@ export default function LoginScreen({ navigation }: any) {
 
     const handleSwitchAccount = async () => {
         await AsyncStorage.removeItem(STORE_KEY);
+        await AsyncStorage.removeItem(STORE_ENTITY_KEY);
         setContactNumber('');
         setMpin('');
+        setResolvedEntityId(null);
+        setBrandingLogo(null);
+        setBrandingName(null);
         setFlowState('ENTER_NUMBER');
+    };
+
+    const handleEntitySelected = async (entity: any) => {
+        setEntityPickerVisible(false);
+        setResolvedEntityId(String(entity.id));
+        await AsyncStorage.setItem(STORE_ENTITY_KEY, String(entity.id));
+        if (entity.logoUrl) setBrandingLogo(entity.logoUrl);
+        if (entity.name) setBrandingName(entity.name);
+
+        // Re-call login with the selected entity
+        setLoading(true);
+        try {
+            const response = await api.post('/auth/login', {
+                entityId: String(entity.id),
+                contactNumber,
+            });
+            const data = response.data;
+
+            if (data.requiresSetup) {
+                navigation.navigate('SetupMpin', {
+                    contactNumber,
+                    entityId: String(entity.id)
+                });
+            } else if (data.requiresMpin || data.token) {
+                await AsyncStorage.setItem(STORE_KEY, contactNumber);
+                setMpin('');
+                setFlowState('ENTER_MPIN');
+                triggerEntryAnimation();
+            }
+        } catch (error: any) {
+            const message = error.response?.data?.message || 'Login failed.';
+            Alert.alert('Authentication Error', message);
+        } finally {
+            setLoading(false);
+        }
     };
 
     if (flowState === 'CHECKING') {
@@ -176,9 +270,13 @@ export default function LoginScreen({ navigation }: any) {
                 <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
                     <View style={styles.header}>
                         <View style={styles.logoPlaceholder}>
-                            <Ionicons name="school" size={48} color={theme.colors.primary} />
+                            {brandingLogo ? (
+                                <Image source={{ uri: brandingLogo }} style={styles.logoImage} resizeMode="contain" />
+                            ) : (
+                                <Ionicons name={isSharedMode ? 'fitness' : 'school'} size={48} color={theme.colors.primary} />
+                            )}
                         </View>
-                        <Text style={styles.title}>Welcomeeee</Text>
+                        <Text style={styles.title}>{brandingName || 'Welcome'}</Text>
                         <Text style={styles.subtitle}>Enter your contact number to begin</Text>
                     </View>
 
@@ -293,6 +391,40 @@ export default function LoginScreen({ navigation }: any) {
 
                 </View>
             </View>
+
+            {/* Entity Picker Modal */}
+            <Modal animationType="slide" transparent={true} visible={entityPickerVisible} onRequestClose={() => setEntityPickerVisible(false)}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>Select Your Gym</Text>
+                        <Text style={styles.modalSubtitle}>Your number is registered with multiple businesses</Text>
+                        <FlatList
+                            data={entityPickerList}
+                            keyExtractor={(item) => String(item.id)}
+                            style={{ marginTop: 16, maxHeight: 300 }}
+                            renderItem={({ item }) => (
+                                <TouchableOpacity style={styles.entityPickerItem} onPress={() => handleEntitySelected(item)}>
+                                    <View style={styles.entityPickerIcon}>
+                                        {item.logoUrl ? (
+                                            <Image source={{ uri: item.logoUrl }} style={{ width: 36, height: 36, borderRadius: 18 }} resizeMode="contain" />
+                                        ) : (
+                                            <Ionicons name="fitness" size={24} color={theme.colors.primary} />
+                                        )}
+                                    </View>
+                                    <View style={{ flex: 1, marginLeft: 12 }}>
+                                        <Text style={styles.entityPickerName}>{item.name}</Text>
+                                        <Text style={styles.entityPickerType}>{(item.type || 'gym').toUpperCase()}</Text>
+                                    </View>
+                                    <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
+                                </TouchableOpacity>
+                            )}
+                        />
+                        <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setEntityPickerVisible(false)}>
+                            <Text style={{ color: theme.colors.textSecondary, fontWeight: '600' }}>Cancel</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 }
@@ -303,7 +435,8 @@ const styles = StyleSheet.create({
 
     // -- Number Entry Flow Styles --
     header: { alignItems: 'center', marginBottom: theme.spacing.xxl },
-    logoPlaceholder: { width: 96, height: 96, backgroundColor: theme.colors.surface, borderRadius: 48, justifyContent: 'center', alignItems: 'center', marginBottom: theme.spacing.l, ...theme.shadows.md },
+    logoPlaceholder: { width: 96, height: 96, backgroundColor: theme.colors.surface, borderRadius: 48, justifyContent: 'center', alignItems: 'center', marginBottom: theme.spacing.l, ...theme.shadows.md, overflow: 'hidden' },
+    logoImage: { width: 80, height: 80, borderRadius: 40 },
     title: { fontSize: 32, fontWeight: '800', color: theme.colors.textPrimary, marginBottom: theme.spacing.xs, letterSpacing: -0.5 },
     subtitle: { fontSize: 16, color: theme.colors.textSecondary },
     form: { backgroundColor: theme.colors.surface, padding: theme.spacing.l, borderRadius: theme.borderRadius.xl, ...theme.shadows.sm },
@@ -312,7 +445,7 @@ const styles = StyleSheet.create({
     inputWrapper: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: theme.colors.border, borderRadius: theme.borderRadius.m, backgroundColor: theme.colors.background, paddingHorizontal: theme.spacing.m },
     inputIcon: { marginRight: theme.spacing.s },
     inputNative: { flex: 1, paddingVertical: 16, fontSize: 16, color: theme.colors.textPrimary },
-    button: { backgroundColor: theme.colors.primary, paddingVertical: 16, borderRadius: theme.borderRadius.m, alignItems: 'center', marginTop: theme.spacing.s, ...theme.shadows.sm },
+    button: { backgroundColor: theme.colors.primary, paddingVertical: 16, borderRadius: theme.borderRadius.m, alignItems: 'center', ...theme.shadows.sm },
     buttonDisabled: { backgroundColor: theme.colors.primaryLight, shadowOpacity: 0 },
     buttonText: { color: theme.colors.surface, fontSize: 16, fontWeight: '700', letterSpacing: 0.5 },
 
@@ -338,5 +471,16 @@ const styles = StyleSheet.create({
     keyRootSecondary: { width: 70, height: 70, backgroundColor: 'transparent', borderRadius: 35, justifyContent: 'center', alignItems: 'center' },
     keyText: { fontSize: 28, fontWeight: '500', color: theme.colors.textPrimary },
     switchAccountText: { fontSize: 12, fontWeight: '700', color: theme.colors.primary, textAlign: 'center', letterSpacing: 0.5 },
+
+    // -- Entity Picker Modal Styles --
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+    modalContent: { backgroundColor: theme.colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: theme.spacing.l, paddingBottom: Platform.OS === 'ios' ? 40 : 24 },
+    modalTitle: { fontSize: 22, fontWeight: 'bold', color: theme.colors.textPrimary, textAlign: 'center' },
+    modalSubtitle: { fontSize: 14, color: theme.colors.textSecondary, textAlign: 'center', marginTop: 4 },
+    entityPickerItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 12, borderRadius: theme.borderRadius.m, backgroundColor: theme.colors.background, marginBottom: 10, borderWidth: 1, borderColor: theme.colors.border },
+    entityPickerIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: theme.colors.primaryLight + '20', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+    entityPickerName: { fontSize: 16, fontWeight: '700', color: theme.colors.textPrimary },
+    entityPickerType: { fontSize: 12, color: theme.colors.textSecondary, marginTop: 2, letterSpacing: 0.5 },
+    modalCancelBtn: { alignItems: 'center', paddingVertical: 14, marginTop: 8 },
 
 });

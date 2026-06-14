@@ -4,9 +4,11 @@ import memberService from '../services/member.service';
 import feeGroupService from '../services/fee-group.service';
 import feeStructureService from '../services/fee-structure.service';
 import feePaymentService from '../services/fee-payment.service';
+import expenseService from '../services/expense.service';
 import userService from '../services/user.service';
 import { HTTP_STATUS } from '../utils/constants';
 import { ObjectId } from 'mongodb';
+import { getDB } from '../config/db';
 
 export const getDashboardStats = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
@@ -333,3 +335,173 @@ function currentMonthDateLabel(date: Date) {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return `${months[date.getMonth()]} ${date.getFullYear()}`;
 }
+
+export const getComprehensiveFinancials = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const entityId = req.user!.entityId.toString();
+        const academicYearId = req.query.academicYearId as string | undefined;
+        const startDate = req.query.startDate as string | undefined;
+        const endDate = req.query.endDate as string | undefined;
+
+        const dateFilter: any = {};
+        const expenseDateFilter: any = {};
+        if (startDate && endDate) {
+            dateFilter.paymentDate = { $gte: new Date(startDate), $lte: new Date(endDate) };
+            expenseDateFilter.expenseDate = { $gte: new Date(startDate), $lte: new Date(endDate) };
+        }
+
+        const expenseFilter: any = { entityId: new ObjectId(entityId), ...expenseDateFilter };
+        if (academicYearId) expenseFilter.academicYearId = new ObjectId(academicYearId);
+
+        const [members, feeGroups, feeStructures, feePayments, expenses, entity] = await Promise.all([
+            memberService.getByEntity(entityId),
+            feeGroupService.getByEntity(entityId),
+            feeStructureService.getByEntity(entityId),
+            feePaymentService.getByEntity(entityId, academicYearId, dateFilter),
+            expenseService.get(expenseFilter),
+            getDB().collection('entities').findOne({ _id: new ObjectId(entityId) })
+        ]);
+
+        // === GYM MODE: no fee_groups exist — use fee_structures directly as plans ===
+        // === SCHOOL MODE: fee_groups exist — existing group-based logic ===
+        const isGymMode = !academicYearId && feeGroups.length === 0;
+
+        const groupTotalFees: Record<string, number> = {};
+        const classWiseData: Record<string, { groupName: string, collected: number, pending: number, memberCount: number }> = {};
+
+        if (isGymMode) {
+            // Each fee_structure is its own "plan" in gym mode
+            feeStructures.forEach((s: any) => {
+                const sId = s._id!.toString();
+                classWiseData[sId] = { groupName: s.name, collected: 0, pending: 0, memberCount: 0 };
+                groupTotalFees[sId] = s.amount;
+            });
+        } else {
+            // School mode: build from fee_groups
+            feeGroups.forEach((g: any) => {
+                const groupStructures = feeStructures.filter((s: any) => s.feeGroupId && s.feeGroupId.toString() === g._id!.toString());
+                const totalFee = groupStructures.reduce((sum: number, s: any) => sum + s.amount, 0);
+                groupTotalFees[g._id!.toString()] = totalFee;
+                classWiseData[g._id!.toString()] = { groupName: g.name, collected: 0, pending: 0, memberCount: 0 };
+            });
+        }
+        classWiseData['unassigned'] = { groupName: 'Unassigned', collected: 0, pending: 0, memberCount: 0 };
+
+        members.forEach((m: any) => {
+            const mId = m._id!.toString();
+            const memberPayments = feePayments.filter((p: any) => p.memberId.toString() === mId);
+            const memberTotalPaid = memberPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
+
+            if (isGymMode) {
+                // Gym mode: addonFeeIds[] holds the plan (fee_structure) IDs the member is subscribed to
+                const memberPlanIds: string[] = (m.addonFeeIds || [])
+                    .map((id: any) => id.toString())
+                    .filter((id: string) => !!classWiseData[id]);
+
+                if (memberPlanIds.length === 0) {
+                    // No matching plans — count as unassigned
+                    const unassigned = classWiseData['unassigned'];
+                    if (unassigned) unassigned.memberCount++;
+                    return;
+                }
+
+                // Total expected fee across all plans this member is in
+                const totalExpected = memberPlanIds.reduce((sum, sId) => sum + (groupTotalFees[sId] || 0), 0);
+
+                memberPlanIds.forEach((sId) => {
+                    const planEntry = classWiseData[sId];
+                    if (!planEntry) return;
+
+                    const planAmount = groupTotalFees[sId] || 0;
+                    planEntry.memberCount++;
+
+                    // Distribute payments proportionally across plans by their amount ratio
+                    const ratio = totalExpected > 0 ? planAmount / totalExpected : 0;
+                    const allocatedPayment = memberTotalPaid * ratio;
+                    planEntry.collected += allocatedPayment;
+
+                    const deficit = planAmount - allocatedPayment;
+                    if (deficit > 0) planEntry.pending += deficit;
+                });
+
+            } else {
+                // School mode
+                let planId: string = 'unassigned';
+                let memberTotalFee = 0;
+
+                if (academicYearId) {
+                    // School mode: match via yearlyRosters
+                    const group = feeGroups.find((g: any) => {
+                        const roster = g.yearlyRosters?.find((r: any) => r.academicYearId.toString() === academicYearId);
+                        return roster && roster.members && roster.members.some((id: any) => id.toString() === mId);
+                    });
+                    if (group) {
+                        planId = group._id!.toString();
+                        memberTotalFee = groupTotalFees[planId] || 0;
+                    }
+                } else {
+                    // School mode (no academic year): match via feeGroupId or members[]
+                    let group: any;
+                    if (m.feeGroupId) {
+                        group = feeGroups.find((g: any) => g._id!.toString() === m.feeGroupId.toString());
+                    }
+                    if (!group) {
+                        group = feeGroups.find((g: any) =>
+                            (g.members && g.members.some((id: any) => id.toString() === mId)) ||
+                            (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)))
+                        );
+                    }
+                    if (group) {
+                        planId = group._id!.toString();
+                        memberTotalFee = groupTotalFees[planId] || 0;
+                    }
+                }
+
+                // Add addon fees on top of the base plan fee (school mode only)
+                if (m.addonFeeIds && m.addonFeeIds.length > 0) {
+                    const addonAmount = feeStructures
+                        .filter((s: any) => m.addonFeeIds!.some((id: any) => id.toString() === s._id!.toString()))
+                        .reduce((sum: number, s: any) => sum + s.amount, 0);
+                    memberTotalFee += addonAmount;
+                }
+
+                const planEntry = classWiseData[planId];
+                if (planEntry) {
+                    planEntry.memberCount++;
+                    planEntry.collected += memberTotalPaid;
+                    const deficit = memberTotalFee - memberTotalPaid;
+                    if (deficit > 0) planEntry.pending += deficit;
+                }
+            }
+        });
+
+        const totalCollected = feePayments.reduce((sum: number, p: any) => sum + p.amount, 0);
+        const totalExpenses = expenses.reduce((sum: number, exp: any) => sum + exp.amount, 0);
+        
+        const expenseByCategory: Record<string, number> = {};
+        expenses.forEach((exp: any) => {
+            if (!expenseByCategory[exp.category]) expenseByCategory[exp.category] = 0;
+            expenseByCategory[exp.category] += exp.amount;
+        });
+
+        const netBalance = totalCollected - totalExpenses;
+        const entityType = entity?.type || 'gym'; // 'gym' | 'school'
+        const groupLabel = entityType === 'school' ? 'Class-wise Collections' : 'Plan-wise Collections';
+
+        res.status(HTTP_STATUS.OK).json({
+            summary: {
+                totalCollected,
+                totalExpenses,
+                netBalance
+            },
+            groupLabel,
+            entityType,
+            classWiseData: Object.values(classWiseData).filter((g: any) => g.groupName !== 'Unassigned' || g.memberCount > 0),
+            expensesByCategory: Object.entries(expenseByCategory).map(([category, amount]) => ({ category, amount })),
+            recentExpenses: expenses.sort((a: any, b: any) => new Date(b.expenseDate).getTime() - new Date(a.expenseDate).getTime()).slice(0, 10),
+            recentPayments: feePayments.sort((a: any, b: any) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime()).slice(0, 10)
+        });
+    } catch (error) {
+        next(error);
+    }
+};

@@ -8,7 +8,10 @@ import api from '../../services/api';
 
 export default function SetupMpinScreen({ route, navigation }: any) {
     const { signIn } = useContext(AuthContext);
-    const { contactNumber } = route.params; // Passed securely from LoginScreen
+    const { contactNumber, entityId: routeEntityId } = route.params;
+
+    // Use entityId from route params (shared mode) or fallback to env var (school mode)
+    const entityId = routeEntityId || process.env.EXPO_PUBLIC_ENTITY_ID;
 
     const [mpin, setMpin] = useState('');
     const [confirmMpin, setConfirmMpin] = useState('');
@@ -28,7 +31,7 @@ export default function SetupMpinScreen({ route, navigation }: any) {
         setLoading(true);
         try {
             const response = await api.post('/auth/login', {
-                entityId: process.env.EXPO_PUBLIC_ENTITY_ID,
+                entityId,
                 contactNumber,
                 mpin: mpin
             });

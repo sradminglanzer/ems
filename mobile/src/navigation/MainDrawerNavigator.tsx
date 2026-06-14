@@ -12,6 +12,9 @@ import MembersScreen from '../screens/main/MembersScreen';
 import CreateExamScreen from '../screens/main/CreateExamScreen';
 import AcademicYearsScreen from '../screens/main/AcademicYearsScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
+import ExpensesScreen from '../screens/main/ExpensesScreen';
+import AttendanceScreen from '../screens/main/AttendanceScreen';
+import DiaryScreen from '../screens/main/DiaryScreen';
 import HeaderActions from '../components/HeaderActions';
 import { theme } from '../theme';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,6 +32,10 @@ type DrawerParamList = {
     FeeStructures: undefined;
     Exams: undefined;
     AcademicYears: undefined;
+    Expenses: undefined;
+    Attendance: undefined;
+    DiaryFeed: undefined;
+    Settings: undefined;
 };
 
 const Drawer = createDrawerNavigator<DrawerParamList>();
@@ -44,7 +51,13 @@ function CustomDrawerContent(props: any) {
         <View style={{ flex: 1, backgroundColor: theme.colors.surface }}>
             <DrawerContentScrollView {...props} contentContainerStyle={{ backgroundColor: theme.colors.primary, paddingTop: 0 }}>
                 <View style={styles.drawerHeader}>
-                    <Ionicons name="school" size={60} color={theme.colors.surface} />
+                    {user?.entityLogoUrl ? (
+                        <View style={styles.drawerLogoContainer}>
+                            <Image source={{ uri: user.entityLogoUrl }} style={styles.drawerLogo} resizeMode="contain" />
+                        </View>
+                    ) : (
+                        <Ionicons name="school" size={60} color={theme.colors.surface} />
+                    )}
                     <Text style={styles.drawerTitle}>{appName}</Text>
                     <Text style={styles.drawerSubtitle}>{roleDisplay}</Text>
                 </View>
@@ -115,6 +128,34 @@ export default function MainDrawerNavigator() {
                     drawerIcon: ({ color, size }) => <Ionicons name="bar-chart-outline" size={size} color={color} />
                 }}
             />
+            <Drawer.Screen
+                name="Expenses"
+                component={ExpensesScreen}
+                options={{
+                    title: 'Expenses',
+                    drawerIcon: ({ color, size }) => <Ionicons name="wallet-outline" size={size} color={color} />
+                }}
+            />
+            {user?.entityType !== 'gym' && (
+                <Drawer.Screen
+                    name="Attendance"
+                    component={AttendanceScreen}
+                    options={{
+                        title: 'Daily Attendance',
+                        drawerIcon: ({ color, size }) => <Ionicons name="checkbox-outline" size={size} color={color} />
+                    }}
+                />
+            )}
+            {user?.entityType !== 'gym' && (
+                <Drawer.Screen
+                    name="DiaryFeed"
+                    component={DiaryScreen}
+                    options={{
+                        title: 'Digital Diary',
+                        drawerIcon: ({ color, size }) => <Ionicons name="journal-outline" size={size} color={color} />
+                    }}
+                />
+            )}
             <Drawer.Screen
                 name="Students"
                 component={MembersScreen}
@@ -198,6 +239,20 @@ const styles = StyleSheet.create({
         paddingTop: 48,
         alignItems: 'center',
         borderBottomRightRadius: 24,
+    },
+    drawerLogoContainer: {
+        width: 72,
+        height: 72,
+        borderRadius: 36,
+        backgroundColor: 'rgba(255,255,255,0.95)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        overflow: 'hidden',
+    },
+    drawerLogo: {
+        width: 60,
+        height: 60,
+        borderRadius: 30,
     },
     drawerTitle: {
         color: theme.colors.surface,

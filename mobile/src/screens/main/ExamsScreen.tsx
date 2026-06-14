@@ -63,15 +63,10 @@ export default function ExamsScreen() {
     };
 
     const renderItem = ({ item }: { item: any }) => (
-        <TouchableOpacity style={styles.examCard} activeOpacity={0.8} onPress={() => navigation.navigate('ExamDetails', { exam: item })}>
+        <View style={styles.examCard}>
             <View style={styles.cardHeader}>
                 <View style={styles.iconContainer}>
-                    <LinearGradient
-                        colors={theme.gradients.primary}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={styles.iconGradient}
-                    >
+                    <LinearGradient colors={theme.gradients.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.iconGradient}>
                         <Ionicons name="document-text" size={24} color={theme.colors.surface} />
                     </LinearGradient>
                 </View>
@@ -87,9 +82,25 @@ export default function ExamsScreen() {
                         </View>
                     </View>
                 </View>
-                <Ionicons name="chevron-forward" size={24} color={theme.colors.border} />
             </View>
-        </TouchableOpacity>
+            {/* Action Buttons */}
+            <View style={styles.cardActions}>
+                <TouchableOpacity
+                    style={[styles.actionBtn, { backgroundColor: theme.colors.primaryLight + '15', borderColor: theme.colors.primary }]}
+                    onPress={() => navigation.navigate('ExamDetails', { exam: item })}
+                >
+                    <Ionicons name="create-outline" size={16} color={theme.colors.primary} />
+                    <Text style={[styles.actionBtnText, { color: theme.colors.primary }]}>Grade</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.actionBtn, { backgroundColor: '#f39c1215', borderColor: '#f39c12' }]}
+                    onPress={() => navigation.navigate('ExamResults', { exam: item })}
+                >
+                    <Ionicons name="trophy-outline" size={16} color="#f39c12" />
+                    <Text style={[styles.actionBtnText, { color: '#f39c12' }]}>Results</Text>
+                </TouchableOpacity>
+            </View>
+        </View>
     );
 
     return (
@@ -309,5 +320,27 @@ const styles = StyleSheet.create({
         borderRadius: 32,
         justifyContent: 'center',
         alignItems: 'center',
-    }
+    },
+    cardActions: {
+        flexDirection: 'row',
+        gap: 10,
+        marginTop: 12,
+        paddingTop: 12,
+        borderTopWidth: 1,
+        borderTopColor: theme.colors.border + '60',
+    },
+    actionBtn: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        paddingVertical: 9,
+        borderRadius: theme.borderRadius.s,
+        borderWidth: 1,
+    },
+    actionBtnText: {
+        fontSize: 13,
+        fontWeight: '700',
+    },
 });

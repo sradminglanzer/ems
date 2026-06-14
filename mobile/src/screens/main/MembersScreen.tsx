@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
     View, Text, StyleSheet, FlatList, TouchableOpacity,
-    ActivityIndicator, Platform, Animated, Image
+    ActivityIndicator, Platform, Animated, Image, TextInput
 } from 'react-native';
 import api from '../../services/api';
 import { theme, globalStyles } from '../../theme';
@@ -20,6 +20,7 @@ export default function MembersScreen() {
     const [members, setMembers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
 
     const isPendingFeesFilter = route.params?.filter === 'pendingFees';
 
@@ -67,13 +68,25 @@ export default function MembersScreen() {
     };
 
     const displayedMembers = useMemo(() => {
+        let list = members as any[];
         if (isPendingFeesFilter) {
-            return members
+            list = list
                 .filter((m: any) => (m.pendingAmount || 0) > 0)
                 .sort((a: any, b: any) => (b.pendingAmount || 0) - (a.pendingAmount || 0));
         }
-        return members;
-    }, [members, isPendingFeesFilter]);
+        if (searchQuery.trim()) {
+            const q = searchQuery.trim().toLowerCase();
+            list = list.filter((m: any) => {
+                const fullName = `${m.firstName} ${m.lastName}`.toLowerCase();
+                const id = (m.knownId || '').toLowerCase();
+                const contact = (m.contact || '').toLowerCase();
+                const group = (m.groupName || '').toLowerCase();
+                const plans = (m.addonNames || []).join(' ').toLowerCase();
+                return fullName.includes(q) || id.includes(q) || contact.includes(q) || group.includes(q) || plans.includes(q);
+            });
+        }
+        return list;
+    }, [members, isPendingFeesFilter, searchQuery]);
 
     const renderItem = ({ item }: { item: any }) => {
         const initials = `${item.firstName.charAt(0)}${item.lastName.charAt(0)}`.toUpperCase();
@@ -157,6 +170,28 @@ export default function MembersScreen() {
                     </View>
                 </Animated.View>
             </Animated.View>
+
+            {/* Search Bar */}
+            <View style={styles.searchWrapper}>
+                <View style={styles.searchBar}>
+                    <Ionicons name="search" size={18} color={theme.colors.textMuted} style={{ marginRight: 8 }} />
+                    <TextInput
+                        style={styles.searchInput}
+                        placeholder={`Search by name, ID, phone or plan...`}
+                        placeholderTextColor={theme.colors.textMuted}
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                        autoCapitalize="none"
+                        returnKeyType="search"
+                        clearButtonMode="while-editing"
+                    />
+                    {searchQuery.length > 0 && (
+                        <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                            <Ionicons name="close-circle" size={18} color={theme.colors.textMuted} />
+                        </TouchableOpacity>
+                    )}
+                </View>
+            </View>
 
             <View style={styles.listWrapper}>
                 {loading ? (
@@ -276,10 +311,33 @@ const styles = StyleSheet.create({
     listWrapper: {
         flex: 1,
     },
+    searchWrapper: {
+        paddingHorizontal: theme.spacing.m,
+        paddingTop: Platform.OS === 'ios' ? 210 : 170,
+        paddingBottom: 8,
+        zIndex: 5,
+    },
+    searchBar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: theme.colors.surface,
+        borderRadius: theme.borderRadius.round,
+        paddingHorizontal: theme.spacing.m,
+        paddingVertical: Platform.OS === 'ios' ? 10 : 6,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        ...theme.shadows.sm,
+    },
+    searchInput: {
+        flex: 1,
+        fontSize: 14,
+        color: theme.colors.textPrimary,
+        padding: 0,
+    },
     listContent: {
         paddingHorizontal: theme.spacing.m,
-        paddingTop: Platform.OS === 'ios' ? 220 : 180,
-        paddingBottom: 120, // Extended bottom space
+        paddingTop: theme.spacing.s,
+        paddingBottom: 120,
     },
     memberCard: {
         backgroundColor: theme.colors.surface,

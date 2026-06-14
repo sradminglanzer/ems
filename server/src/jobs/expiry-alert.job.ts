@@ -1,10 +1,11 @@
 import cron from 'node-cron';
-import { Expo } from 'expo-server-sdk';
 import feePaymentService from '../services/fee-payment.service';
 import userService from '../services/user.service';
 import memberService from '../services/member.service';
 
-const expo = new Expo();
+// Use a native dynamic import via Function to bypass TypeScript converting it to require()
+// This prevents ERR_REQUIRE_ESM when importing ESM-only packages in a CommonJS backend.
+const importExpo = new Function("return import('expo-server-sdk')");
 
 export const initExpiryAlertJob = () => {
     // Run every day at 8:00 AM server time
@@ -12,6 +13,10 @@ export const initExpiryAlertJob = () => {
         console.log('Running Expiry Alert Cron Job...');
         
         try {
+            // Dynamically import Expo inside the job
+            const { Expo } = await importExpo();
+            const expo = new Expo();
+
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             

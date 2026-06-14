@@ -1,20 +1,27 @@
 import React, { useState, useContext } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, ScrollView, Image } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import api from '../../services/api';
+import * as ImagePicker from 'expo-image-picker';
+import api, { getUploadUrl } from '../../services/api';
 import { theme, globalStyles } from '../../theme';
 import { AuthContext } from '../../context/AuthContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function SettingsScreen() {
     const navigation = useNavigation<any>();
     const insets = useSafeAreaInsets();
-    const { user } = useContext(AuthContext);
+    const { user, signIn } = useContext(AuthContext);
 
+    // Invoice Sequence
     const [sequence, setSequence] = useState('');
     const [submitting, setSubmitting] = useState(false);
+
+    // Logo Upload
+    const [logoPreview, setLogoPreview] = useState<string | null>(user?.entityLogoUrl || null);
+    const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
     const handleUpdateSequence = async () => {
         if (!sequence || isNaN(Number(sequence))) {
@@ -32,6 +39,59 @@ export default function SettingsScreen() {
             Platform.OS === 'web' ? alert(err) : Alert.alert('Error', err);
         } finally {
             setSubmitting(false);
+        }
+    };
+
+    const handlePickLogo = async () => {
+        try {
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.7,
+            });
+
+            if (!result.canceled && result.assets[0]) {
+                const imgUri = result.assets[0].uri;
+                setIsUploadingLogo(true);
+
+                // 1) Get presigned URL with type=logo
+                const ext = imgUri.split('.').pop() || 'png';
+                const filename = `logo.${ext}`;
+                const urlRes = await getUploadUrl(filename, 'image/png', 'logo');
+                const { uploadUrl, publicUrl } = urlRes.data;
+
+                // 2) Upload to S3
+                const response = await fetch(imgUri);
+                const blob = await response.blob();
+                await fetch(uploadUrl, {
+                    method: 'PUT',
+                    body: blob,
+                    headers: { 'Content-Type': 'image/png' },
+                });
+
+                // 3) Update entity logo on server
+                await api.put('/entities/logo', { logoUrl: publicUrl });
+
+                // 4) Update local context
+                setLogoPreview(publicUrl);
+                if (user) {
+                    const updatedUser = { ...user, entityLogoUrl: publicUrl };
+                    const token = await AsyncStorage.getItem('userToken');
+                    if (token) {
+                        await signIn(token, updatedUser);
+                    }
+                }
+
+                const msg = 'Your business logo has been updated successfully!';
+                Platform.OS === 'web' ? alert(msg) : Alert.alert('Success', msg);
+            }
+        } catch (error: any) {
+            console.error('Failed to upload logo:', error);
+            const err = error.response?.data?.message || 'Failed to upload logo. Please try again.';
+            Platform.OS === 'web' ? alert(err) : Alert.alert('Error', err);
+        } finally {
+            setIsUploadingLogo(false);
         }
     };
 
@@ -55,6 +115,44 @@ export default function SettingsScreen() {
             </LinearGradient>
 
             <ScrollView contentContainerStyle={styles.content}>
+                {/* Business Logo Card */}
+                <View style={styles.card}>
+                    <View style={styles.cardHeader}>
+                        <View style={[styles.iconBox, { backgroundColor: theme.colors.secondaryLight + '30' }]}>
+                            <Ionicons name="image-outline" size={24} color={theme.colors.secondary} />
+                        </View>
+                        <View style={{ marginLeft: 12, flex: 1 }}>
+                            <Text style={styles.cardTitle}>Business Logo</Text>
+                            <Text style={styles.cardDesc}>Upload your business logo. It will appear on the login screen and navigation menu.</Text>
+                        </View>
+                    </View>
+
+                    <View style={styles.logoSection}>
+                        <View style={styles.logoPreviewContainer}>
+                            {isUploadingLogo ? (
+                                <ActivityIndicator size="large" color={theme.colors.primary} />
+                            ) : logoPreview ? (
+                                <Image source={{ uri: logoPreview }} style={styles.logoPreviewImage} resizeMode="contain" />
+                            ) : (
+                                <View style={styles.logoPlaceholder}>
+                                    <Ionicons name="business-outline" size={40} color={theme.colors.textMuted} />
+                                    <Text style={styles.logoPlaceholderText}>No Logo</Text>
+                                </View>
+                            )}
+                        </View>
+
+                        <TouchableOpacity
+                            style={[globalStyles.submitButton, { marginTop: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 }]}
+                            onPress={handlePickLogo}
+                            disabled={isUploadingLogo}
+                        >
+                            <Ionicons name={logoPreview ? "camera-outline" : "cloud-upload-outline"} size={20} color={theme.colors.surface} />
+                            <Text style={globalStyles.submitButtonText}>{logoPreview ? 'Change Logo' : 'Upload Logo'}</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+
+                {/* Invoice Sequence Card */}
                 <View style={styles.card}>
                     <View style={styles.cardHeader}>
                         <View style={[styles.iconBox, { backgroundColor: theme.colors.primaryLight + '30' }]}>
@@ -117,6 +215,7 @@ const styles = StyleSheet.create({
     content: {
         padding: theme.spacing.m,
         paddingTop: 24,
+        gap: 20,
     },
     card: {
         backgroundColor: theme.colors.surface,
@@ -145,6 +244,37 @@ const styles = StyleSheet.create({
         color: theme.colors.textSecondary,
         marginTop: 4,
         lineHeight: 18,
+    },
+    logoSection: {
+        marginTop: 20,
+        alignItems: 'center',
+    },
+    logoPreviewContainer: {
+        width: 120,
+        height: 120,
+        borderRadius: 60,
+        backgroundColor: theme.colors.background,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: theme.colors.border,
+        borderStyle: 'dashed',
+        overflow: 'hidden',
+    },
+    logoPreviewImage: {
+        width: 110,
+        height: 110,
+        borderRadius: 55,
+    },
+    logoPlaceholder: {
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    logoPlaceholderText: {
+        fontSize: 12,
+        color: theme.colors.textMuted,
+        marginTop: 4,
+        fontWeight: '500',
     },
     inputWrapper: {
         flexDirection: 'row',
@@ -175,3 +305,4 @@ const styles = StyleSheet.create({
         fontStyle: 'italic'
     }
 });
+

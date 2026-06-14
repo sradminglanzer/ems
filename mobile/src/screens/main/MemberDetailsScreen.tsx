@@ -12,6 +12,12 @@ import { AuthContext } from '../../context/AuthContext';
 import { useContext } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getTerm } from '../../utils/terminology';
+
+const FREQUENCY_LABELS: Record<string, string> = {
+    daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly',
+    quarterly: 'Quarterly', 'half-yearly': 'Half-Yearly',
+    annual: 'Annual', 'one-time': 'One-Time',
+};
 import { generateAndShareInvoice } from '../../utils/InvoiceGenerator';
 
 export default function MemberDetailsScreen() {
@@ -36,9 +42,14 @@ export default function MemberDetailsScreen() {
         nextPaymentDateStr: string,
         showPicker: boolean,
         notes: string,
-        checked: boolean
+        checked: boolean,
+        isOverriding: boolean,
+        autoNextDate: Date | null,
+        baseDate?: Date,
     }>>({});
     const [feeStructures, setFeeStructures] = useState<any[]>([]);
+    const [allFeeStructures, setAllFeeStructures] = useState<any[]>([]);
+    const [activeAddons, setActiveAddons] = useState<string[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
@@ -57,6 +68,7 @@ export default function MemberDetailsScreen() {
             setResults(resRes.data);
             
             // Filter structures to only those assigned to the member (Group + Add-ons)
+            setAllFeeStructures(structRes.data);
             setFeeStructures(structRes.data.filter((s: any) => {
                 const isGroupFee = member.feeGroupId && s.feeGroupId === member.feeGroupId;
                 const isAddonFee = !s.feeGroupId && member.addonFeeIds?.includes(s._id);
@@ -70,8 +82,8 @@ export default function MemberDetailsScreen() {
         }
     };
 
-    const calculateNextDate = (frequency: string) => {
-        const d = new Date();
+    const calculateNextDate = (frequency: string, baseDate?: Date) => {
+        const d = baseDate ? new Date(baseDate) : new Date();
         if (frequency === 'monthly') d.setMonth(d.getMonth() + 1);
         else if (frequency === 'quarterly') d.setMonth(d.getMonth() + 3);
         else if (frequency === 'half-yearly') d.setMonth(d.getMonth() + 6);
@@ -83,26 +95,47 @@ export default function MemberDetailsScreen() {
 
     const handleOpenFeeModal = () => {
         setFeeModalVisible(true);
+        setActiveAddons(member.addonFeeIds || []);
+        
         const newCart: any = {};
-        feeStructures.forEach(s => {
-            const nextD = calculateNextDate(s.frequency);
+        // Initialize all structures in case they select a new one inside the modal
+        allFeeStructures.forEach(s => {
+            // Find the most recent payment for this specific fee structure
+            const lastPayment = [...payments]
+                .filter((p: any) => p.feeStructureId === s._id || p.feeStructureId?.toString() === s._id)
+                .sort((a: any, b: any) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())[0];
+
+            const baseDate = lastPayment ? new Date(lastPayment.paymentDate) : undefined;
+            const nextD = s.frequency === 'one-time' ? new Date() : calculateNextDate(s.frequency, baseDate);
             const tzOffset = new Date().getTimezoneOffset() * 60000;
             const localISOTime = new Date(nextD.getTime() - tzOffset).toISOString().slice(0, 10);
-            
+
+            const isGroupFee = member.feeGroupId && s.feeGroupId === member.feeGroupId;
+            const isAddonFee = !s.feeGroupId && (member.addonFeeIds?.includes(s._id) || false);
+            const isAssigned = isGroupFee || isAddonFee || (!member.feeGroupId && !member.addonFeeIds?.length);
+
             newCart[s._id] = {
                 amount: String(s.amount),
                 nextPaymentDate: nextD,
                 nextPaymentDateStr: localISOTime,
                 showPicker: false,
                 notes: '',
-                checked: true
+                checked: isAssigned,
+                isOverriding: false,
+                autoNextDate: nextD,
+                baseDate,
             };
         });
         setCartPayments(newCart);
     };
 
     const handleCollectFee = async () => {
-        const paymentsToSubmit = feeStructures
+        // Collect from either the newly selected active addons (gym) or standard fee structures (school)
+        const activeStructures = user?.entityType === 'gym' 
+            ? allFeeStructures.filter(s => activeAddons.includes(s._id))
+            : feeStructures;
+
+        const paymentsToSubmit = activeStructures
             .filter(s => cartPayments[s._id]?.checked)
             .map(s => {
                 const cartItem = cartPayments[s._id];
@@ -126,8 +159,14 @@ export default function MemberDetailsScreen() {
 
         setIsSubmitting(true);
         try {
+            // Save updated addons to member profile first
+            if (user?.entityType === 'gym') {
+                await api.put(`/members/${member._id}`, { addonFeeIds: activeAddons });
+            }
+
             const response = await api.post('/fee-payments', { payments: paymentsToSubmit });
             const assignedReceiptNo = response.data?.[0]?.receiptNo || `REC-${Date.now().toString().slice(-6)}`;
+
             
             // Trigger Receipt Generation
             if (user?.entityType === 'gym') {
@@ -257,13 +296,13 @@ export default function MemberDetailsScreen() {
                                 </View>
                             ) : null
                         )}
-                        {member.dob && (
+                        {!!member.dob && (
                             <View style={styles.detailItem}>
                                 <Text style={styles.detailLabel}>Date of Birth</Text>
                                 <Text style={styles.detailValue}>{new Date(member.dob).toLocaleDateString()}</Text>
                             </View>
                         )}
-                        {member.contact && (
+                        {!!member.contact && (
                             <View style={styles.detailItem}>
                                 <Text style={styles.detailLabel}>Contact Phone</Text>
                                 <Text style={styles.detailValue}>{member.contact}</Text>
@@ -271,24 +310,24 @@ export default function MemberDetailsScreen() {
                         )}
                     </View>
 
-                    {member.address && (
+                    {!!member.address && (
                         <View style={styles.fullWidthDetail}>
                             <Text style={styles.detailLabel}>Home Address</Text>
                             <Text style={styles.detailValue}>{member.address}</Text>
                         </View>
                     )}
 
-                    {(member.fatherOccupation || member.motherOccupation) && (
+                    {!!(member.fatherOccupation || member.motherOccupation) && (
                         <View style={styles.parentsSection}>
                             <Text style={styles.parentsTitle}>Parent Details</Text>
                             <View style={styles.detailsGrid}>
-                                {member.fatherOccupation && !['no', 'none', 'n/a', 'na', '-', 'nil'].includes(member.fatherOccupation.toLowerCase().trim()) && (
+                                {!!member.fatherOccupation && !['no', 'none', 'n/a', 'na', '-', 'nil'].includes(member.fatherOccupation.toLowerCase().trim()) && (
                                     <View style={styles.detailItem}>
                                         <Text style={styles.detailLabel}>Father Occupation</Text>
                                         <Text style={styles.detailValue}>{member.fatherOccupation}</Text>
                                     </View>
                                 )}
-                                {member.motherOccupation && !['no', 'none', 'n/a', 'na', '-', 'nil'].includes(member.motherOccupation.toLowerCase().trim()) && (
+                                {!!member.motherOccupation && !['no', 'none', 'n/a', 'na', '-', 'nil'].includes(member.motherOccupation.toLowerCase().trim()) && (
                                     <View style={styles.detailItem}>
                                         <Text style={styles.detailLabel}>Mother Occupation</Text>
                                         <Text style={styles.detailValue}>{member.motherOccupation}</Text>
@@ -338,7 +377,7 @@ export default function MemberDetailsScreen() {
                             <View key={r._id} style={styles.examResultCard}>
                                 <View style={styles.examHeader}>
                                     <Text style={styles.examName}>{r.examName || 'Exam'}</Text>
-                                    {r.remarks && <Text style={styles.examRemarks}>{r.remarks}</Text>}
+                                    {!!r.remarks && <Text style={styles.examRemarks}>{r.remarks}</Text>}
                                 </View>
 
                                 {Array.isArray(r.marks) && r.marks.length > 0 ? (
@@ -379,6 +418,32 @@ export default function MemberDetailsScreen() {
                             </View>
                         ))}
                     </View>
+                )}
+
+                {/* Report Card Quick Access — school only */}
+                {user?.entityType !== 'gym' && (
+                    <TouchableOpacity
+                        style={{
+                            backgroundColor: theme.colors.surface,
+                            borderRadius: 16,
+                            padding: 16,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            borderWidth: 1,
+                            borderColor: theme.colors.primary + '40',
+                            ...theme.shadows.sm
+                        }}
+                        onPress={() => navigation.navigate('ReportCard', { member })}
+                    >
+                        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: theme.colors.primary + '15', justifyContent: 'center', alignItems: 'center', marginRight: 16 }}>
+                            <Ionicons name="ribbon-outline" size={24} color={theme.colors.primary} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 15, fontWeight: '700', color: theme.colors.textPrimary }}>View Report Card</Text>
+                            <Text style={{ fontSize: 13, color: theme.colors.textSecondary, marginTop: 2 }}>Full academic performance & PDF export</Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
+                    </TouchableOpacity>
                 )}
 
                 {/* Payment History Header */}
@@ -521,14 +586,43 @@ export default function MemberDetailsScreen() {
                 <View style={globalStyles.modalOverlay}>
                     <View style={globalStyles.modalContent}>
                         <View style={globalStyles.modalHeader}>
-                            <Text style={globalStyles.modalTitle}>Collect Fee</Text>
-                            <TouchableOpacity onPress={() => setFeeModalVisible(false)} style={globalStyles.closeButton}>
+                            <View>
+                                <Text style={globalStyles.modalTitle}>Collect Fee</Text>
+                            </View>
+                            <TouchableOpacity onPress={() => setFeeModalVisible(false)} style={[globalStyles.closeButton, { alignSelf: 'flex-start' }]}>
                                 <Ionicons name="close" size={24} color={theme.colors.textSecondary} />
                             </TouchableOpacity>
                         </View>
 
                         <ScrollView style={{ maxHeight: '80%' }} showsVerticalScrollIndicator={false}>
-                            {feeStructures.map(s => {
+                            {user?.entityType === 'gym' && (
+                                <View style={{ marginBottom: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: theme.colors.border }}>
+                                    <Text style={[globalStyles.label, { marginBottom: 8 }]}>Active Subscriptions (Tap to update level)</Text>
+                                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                                        {allFeeStructures.filter(s => !s.feeGroupId).map(s => {
+                                            const isActive = activeAddons.includes(s._id);
+                                            return (
+                                                <TouchableOpacity 
+                                                    key={s._id}
+                                                    style={[styles.pill, isActive && styles.pillActive]}
+                                                    onPress={() => {
+                                                        const newAddons = isActive ? activeAddons.filter(id => id !== s._id) : [...activeAddons, s._id];
+                                                        setActiveAddons(newAddons);
+                                                        setCartPayments(prev => ({
+                                                            ...prev,
+                                                            [s._id]: { ...prev[s._id], checked: !isActive }
+                                                        }));
+                                                    }}
+                                                >
+                                                    <Text style={[styles.pillText, isActive && styles.pillTextActive]}>{s.name}</Text>
+                                                </TouchableOpacity>
+                                            )
+                                        })}
+                                    </View>
+                                </View>
+                            )}
+
+                            {(user?.entityType === 'gym' ? allFeeStructures.filter(s => activeAddons.includes(s._id)) : feeStructures).map(s => {
                                 const cartItem = cartPayments[s._id];
                                 if (!cartItem) return null;
                                 return (
@@ -537,7 +631,10 @@ export default function MemberDetailsScreen() {
                                             <TouchableOpacity onPress={() => setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], checked: !cartItem.checked } }))}>
                                                 <Ionicons name={cartItem.checked ? "checkbox" : "square-outline"} size={24} color={cartItem.checked ? theme.colors.primary : theme.colors.textMuted} />
                                             </TouchableOpacity>
-                                            <Text style={{ fontWeight: 'bold', color: theme.colors.textPrimary, marginLeft: 8, flex: 1 }}>{s.name} ({s.frequency})</Text>
+                                            <Text style={{ fontWeight: 'bold', color: theme.colors.textPrimary, marginLeft: 8, flex: 1 }}>
+                                                {s.name}
+                                                <Text style={{ fontWeight: '500', color: theme.colors.textSecondary }}> · {FREQUENCY_LABELS[s.frequency] || s.frequency}</Text>
+                                            </Text>
                                         </View>
                                         
                                         {cartItem.checked && (
@@ -546,33 +643,67 @@ export default function MemberDetailsScreen() {
                                                 <TextInput style={globalStyles.input} keyboardType="numeric" value={cartItem.amount} onChangeText={(val) => setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], amount: val } }))} />
 
                                                 <Text style={globalStyles.label}>Next Renewal Date</Text>
-                                                {Platform.OS === 'web' ? (
-                                                    <TextInput style={globalStyles.input} placeholder="YYYY-MM-DD" value={cartItem.nextPaymentDateStr} onChangeText={(val) => {
-                                                        const d = new Date(val);
-                                                        setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], nextPaymentDateStr: val, nextPaymentDate: !isNaN(d.getTime()) ? d : prev[s._id].nextPaymentDate } }));
-                                                    }} {...{ type: "date" } as any} />
+                                                {s.frequency === 'one-time' ? (
+                                                    <Text style={{ fontSize: 12, color: theme.colors.textMuted, marginBottom: 12 }}>One-time fee — no renewal date required</Text>
+                                                ) : !cartItem.isOverriding ? (
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                                                        <View style={{ flex: 1, backgroundColor: theme.colors.primaryLight + '15', borderRadius: 8, padding: 10, borderWidth: 1, borderColor: theme.colors.primaryLight + '40' }}>
+                                                            <Text style={{ color: theme.colors.primary, fontWeight: '700', fontSize: 15 }}>
+                                                                {cartItem.nextPaymentDate?.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                            </Text>
+                                                            <Text style={{ color: theme.colors.textMuted, fontSize: 12, marginTop: 2 }}>
+                                                                {cartItem.baseDate
+                                                                    ? `Last payment: ${new Date(cartItem.baseDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} + ${FREQUENCY_LABELS[s.frequency] || s.frequency}`
+                                                                    : `Today + ${FREQUENCY_LABELS[s.frequency] || s.frequency} (first payment)`}
+                                                            </Text>
+                                                        </View>
+                                                        <TouchableOpacity
+                                                            style={{ marginLeft: 8, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6, borderWidth: 1, borderColor: theme.colors.primary + '50' }}
+                                                            onPress={() => setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], isOverriding: true, showPicker: Platform.OS !== 'web' } }))}
+                                                        >
+                                                            <Text style={{ color: theme.colors.primary, fontWeight: '600', fontSize: 13 }}>Change</Text>
+                                                        </TouchableOpacity>
+                                                    </View>
                                                 ) : (
                                                     <>
-                                                        <TouchableOpacity style={[globalStyles.input, { justifyContent: 'center' }]} onPress={() => setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], showPicker: true } }))}>
-                                                            <Text style={{ color: cartItem.nextPaymentDate ? theme.colors.textPrimary : theme.colors.textMuted }}>
-                                                                {cartItem.nextPaymentDate ? cartItem.nextPaymentDate.toISOString().split('T')[0] : "Select Renewal Date"}
-                                                            </Text>
-                                                        </TouchableOpacity>
-                                                        {cartItem.showPicker && (
-                                                            <DateTimePicker
-                                                                value={cartItem.nextPaymentDate || new Date()}
-                                                                mode="date"
-                                                                display="default"
-                                                                onChange={(event, selectedDate) => {
-                                                                    setCartPayments(prev => {
-                                                                        const ns = { ...prev };
-                                                                        ns[s._id].showPicker = Platform.OS === 'ios';
-                                                                        if (selectedDate) ns[s._id].nextPaymentDate = selectedDate;
-                                                                        return ns;
-                                                                    });
-                                                                }}
-                                                            />
+                                                        {Platform.OS === 'web' ? (
+                                                            <TextInput style={globalStyles.input} placeholder="YYYY-MM-DD" value={cartItem.nextPaymentDateStr} onChangeText={(val) => {
+                                                                const d = new Date(val);
+                                                                setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], nextPaymentDateStr: val, nextPaymentDate: !isNaN(d.getTime()) ? d : prev[s._id].nextPaymentDate } }));
+                                                            }} {...{ type: 'date' } as any} />
+                                                        ) : (
+                                                            <>
+                                                                <TouchableOpacity style={[globalStyles.input, { justifyContent: 'center' }]} onPress={() => setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], showPicker: true } }))}>
+                                                                    <Text style={{ color: cartItem.nextPaymentDate ? theme.colors.textPrimary : theme.colors.textMuted }}>
+                                                                        {cartItem.nextPaymentDate ? cartItem.nextPaymentDate.toISOString().split('T')[0] : 'Select Renewal Date'}
+                                                                    </Text>
+                                                                </TouchableOpacity>
+                                                                {cartItem.showPicker && (
+                                                                    <DateTimePicker
+                                                                        value={cartItem.nextPaymentDate || new Date()}
+                                                                        mode="date"
+                                                                        display="default"
+                                                                        onChange={(event, selectedDate) => {
+                                                                            setCartPayments(prev => {
+                                                                                const ns = { ...prev };
+                                                                                ns[s._id].showPicker = Platform.OS === 'ios';
+                                                                                if (selectedDate) ns[s._id].nextPaymentDate = selectedDate;
+                                                                                return ns;
+                                                                            });
+                                                                        }}
+                                                                    />
+                                                                )}
+                                                            </>
                                                         )}
+                                                        <TouchableOpacity style={{ marginBottom: 8 }} onPress={() => {
+                                                            const autoDate = cartItem.autoNextDate;
+                                                            if (!autoDate) return;
+                                                            const tzOffset = new Date().getTimezoneOffset() * 60000;
+                                                            const localISOTime = new Date(autoDate.getTime() - tzOffset).toISOString().slice(0, 10);
+                                                            setCartPayments(prev => ({ ...prev, [s._id]: { ...prev[s._id], isOverriding: false, showPicker: false, nextPaymentDate: autoDate, nextPaymentDateStr: localISOTime } }));
+                                                        }}>
+                                                            <Text style={{ color: theme.colors.textMuted, fontSize: 12 }}>↩ Reset to auto-calculated date</Text>
+                                                        </TouchableOpacity>
                                                     </>
                                                 )}
                                                 
@@ -588,7 +719,7 @@ export default function MemberDetailsScreen() {
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 16 }}>
                             <Text style={{ fontWeight: 'bold', fontSize: 16 }}>Total Selected:</Text>
                             <Text style={{ fontWeight: 'bold', fontSize: 20, color: theme.colors.success }}>
-                                ₹{feeStructures.filter(s => cartPayments[s._id]?.checked).reduce((sum, s) => sum + parseFloat(cartPayments[s._id]?.amount || '0'), 0).toLocaleString('en-IN')}
+                                ₹{(user?.entityType === 'gym' ? allFeeStructures.filter(s => activeAddons.includes(s._id)) : feeStructures).filter(s => cartPayments[s._id]?.checked).reduce((sum, s) => sum + parseFloat(cartPayments[s._id]?.amount || '0'), 0).toLocaleString('en-IN')}
                             </Text>
                         </View>
 

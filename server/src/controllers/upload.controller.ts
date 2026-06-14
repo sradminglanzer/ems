@@ -23,7 +23,8 @@ export const getPresignedUrl = async (req: Request, res: Response): Promise<void
         // Generate a tenant-safe unique path
         const ext = (filename as string).split('.').pop();
         const tenantId = (req as any).user?.tenantId || 'global';
-        const objectKey = `${tenantId}/members/${Date.now()}-${uuidv4()}.${ext}`;
+        const uploadType = (req.query.type as string) === 'logo' ? 'logos' : 'members';
+        const objectKey = `${tenantId}/${uploadType}/${Date.now()}-${uuidv4()}.${ext}`;
 
         const command = new PutObjectCommand({
             Bucket: bucketName,

@@ -7,8 +7,8 @@ class FeePaymentService extends BaseService<FeePayment> {
         super('fee_payments');
     }
 
-    async getByEntity(entityId: string | ObjectId, academicYearId?: string) {
-        const query: any = { entityId: new ObjectId(entityId) };
+    async getByEntity(entityId: string | ObjectId, academicYearId?: string, customFilter: any = {}) {
+        const query: any = { entityId: new ObjectId(entityId), ...customFilter };
         if (academicYearId) {
             query.academicYearId = new ObjectId(academicYearId);
         }

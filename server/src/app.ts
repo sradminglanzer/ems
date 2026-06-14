@@ -11,6 +11,11 @@ import feePaymentRoutes from './routes/fee-payment.route';
 import dashboardRoutes from './routes/dashboard.route';
 import academicYearRoutes from './routes/academic-year.route';
 import uploadRoutes from './routes/upload.route';
+import expenseRoutes from './routes/expense.route';
+import attendanceRoutes from './routes/attendance.route';
+import subjectRoutes from './routes/subject.route';
+import diaryRoutes from './routes/diary.route';
+import entityRoutes from './routes/entity.route';
 import { errorHandler } from './middleware/error.middleware';
 
 const app = express();
@@ -34,6 +39,11 @@ app.use('/api/fee-payments', feePaymentRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/academic-years', academicYearRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/expenses', expenseRoutes);
+app.use('/api/attendance', attendanceRoutes);
+app.use('/api/subjects', subjectRoutes);
+app.use('/api/diary', diaryRoutes);
+app.use('/api/entities', entityRoutes);
 
 // Catch-all route for undefined API endpoints
 app.use((req, res, next) => {
