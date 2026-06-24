@@ -4,6 +4,7 @@ import {
     TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Animated, Image, Modal, Linking, Alert
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import api, { getUploadUrl } from '../../services/api';
 import { theme, globalStyles } from '../../theme';
@@ -75,7 +76,7 @@ export default function AddMemberScreen() {
         if (user?.entityType === 'gym' && !memberToEdit) {
             const selectedFees = globalFees.filter(f => addonFeeIds.includes(f._id));
             const total = selectedFees.reduce((sum, f) => sum + f.amount, 0);
-            
+
             // Auto-calculate renewal date based on first selected plan with a frequency
             let nextD = null;
             const recurringPlan = selectedFees.find(f => f.frequency && f.frequency !== 'one-time');
@@ -122,28 +123,42 @@ export default function AddMemberScreen() {
 
     const processImageResult = async (result: ImagePicker.ImagePickerResult) => {
         if (!result.canceled && result.assets[0]) {
-            const imgUri = result.assets[0].uri;
+            const asset = result.assets[0];
+            const imgUri = asset.uri;
+
             setIsUploadingPhoto(true);
 
             try {
-                const ext = imgUri.split('.').pop() || 'jpg';
-                const filename = `avatar.${ext}`;
-                const urlRes = await getUploadUrl(filename, 'image/jpeg');
+                const mimeType = asset.mimeType || 'image/jpeg';
+                const ext = mimeType.split('/')[1] || 'jpg';
+                const filename = `avatar-${Date.now()}.${ext}`;
+
+                const urlRes = await getUploadUrl(filename, mimeType);
                 const { uploadUrl, publicUrl } = urlRes.data;
 
-                const response = await fetch(imgUri);
-                const blob = await response.blob();
+                console.log('Image URI:', imgUri);
+                console.log('Upload URL:', uploadUrl);
 
-                await fetch(uploadUrl, {
-                    method: 'PUT',
-                    body: blob,
-                    headers: { 'Content-Type': 'image/jpeg' },
+                // Use FileSystem.uploadAsync — streams file natively, no Blob/XHR/ArrayBuffer needed.
+                // This is the only approach that reliably works in React Native release builds.
+                const uploadResult = await FileSystem.uploadAsync(uploadUrl, imgUri, {
+                    httpMethod: 'PUT',
+                    headers: { 'Content-Type': mimeType },
+                    uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
                 });
 
+                if (uploadResult.status < 200 || uploadResult.status >= 300) {
+                    throw new Error(`Upload failed: ${uploadResult.status}`);
+                }
+
                 setProfilePicUrl(publicUrl);
-            } catch (error) {
+            } catch (error: any) {
                 console.error('Failed to upload image:', error);
-                alert('Failed to upload image securely.');
+
+                Alert.alert(
+                    'Upload Failed',
+                    error?.message || 'Unable to upload image.'
+                );
             } finally {
                 setIsUploadingPhoto(false);
             }
@@ -220,22 +235,29 @@ export default function AddMemberScreen() {
             });
 
             if (!result.canceled && result.assets[0]) {
-                const imgUri = result.assets[0].uri;
+                const asset = result.assets[0];
+                const imgUri = asset.uri;
+                const mimeType = asset.mimeType || 'image/jpeg';
+
                 setIsUploadingProof(true);
 
-                const ext = imgUri.split('.').pop() || 'jpg';
+                const ext = mimeType.split('/')[1] || 'jpg';
                 const filename = `proof-${Date.now()}.${ext}`;
-                const urlRes = await getUploadUrl(filename, 'image/jpeg');
+
+                const urlRes = await getUploadUrl(filename, mimeType);
                 const { uploadUrl, publicUrl } = urlRes.data;
 
-                const response = await fetch(imgUri);
-                const blob = await response.blob();
-
-                await fetch(uploadUrl, {
-                    method: 'PUT',
-                    body: blob,
-                    headers: { 'Content-Type': 'image/jpeg' },
+                // Use FileSystem.uploadAsync — streams file natively, no Blob/XHR/ArrayBuffer needed.
+                // This is the only approach that reliably works in React Native release builds.
+                const uploadResult = await FileSystem.uploadAsync(uploadUrl, imgUri, {
+                    httpMethod: 'PUT',
+                    headers: { 'Content-Type': mimeType },
+                    uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
                 });
+
+                if (uploadResult.status < 200 || uploadResult.status >= 300) {
+                    throw new Error(`Upload failed: ${uploadResult.status}`);
+                }
 
                 setPosReferenceDocumentUrl(publicUrl);
             }
@@ -259,7 +281,7 @@ export default function AddMemberScreen() {
         try {
             const payload = {
                 firstName, middleName, lastName, knownId: finalKnownId,
-                dob: Platform.OS === 'web' ? dobStr : (dobDate ? dobDate.toISOString().split('T')[0] : ''), 
+                dob: Platform.OS === 'web' ? dobStr : (dobDate ? dobDate.toISOString().split('T')[0] : ''),
                 contact, altContact, fatherOccupation,
                 motherOccupation, address,
                 addonFeeIds,
@@ -283,7 +305,7 @@ export default function AddMemberScreen() {
                 // Create
                 const response = await api.post('/members', payload);
                 const assignedReceiptNo = response.data?.receiptNo || `REC-${Date.now().toString().slice(-6)}`;
-                
+
                 // Trigger Receipt Generation
                 if (user?.entityType === 'gym' && posAmountCollected && Number(posAmountCollected) > 0) {
                     const selectedFees = globalFees.filter(f => addonFeeIds.includes(f._id));
@@ -530,7 +552,7 @@ export default function AddMemberScreen() {
                             <Ionicons name="card-outline" size={18} color={theme.colors.success} />
                             <Text style={styles.sectionTitle}>Initial POS Payment</Text>
                         </View>
-                        
+
                         <Text style={globalStyles.label}>Amount Collected (₹)</Text>
                         <TextInput
                             style={[globalStyles.input, { borderColor: theme.colors.success + '50', borderWidth: 1 }]}
