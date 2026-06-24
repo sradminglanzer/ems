@@ -7,8 +7,8 @@ class FeePaymentService extends BaseService<FeePayment> {
         super('fee_payments');
     }
 
-    async getByEntity(entityId: string | ObjectId, academicYearId?: string) {
-        const query: any = { entityId: new ObjectId(entityId) };
+    async getByEntity(entityId: string | ObjectId, academicYearId?: string, customFilter: any = {}) {
+        const query: any = { entityId: new ObjectId(entityId), ...customFilter };
         if (academicYearId) {
             query.academicYearId = new ObjectId(academicYearId);
         }
@@ -21,6 +21,35 @@ class FeePaymentService extends BaseService<FeePayment> {
             query.academicYearId = new ObjectId(academicYearId);
         }
         return this.get(query, { sort: { paymentDate: -1 } });
+    }
+
+    async getNextSequence(entityId: string | ObjectId): Promise<string> {
+        const { getDB } = require('../config/db');
+        const db = getDB();
+        const counters = db.collection('counters');
+        
+        const result = await counters.findOneAndUpdate(
+            { _id: `receiptNo_${entityId.toString()}` },
+            { $inc: { seq: 1 } },
+            { returnDocument: 'after', upsert: true }
+        );
+        
+        const seqNum = result?.seq || 1;
+        const paddedSeq = String(seqNum).padStart(4, '0');
+        return `REC-${paddedSeq}`;
+    }
+
+    async setNextSequence(entityId: string | ObjectId, newSeq: number): Promise<boolean> {
+        const { getDB } = require('../config/db');
+        const db = getDB();
+        const counters = db.collection('counters');
+        
+        await counters.updateOne(
+            { _id: `receiptNo_${entityId.toString()}` },
+            { $set: { seq: newSeq - 1 } },
+            { upsert: true }
+        );
+        return true;
     }
 }
 

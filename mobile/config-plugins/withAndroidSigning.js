@@ -5,9 +5,9 @@ module.exports = function withAndroidSigning(config) {
     config = withGradleProperties(config, (config) => {
         config.modResults.push(
             { type: 'property', key: 'RELEASE_STORE_FILE', value: process.env.RELEASE_STORE_FILE || '../../release.keystore' },
-            { type: 'property', key: 'RELEASE_STORE_PASSWORD', value: process.env.RELEASE_STORE_PASSWORD || '' },
-            { type: 'property', key: 'RELEASE_KEY_ALIAS', value: process.env.RELEASE_KEY_ALIAS || '' },
-            { type: 'property', key: 'RELEASE_KEY_PASSWORD', value: process.env.RELEASE_KEY_PASSWORD || '' }
+            { type: 'property', key: 'RELEASE_STORE_PASSWORD', value: process.env.RELEASE_STORE_PASSWORD || 'glanzems' },
+            { type: 'property', key: 'RELEASE_KEY_ALIAS', value: process.env.RELEASE_KEY_ALIAS || 'key0' },
+            { type: 'property', key: 'RELEASE_KEY_PASSWORD', value: process.env.RELEASE_KEY_PASSWORD || 'glanzems' }
         );
         return config;
     });
@@ -20,17 +20,17 @@ module.exports = function withAndroidSigning(config) {
                 /signingConfigs\s*{/,
                 `signingConfigs {
         release {
-            storeFile file(project.findProperty('RELEASE_STORE_FILE') ?: 'release.keystore')
-            storePassword project.findProperty('RELEASE_STORE_PASSWORD') ?: ''
-            keyAlias project.findProperty('RELEASE_KEY_ALIAS') ?: ''
-            keyPassword project.findProperty('RELEASE_KEY_PASSWORD') ?: ''
+            storeFile file(project.findProperty('RELEASE_STORE_FILE') ?: '../../release.keystore')
+            storePassword project.findProperty('RELEASE_STORE_PASSWORD') ?: 'glanzems'
+            keyAlias project.findProperty('RELEASE_KEY_ALIAS') ?: 'key0'
+            keyPassword project.findProperty('RELEASE_KEY_PASSWORD') ?: 'glanzems'
         }`
             );
-            
+
             // Switch release build type to use signingConfigs.release
             config.modResults.contents = config.modResults.contents.replace(
-                /buildTypes\s*{[\s\S]*?release\s*{[\s\S]*?signingConfig signingConfigs\.debug/,
-                (match) => match.replace('signingConfig signingConfigs.debug', 'signingConfig signingConfigs.release')
+                /(buildTypes\s*{[\s\S]*?release\s*{[\s\S]*?)signingConfig signingConfigs\.debug/,
+                '$1signingConfig signingConfigs.release'
             );
         }
         return config;

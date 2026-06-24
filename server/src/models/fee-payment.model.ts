@@ -6,9 +6,14 @@ export class FeePayment {
     memberId: ObjectId;
     academicYearId?: ObjectId;
     feeGroupId?: ObjectId;
+    feeStructureId?: ObjectId;
     amount: number;
     notes?: string;
+    paymentMethod?: string;
+    referenceDocumentUrl?: string;
+    receiptNo?: string;
     paymentDate: Date;
+    nextPaymentDate?: Date;
     createdAt?: Date;
     updatedAt?: Date;
 
@@ -18,9 +23,14 @@ export class FeePayment {
         this.memberId = new ObjectId(data.memberId);
         if (data.academicYearId) this.academicYearId = new ObjectId(data.academicYearId);
         if (data.feeGroupId) this.feeGroupId = new ObjectId(data.feeGroupId);
+        if (data.feeStructureId) this.feeStructureId = new ObjectId(data.feeStructureId);
         this.amount = Number(data.amount);
         this.notes = data.notes;
+        this.paymentMethod = data.paymentMethod || 'cash';
+        this.referenceDocumentUrl = data.referenceDocumentUrl;
+        if (data.receiptNo) this.receiptNo = data.receiptNo;
         this.paymentDate = data.paymentDate ? new Date(data.paymentDate) : new Date();
+        if (data.nextPaymentDate) this.nextPaymentDate = new Date(data.nextPaymentDate);
         this.createdAt = data.createdAt || new Date();
         this.updatedAt = data.updatedAt || new Date();
     }

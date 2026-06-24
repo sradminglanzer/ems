@@ -3,6 +3,7 @@ import { createDrawerNavigator } from '@react-navigation/drawer';
 import Constants from 'expo-constants';
 
 import DashboardScreen from '../screens/main/DashboardScreen';
+import ReportsScreen from '../screens/main/ReportsScreen';
 import StaffScreen from '../screens/main/StaffScreen';
 import FeeGroupsScreen from '../screens/main/FeeGroupsScreen';
 import FeeStructureScreen from '../screens/main/FeeStructureScreen';
@@ -10,21 +11,31 @@ import ExamsScreen from '../screens/main/ExamsScreen';
 import MembersScreen from '../screens/main/MembersScreen';
 import CreateExamScreen from '../screens/main/CreateExamScreen';
 import AcademicYearsScreen from '../screens/main/AcademicYearsScreen';
+import SettingsScreen from '../screens/main/SettingsScreen';
+import ExpensesScreen from '../screens/main/ExpensesScreen';
+import AttendanceScreen from '../screens/main/AttendanceScreen';
+import DiaryScreen from '../screens/main/DiaryScreen';
 import HeaderActions from '../components/HeaderActions';
 import { theme } from '../theme';
 import { Ionicons } from '@expo/vector-icons';
 import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
 import { DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
 import { AuthContext } from '../context/AuthContext';
+import { getTerm } from '../utils/terminology';
 
 type DrawerParamList = {
     DashboardHome: undefined;
+    Reports: undefined;
     Students: undefined;
     Staff: undefined;
     FeeGroups: undefined;
     FeeStructures: undefined;
     Exams: undefined;
     AcademicYears: undefined;
+    Expenses: undefined;
+    Attendance: undefined;
+    DiaryFeed: undefined;
+    Settings: undefined;
 };
 
 const Drawer = createDrawerNavigator<DrawerParamList>();
@@ -40,7 +51,13 @@ function CustomDrawerContent(props: any) {
         <View style={{ flex: 1, backgroundColor: theme.colors.surface }}>
             <DrawerContentScrollView {...props} contentContainerStyle={{ backgroundColor: theme.colors.primary, paddingTop: 0 }}>
                 <View style={styles.drawerHeader}>
-                    <Ionicons name="school" size={60} color={theme.colors.surface} />
+                    {user?.entityLogoUrl ? (
+                        <View style={styles.drawerLogoContainer}>
+                            <Image source={{ uri: user.entityLogoUrl }} style={styles.drawerLogo} resizeMode="contain" />
+                        </View>
+                    ) : (
+                        <Ionicons name="school" size={60} color={theme.colors.surface} />
+                    )}
                     <Text style={styles.drawerTitle}>{appName}</Text>
                     <Text style={styles.drawerSubtitle}>{roleDisplay}</Text>
                 </View>
@@ -104,9 +121,46 @@ export default function MainDrawerNavigator() {
                 }}
             />
             <Drawer.Screen
+                name="Reports"
+                component={ReportsScreen}
+                options={{
+                    title: 'Business Reports',
+                    drawerIcon: ({ color, size }) => <Ionicons name="bar-chart-outline" size={size} color={color} />
+                }}
+            />
+            <Drawer.Screen
+                name="Expenses"
+                component={ExpensesScreen}
+                options={{
+                    title: 'Expenses',
+                    drawerIcon: ({ color, size }) => <Ionicons name="wallet-outline" size={size} color={color} />
+                }}
+            />
+            {user?.entityType !== 'gym' && (
+                <Drawer.Screen
+                    name="Attendance"
+                    component={AttendanceScreen}
+                    options={{
+                        title: 'Daily Attendance',
+                        drawerIcon: ({ color, size }) => <Ionicons name="checkbox-outline" size={size} color={color} />
+                    }}
+                />
+            )}
+            {user?.entityType !== 'gym' && (
+                <Drawer.Screen
+                    name="DiaryFeed"
+                    component={DiaryScreen}
+                    options={{
+                        title: 'Digital Diary',
+                        drawerIcon: ({ color, size }) => <Ionicons name="journal-outline" size={size} color={color} />
+                    }}
+                />
+            )}
+            <Drawer.Screen
                 name="Students"
                 component={MembersScreen}
                 options={{
+                    title: getTerm('Students', user?.entityType),
                     drawerIcon: ({ color, size }) => <Ionicons name="people-outline" size={size} color={color} />
                 }}
             />
@@ -120,41 +174,56 @@ export default function MainDrawerNavigator() {
                     }}
                 />
             )}
-            <Drawer.Screen
-                name="FeeGroups"
-                component={FeeGroupsScreen}
-                options={{
-                    title: 'Fee Groups',
-                    drawerIcon: ({ color }) => <Ionicons name="layers-outline" size={22} color={color} />,
-                    headerRight: () => <HeaderActions />
-                }}
-            />
+            {user?.entityType !== 'gym' && (
+                <Drawer.Screen
+                    name="FeeGroups"
+                    component={FeeGroupsScreen}
+                    options={{
+                        title: getTerm('Classes', user?.entityType),
+                        drawerIcon: ({ color }) => <Ionicons name="layers-outline" size={22} color={color} />,
+                        headerRight: () => <HeaderActions />
+                    }}
+                />
+            )}
             {user?.role !== 'teacher' && (
                 <Drawer.Screen
                     name="FeeStructures"
                     component={FeeStructureScreen}
                     options={{
-                        title: 'Fee Structures',
+                        title: user?.entityType === 'gym' ? 'Billing Plans' : 'Fee Structures',
                         drawerIcon: ({ color, size }) => <Ionicons name="card-outline" size={size} color={color} />
                     }}
                 />
             )}
-            <Drawer.Screen
-                name="Exams"
-                component={ExamsScreen}
-                options={{
-                    title: 'Exams & Results',
-                    drawerIcon: ({ color }) => <Ionicons name="document-text-outline" size={24} color={color} />,
-                    headerRight: () => <HeaderActions />
-                }}
-            />
-            {(user?.role === 'admin' || user?.role === 'owner') && (
+            {user?.entityType !== 'gym' && (
+                <Drawer.Screen
+                    name="Exams"
+                    component={ExamsScreen}
+                    options={{
+                        title: 'Exams & Results',
+                        drawerIcon: ({ color }) => <Ionicons name="document-text-outline" size={24} color={color} />,
+                        headerRight: () => <HeaderActions />
+                    }}
+                />
+            )}
+            {(user?.role === 'admin' || user?.role === 'owner') && user?.entityType !== 'gym' && (
                 <Drawer.Screen
                     name="AcademicYears"
                     component={AcademicYearsScreen}
                     options={{
                         drawerIcon: ({ color, size }) => <Ionicons name="calendar-outline" size={size} color={color} />,
                         title: 'Academic Years',
+                        drawerItemStyle: { marginTop: 16, borderTopWidth: 1, borderTopColor: theme.colors.border, paddingTop: 16 }
+                    }}
+                />
+            )}
+            {(user?.role === 'admin' || user?.role === 'owner') && (
+                <Drawer.Screen
+                    name="Settings"
+                    component={SettingsScreen}
+                    options={{
+                        drawerIcon: ({ color, size }) => <Ionicons name="settings-outline" size={size} color={color} />,
+                        title: 'Business Settings',
                         drawerItemStyle: { marginTop: 16, borderTopWidth: 1, borderTopColor: theme.colors.border, paddingTop: 16 }
                     }}
                 />
@@ -170,6 +239,20 @@ const styles = StyleSheet.create({
         paddingTop: 48,
         alignItems: 'center',
         borderBottomRightRadius: 24,
+    },
+    drawerLogoContainer: {
+        width: 72,
+        height: 72,
+        borderRadius: 36,
+        backgroundColor: 'rgba(255,255,255,0.95)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        overflow: 'hidden',
+    },
+    drawerLogo: {
+        width: 60,
+        height: 60,
+        borderRadius: 30,
     },
     drawerTitle: {
         color: theme.colors.surface,

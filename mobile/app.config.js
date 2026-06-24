@@ -45,6 +45,7 @@ export default () => ({
         plugins: [
             '@react-native-community/datetimepicker',
             'expo-font',
+            'expo-sharing',
             './config-plugins/withAndroidSigning'
         ],
         extra: {

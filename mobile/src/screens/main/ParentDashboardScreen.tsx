@@ -131,6 +131,18 @@ export default function ParentDashboardScreen() {
                                         ) : (
                                             <Text style={styles.paidText}>Fees Clear</Text>
                                         )}
+                                        {child.nextPaymentDate && (
+                                            <Text style={[
+                                                styles.paidText, 
+                                                { 
+                                                    color: new Date(child.nextPaymentDate) < new Date() ? theme.colors.danger : theme.colors.textSecondary, 
+                                                    marginTop: 4, 
+                                                    fontWeight: '500' 
+                                                }
+                                            ]}>
+                                                Renewal: {new Date(child.nextPaymentDate).toLocaleDateString()}
+                                            </Text>
+                                        )}
                                     </View>
                                 </View>
                                 <Ionicons name="chevron-forward" size={24} color={theme.colors.textMuted} />

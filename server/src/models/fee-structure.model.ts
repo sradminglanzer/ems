@@ -3,9 +3,9 @@ import { ObjectId } from 'mongodb';
 export class FeeStructure {
     _id?: ObjectId;
     entityId: ObjectId;
-    feeGroupId: ObjectId; // Links to a specific class / fee group
+    feeGroupId?: ObjectId; // Links to a specific class / fee group. Optional for global add-on fees.
     amount: number;
-    frequency: 'monthly' | 'term' | 'annual' | 'one-time';
+    frequency: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'half-yearly' | 'annual' | 'one-time';
     name: string; // e.g., "Tuition Fee", "Lab Fee"
     createdAt?: Date;
     updatedAt?: Date;
@@ -13,7 +13,7 @@ export class FeeStructure {
     constructor(data: any) {
         if (data._id) this._id = new ObjectId(data._id);
         this.entityId = new ObjectId(data.entityId);
-        this.feeGroupId = new ObjectId(data.feeGroupId);
+        if (data.feeGroupId) this.feeGroupId = new ObjectId(data.feeGroupId);
         this.amount = Number(data.amount);
         this.frequency = data.frequency;
         this.name = data.name;
@@ -22,6 +22,6 @@ export class FeeStructure {
     }
 
     get valid() {
-        return !!(this.entityId && this.feeGroupId && this.amount > 0 && this.frequency && this.name);
+        return !!(this.entityId && this.amount > 0 && this.frequency && this.name);
     }
 }

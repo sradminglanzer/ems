@@ -7,6 +7,7 @@ import api from '../../services/api';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import HeaderActions from '../../components/HeaderActions';
+import { getTerm } from '../../utils/terminology';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = width * 0.42;
@@ -117,15 +118,15 @@ export default function DashboardScreen() {
                                     <Ionicons name="people" size={24} color={theme.colors.primary} />
                                 </View>
                                 <Text style={styles.statValueSmall}>{stats.totalMembers}</Text>
-                                <Text style={styles.statLabelSmall}>Total Students</Text>
+                                <Text style={styles.statLabelSmall}>Total {getTerm('Students', user?.entityType)}</Text>
                             </TouchableOpacity>
 
-                            <TouchableOpacity style={styles.glassCardSmall} activeOpacity={0.8} onPress={() => navigation.navigate('FeeGroups')}>
+                            <TouchableOpacity style={styles.glassCardSmall} activeOpacity={0.8} onPress={() => navigation.navigate(user?.entityType === 'gym' ? 'FeeStructures' : 'FeeGroups')}>
                                 <View style={[styles.iconBox, { backgroundColor: theme.colors.secondaryLight + '30' }]}>
-                                    <Ionicons name="school" size={24} color={theme.colors.secondary} />
+                                    <Ionicons name={user?.entityType === 'gym' ? 'card' : 'school'} size={24} color={theme.colors.secondary} />
                                 </View>
-                                <Text style={styles.statValueSmall}>{stats.totalFeeGroups}</Text>
-                                <Text style={styles.statLabelSmall}>Active Classes</Text>
+                                <Text style={styles.statValueSmall}>{user?.entityType === 'gym' ? stats.totalFeeStructures || 0 : stats.totalFeeGroups || 0}</Text>
+                                <Text style={styles.statLabelSmall}>{user?.entityType === 'gym' ? 'Active Billing Plans' : `Active ${getTerm('Classes', user?.entityType)}`}</Text>
                             </TouchableOpacity>
                         </ScrollView>
 
@@ -150,17 +151,54 @@ export default function DashboardScreen() {
                                     </View>
                                 </TouchableOpacity>
 
-                                <View style={[styles.financeCard, { borderColor: theme.colors.successLight, borderWidth: 1 }]}>
-                                    <View style={styles.financeInfo}>
-                                        <Text style={styles.financeLabel}>Total Collection</Text>
-                                        <Text style={[styles.financeValue, { color: theme.colors.success }]}>
-                                            ₹{Math.max(0, stats.totalCollectedAmount).toLocaleString('en-IN')}
-                                        </Text>
+                                <View style={[styles.financeCard, { borderColor: theme.colors.successLight, borderWidth: 1, flexDirection: 'column', alignItems: 'stretch' }]}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+                                        <View style={[styles.iconBoxLarge, { backgroundColor: theme.colors.successLight + '40', width: 44, height: 44, borderRadius: 22 }]}>
+                                            <Ionicons name="wallet" size={24} color={theme.colors.success} />
+                                        </View>
+                                        <Text style={[styles.financeLabel, { marginLeft: 12, flex: 1, fontSize: 16 }]}>Collection Report</Text>
                                     </View>
-                                    <View style={[styles.iconBoxLarge, { backgroundColor: theme.colors.successLight + '40' }]}>
-                                        <Ionicons name="wallet" size={32} color={theme.colors.success} />
+                                    
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: theme.colors.border + '50', paddingBottom: 10, marginBottom: 10 }}>
+                                        <Text style={{ color: theme.colors.textSecondary, fontWeight: '500' }}>Collected Today</Text>
+                                        <Text style={{ fontWeight: 'bold', color: theme.colors.success, fontSize: 16 }}>₹{(stats.collectionToday || 0).toLocaleString('en-IN')}</Text>
+                                    </View>
+                                    
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: theme.colors.border + '50', paddingBottom: 10, marginBottom: 10 }}>
+                                        <Text style={{ color: theme.colors.textSecondary, fontWeight: '500' }}>This Month</Text>
+                                        <Text style={{ fontWeight: 'bold', color: theme.colors.success, fontSize: 16 }}>₹{(stats.collectionThisMonth || 0).toLocaleString('en-IN')}</Text>
+                                    </View>
+                                    
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                                        <Text style={{ color: theme.colors.textSecondary, fontWeight: '500' }}>Last Month</Text>
+                                        <Text style={{ fontWeight: 'bold', color: theme.colors.textPrimary, fontSize: 16 }}>₹{(stats.collectionLastMonth || 0).toLocaleString('en-IN')}</Text>
                                     </View>
                                 </View>
+                            </View>
+                        )}
+
+                        {/* Expiring Subscriptions List */}
+                        {stats.expiringMembers && stats.expiringMembers.length > 0 && (
+                            <View style={styles.financeSection}>
+                                <Text style={[styles.sectionTitle, { color: theme.colors.danger }]}>Expiring Soon</Text>
+                                {stats.expiringMembers.map((m: any) => (
+                                    <TouchableOpacity 
+                                        key={m._id} 
+                                        style={[styles.financeCard, { borderColor: theme.colors.dangerLight, borderWidth: 1, marginTop: 8 }]}
+                                        onPress={() => navigation.navigate('MemberDetails', { member: m })}
+                                    >
+                                        <View style={styles.financeInfo}>
+                                            <Text style={[styles.financeLabel, { color: theme.colors.textPrimary, fontWeight: 'bold' }]}>{m.firstName} {m.lastName}</Text>
+                                            <Text style={[styles.financeValue, { fontSize: 16, marginTop: 4, color: new Date(m.nextPaymentDate) < new Date() ? theme.colors.danger : theme.colors.warning }]}>
+                                                Due: {new Date(m.nextPaymentDate).toLocaleDateString()}
+                                            </Text>
+                                            {m.contact && <Text style={{ fontSize: 13, color: theme.colors.textSecondary, marginTop: 4 }}>📞 {m.contact}</Text>}
+                                        </View>
+                                        <View style={[styles.iconBoxLarge, { backgroundColor: theme.colors.dangerLight + '20' }]}>
+                                            <Ionicons name="time" size={28} color={theme.colors.danger} />
+                                        </View>
+                                    </TouchableOpacity>
+                                ))}
                             </View>
                         )}
 

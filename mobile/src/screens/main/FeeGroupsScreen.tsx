@@ -10,8 +10,12 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import HeaderActions from '../../components/HeaderActions';
+import { AuthContext } from '../../context/AuthContext';
+import { useContext } from 'react';
+import { getTerm } from '../../utils/terminology';
 
 export default function FeeGroupsScreen() {
+    const { user } = useContext(AuthContext);
     const navigation = useNavigation<any>();
     const insets = useSafeAreaInsets();
     const [groupsList, setGroupsList] = useState<any[]>([]);
@@ -134,7 +138,7 @@ export default function FeeGroupsScreen() {
                         <Ionicons name="menu" size={24} color={theme.colors.surface} />
                     </TouchableOpacity>
                     <Animated.Text style={[styles.stickyTitle, { opacity: headerTitleOpacity }]}>
-                        Manage Classes
+                        Manage {getTerm('Classes', user?.entityType)}
                     </Animated.Text>
                     <View style={styles.headerActionsWrapper}>
                         <HeaderActions />
@@ -142,8 +146,8 @@ export default function FeeGroupsScreen() {
                 </View>
                 <Animated.View style={[styles.heroContent, { opacity: headerOpacity }]}>
                     <View style={styles.heroTextContent}>
-                        <Text style={styles.heroTitle}>Manage Classes</Text>
-                        <Text style={styles.heroSubtitle}>{groupsList.length} active classes</Text>
+                        <Text style={styles.heroTitle}>Manage {getTerm('Classes', user?.entityType)}</Text>
+                        <Text style={styles.heroSubtitle}>{groupsList.length} active {getTerm('Classes', user?.entityType).toLowerCase()}</Text>
                     </View>
                     <View style={styles.heroIconBox}>
                         <Ionicons name="albums" size={24} color={theme.colors.surface} />
@@ -173,7 +177,7 @@ export default function FeeGroupsScreen() {
                         ListEmptyComponent={
                             <View style={styles.emptyContainer}>
                                 <Ionicons name="albums-outline" size={64} color={theme.colors.border} />
-                                <Text style={globalStyles.emptyText}>No classes configured yet.</Text>
+                                <Text style={globalStyles.emptyText}>No {getTerm('Classes', user?.entityType).toLowerCase()} configured yet.</Text>
                             </View>
                         }
                     />
@@ -193,13 +197,13 @@ export default function FeeGroupsScreen() {
                 <KeyboardAvoidingView style={globalStyles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
                     <View style={globalStyles.modalContent}>
                         <View style={globalStyles.modalHeader}>
-                            <Text style={globalStyles.modalTitle}>Add New Class</Text>
+                            <Text style={globalStyles.modalTitle}>Add New {getTerm('Class', user?.entityType)}</Text>
                             <TouchableOpacity onPress={() => setModalVisible(false)} style={globalStyles.closeButton}>
                                 <Ionicons name="close" size={24} color={theme.colors.textSecondary} />
                             </TouchableOpacity>
                         </View>
 
-                        <Text style={globalStyles.label}>Class Name</Text>
+                        <Text style={globalStyles.label}>{getTerm('Class', user?.entityType)} Name</Text>
                         <TextInput style={globalStyles.input} placeholder="e.g. Grade 10A" value={newName} onChangeText={setNewName} />
 
                         <Text style={globalStyles.label}>Description (Optional)</Text>
@@ -209,7 +213,7 @@ export default function FeeGroupsScreen() {
                             {isSubmitting ? <ActivityIndicator color="#fff" /> : (
                                 <>
                                     <Ionicons name="checkmark-circle" size={20} color={theme.colors.surface} />
-                                    <Text style={globalStyles.submitButtonText}>Create Class</Text>
+                                    <Text style={globalStyles.submitButtonText}>Create {getTerm('Class', user?.entityType)}</Text>
                                 </>
                             )}
                         </TouchableOpacity>

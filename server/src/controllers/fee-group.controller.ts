@@ -35,6 +35,8 @@ export const getFeeGroupDetails = async (req: AuthRequest, res: Response, next: 
             if (roster && roster.members) {
                 memberIdObjects = (roster.members as any[]).map((mId: any) => new ObjectId(mId.toString()));
             }
+        } else if (!academicYearId && group.members) {
+            memberIdObjects = (group.members as any[]).map((mId: any) => new ObjectId(mId.toString()));
         }
 
         // Parallel fetch using services — no raw DB access

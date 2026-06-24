@@ -6,7 +6,7 @@ import { theme } from '../theme';
 import api from '../services/api';
 
 export default function HeaderActions() {
-    const { selectedAcademicYearId, setSelectedAcademicYearId } = useContext(AuthContext);
+    const { selectedAcademicYearId, setSelectedAcademicYearId, user } = useContext(AuthContext);
     const [years, setYears] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
@@ -37,6 +37,7 @@ export default function HeaderActions() {
     }
 
     if (years.length === 0) return null;
+    if (user?.entityType === 'gym') return null;
 
     return (
         <View style={styles.container}>

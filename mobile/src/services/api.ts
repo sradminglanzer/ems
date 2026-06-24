@@ -28,4 +28,10 @@ api.interceptors.request.use(
     }
 );
 
+export const getUploadUrl = (filename: string, contentType: string, type?: string) => {
+    let url = `/upload/presigned-url?filename=${encodeURIComponent(filename)}&contentType=${encodeURIComponent(contentType)}`;
+    if (type) url += `&type=${encodeURIComponent(type)}`;
+    return api.get(url);
+};
+
 export default api;

@@ -4,9 +4,11 @@ import memberService from '../services/member.service';
 import feeGroupService from '../services/fee-group.service';
 import feeStructureService from '../services/fee-structure.service';
 import feePaymentService from '../services/fee-payment.service';
+import expenseService from '../services/expense.service';
 import userService from '../services/user.service';
 import { HTTP_STATUS } from '../utils/constants';
 import { ObjectId } from 'mongodb';
+import { getDB } from '../config/db';
 
 export const getDashboardStats = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
@@ -29,7 +31,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
 
             const groupTotalFees: Record<string, number> = {};
             feeGroups.forEach(g => {
-                const groupStructures = feeStructures.filter(s => s.feeGroupId.toString() === g._id!.toString());
+                const groupStructures = feeStructures.filter(s => s.feeGroupId && s.feeGroupId.toString() === g._id!.toString());
                 const totalFee = groupStructures.reduce((sum, s) => sum + s.amount, 0);
                 groupTotalFees[g._id!.toString()] = totalFee;
             });
@@ -57,15 +59,46 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
                     groupName = group.name;
                 }
 
+                if (m.addonFeeIds && m.addonFeeIds.length > 0) {
+                    const addonAmount = feeStructures
+                        .filter(s => m.addonFeeIds!.some((id: any) => id.toString() === s._id!.toString()))
+                        .reduce((sum, s) => sum + s.amount, 0);
+                    totalFee += addonAmount;
+                }
+
                 const memberPayments = feePayments.filter(p => p.memberId.toString() === mId);
                 const totalPaid = memberPayments.reduce((sum, p) => sum + p.amount, 0);
+
+                let nextPaymentDate = null;
+                const paymentsByStructure: Record<string, any[]> = {};
+                memberPayments.forEach(p => {
+                    const structId = p.feeStructureId ? p.feeStructureId.toString() : 'general';
+                    if (!paymentsByStructure[structId]) paymentsByStructure[structId] = [];
+                    paymentsByStructure[structId].push(p);
+                });
+
+                const nextDates: Date[] = [];
+                for (const structId in paymentsByStructure) {
+                    const structPayments = paymentsByStructure[structId] || [];
+                    const sortedStructPayments = structPayments.sort((a, b) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime());
+                    const latest = sortedStructPayments[0];
+                    if (latest && latest.nextPaymentDate) {
+                        nextDates.push(new Date(latest.nextPaymentDate));
+                    }
+                }
+
+                if (nextDates.length > 0) {
+                    // Find earliest upcoming date
+                    nextPaymentDate = nextDates.sort((a, b) => a.getTime() - b.getTime())[0];
+                }
 
                 return {
                     ...m,
                     groupName,
                     totalFee,
                     totalPaid,
-                    pendingAmount: totalFee - totalPaid
+                    pendingAmount: totalFee - totalPaid,
+                    nextPaymentDate
                 };
             });
 
@@ -81,12 +114,18 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
 
         const groupTotalFees: Record<string, number> = {};
         feeGroups.forEach(g => {
-            const groupStructures = feeStructures.filter(s => s.feeGroupId.toString() === g._id!.toString());
+            const groupStructures = feeStructures.filter(s => s.feeGroupId && s.feeGroupId.toString() === g._id!.toString());
             const totalFee = groupStructures.reduce((sum, s) => sum + s.amount, 0);
             groupTotalFees[g._id!.toString()] = totalFee;
         });
 
         let systemTotalFees = 0;
+        let systemTotalPendingDeficits = 0;
+        const expiringMembers: any[] = [];
+        const today = new Date();
+        const nextWeek = new Date();
+        nextWeek.setDate(today.getDate() + 7);
+
         members.forEach(m => {
             const mId = m._id!.toString();
 
@@ -98,25 +137,370 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
                 });
             } else {
                 group = feeGroups.find(g => {
-                    return g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId));
+                    return (g.members && g.members.some((id: any) => id.toString() === mId)) ||
+                        (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)));
                 });
             }
 
+            let memberTotalFee = 0;
             if (group) {
-                systemTotalFees += (groupTotalFees[group._id!.toString()] || 0);
+                memberTotalFee += (groupTotalFees[group._id!.toString()] || 0);
+            }
+
+            if (m.addonFeeIds && m.addonFeeIds.length > 0) {
+                const addonAmount = feeStructures
+                    .filter(s => m.addonFeeIds!.some((id: any) => id.toString() === s._id!.toString()))
+                    .reduce((sum, s) => sum + s.amount, 0);
+                memberTotalFee += addonAmount;
+            }
+
+            systemTotalFees += memberTotalFee;
+
+            // Find individual member deficit
+            const memberPayments = feePayments.filter(p => p.memberId.toString() === mId);
+            const memberTotalPaid = memberPayments.reduce((sum, p) => sum + p.amount, 0);
+
+            const individualDeficit = memberTotalFee - memberTotalPaid;
+            if (individualDeficit > 0) {
+                systemTotalPendingDeficits += individualDeficit;
+            }
+
+            // Find expiry by structure
+            const paymentsByStructure: Record<string, any[]> = {};
+            memberPayments.forEach(p => {
+                const structId = p.feeStructureId ? p.feeStructureId.toString() : 'general';
+                if (!paymentsByStructure[structId]) paymentsByStructure[structId] = [];
+                paymentsByStructure[structId].push(p);
+            });
+
+            for (const structId in paymentsByStructure) {
+                const structPayments = paymentsByStructure[structId] || [];
+                const sortedStructPayments = structPayments.sort((a, b) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime());
+                const latestPayment = sortedStructPayments[0];
+                if (latestPayment && latestPayment.nextPaymentDate) {
+                    const nextDate = new Date(latestPayment.nextPaymentDate);
+                    const daysDiff = (nextDate.getTime() - today.getTime()) / (1000 * 3600 * 24);
+                    if (daysDiff <= 7 && daysDiff >= -30) {
+                        // Check if member already pushed to avoid duplicates
+                        if (!expiringMembers.some(em => em._id === m._id)) {
+                            expiringMembers.push({
+                                _id: m._id,
+                                firstName: m.firstName,
+                                lastName: m.lastName,
+                                knownId: m.knownId,
+                                contact: m.contact,
+                                nextPaymentDate: nextDate
+                            });
+                        }
+                    }
+                }
             }
         });
 
+        // Sort expiring members by date ascending
+        expiringMembers.sort((a, b) => new Date(a.nextPaymentDate).getTime() - new Date(b.nextPaymentDate).getTime());
+
         const systemTotalPaid = feePayments.reduce((sum, p) => sum + p.amount, 0);
+
+        const todayDate = new Date();
+        const pad = (n: number) => n < 10 ? '0' + n : n;
+
+        const todayStr = `${todayDate.getFullYear()}-${pad(todayDate.getMonth() + 1)}-${pad(todayDate.getDate())}`;
+        const thisMonthStr = `${todayDate.getFullYear()}-${pad(todayDate.getMonth() + 1)}`;
+
+        const lastMonthDate = new Date(todayDate.getFullYear(), todayDate.getMonth() - 1, 1);
+        const lastMonthStr = `${lastMonthDate.getFullYear()}-${pad(lastMonthDate.getMonth() + 1)}`;
+
+        const collectionToday = feePayments.filter(p => {
+            const d = new Date(p.paymentDate || p.createdAt || todayDate);
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` === todayStr;
+        }).reduce((sum, p) => sum + p.amount, 0);
+
+        const collectionThisMonth = feePayments.filter(p => {
+            const d = new Date(p.paymentDate || p.createdAt || todayDate);
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}` === thisMonthStr;
+        }).reduce((sum, p) => sum + p.amount, 0);
+
+        const collectionLastMonth = feePayments.filter(p => {
+            const d = new Date(p.paymentDate || p.createdAt || todayDate);
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}` === lastMonthStr;
+        }).reduce((sum, p) => sum + p.amount, 0);
 
         const stats = {
             totalMembers: members.length,
             totalFeeGroups: feeGroups.length,
-            totalPendingAmount: systemTotalFees - systemTotalPaid,
-            totalCollectedAmount: systemTotalPaid
+            totalFeeStructures: feeStructures.length,
+            totalPendingAmount: systemTotalPendingDeficits,
+            totalCollectedAmount: systemTotalPaid,
+            collectionToday,
+            collectionThisMonth,
+            collectionLastMonth,
+            expiringMembers
         };
 
         res.status(HTTP_STATUS.OK).json(stats);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getDashboardReports = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const entityId = req.user!.entityId.toString();
+        const academicYearId = req.query.academicYearId as string | undefined;
+
+        const [members, feeStructures, feePayments] = await Promise.all([
+            memberService.getByEntity(entityId),
+            feeStructureService.getByEntity(entityId),
+            feePaymentService.getByEntity(entityId, academicYearId)
+        ]);
+
+        // 1. Enriched Payment History
+        const paymentHistory = feePayments.map(p => {
+            const member = members.find(m => m._id!.toString() === p.memberId.toString());
+            const structure = feeStructures.find(s => s._id!.toString() === p.feeStructureId?.toString());
+            return {
+                _id: p._id,
+                amount: p.amount,
+                paymentDate: p.paymentDate || p.createdAt,
+                notes: p.notes,
+                memberName: member ? `${member.firstName} ${member.lastName}` : 'Deleted Member',
+                memberId: p.memberId,
+                structureName: structure ? structure.name : 'General Fee'
+            };
+        }).sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime());
+
+        // 2. Enrollment Growth (Last 6 months)
+        const enrollmentGrowth: Record<string, number> = {};
+        const today = new Date();
+        const pad = (n: number) => n < 10 ? '0' + n : n;
+
+        for (let i = 5; i >= 0; i--) {
+            const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+            const monthStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; // YYYY-MM in Local Time
+            enrollmentGrowth[monthStr] = 0;
+        }
+
+        members.forEach(m => {
+            if (m.createdAt) {
+                const createdDate = new Date(m.createdAt);
+                const monthStr = `${createdDate.getFullYear()}-${pad(createdDate.getMonth() + 1)}`;
+                if (enrollmentGrowth[monthStr] !== undefined) {
+                    enrollmentGrowth[monthStr]++;
+                }
+            } else {
+                // If no createdAt, assume current month (legacy data)
+                const currentMonthStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}`;
+                if (enrollmentGrowth[currentMonthStr] !== undefined) {
+                    enrollmentGrowth[currentMonthStr]++;
+                }
+            }
+        });
+
+        // 3. Current Month Revenue vs Last Month Revenue
+        const currentMonthStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}`;
+        const lastMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const lastMonthStr = `${lastMonthDate.getFullYear()}-${pad(lastMonthDate.getMonth() + 1)}`;
+
+        const currentMonthRevenue = paymentHistory
+            .filter(p => {
+                const d = new Date(p.paymentDate);
+                return `${d.getFullYear()}-${pad(d.getMonth() + 1)}` === currentMonthStr;
+            })
+            .reduce((sum, p) => sum + p.amount, 0);
+
+        const lastMonthRevenue = paymentHistory
+            .filter(p => {
+                const d = new Date(p.paymentDate);
+                return `${d.getFullYear()}-${pad(d.getMonth() + 1)}` === lastMonthStr;
+            })
+            .reduce((sum, p) => sum + p.amount, 0);
+
+        res.status(HTTP_STATUS.OK).json({
+            paymentHistory,
+            enrollmentGrowth,
+            revenueComparison: {
+                currentMonth: currentMonthRevenue,
+                lastMonth: lastMonthRevenue,
+                currentMonthLabel: currentMonthDateLabel(today),
+                lastMonthLabel: currentMonthDateLabel(lastMonthDate)
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+function currentMonthDateLabel(date: Date) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${months[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+export const getComprehensiveFinancials = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const entityId = req.user!.entityId.toString();
+        const academicYearId = req.query.academicYearId as string | undefined;
+        const startDate = req.query.startDate as string | undefined;
+        const endDate = req.query.endDate as string | undefined;
+
+        const dateFilter: any = {};
+        const expenseDateFilter: any = {};
+        if (startDate && endDate) {
+            dateFilter.paymentDate = { $gte: new Date(startDate), $lte: new Date(endDate) };
+            expenseDateFilter.expenseDate = { $gte: new Date(startDate), $lte: new Date(endDate) };
+        }
+
+        const expenseFilter: any = { entityId: new ObjectId(entityId), ...expenseDateFilter };
+        if (academicYearId) expenseFilter.academicYearId = new ObjectId(academicYearId);
+
+        const [members, feeGroups, feeStructures, feePayments, expenses, entity] = await Promise.all([
+            memberService.getByEntity(entityId),
+            feeGroupService.getByEntity(entityId),
+            feeStructureService.getByEntity(entityId),
+            feePaymentService.getByEntity(entityId, academicYearId, dateFilter),
+            expenseService.get(expenseFilter),
+            getDB().collection('entities').findOne({ _id: new ObjectId(entityId) })
+        ]);
+
+        // === GYM MODE: no fee_groups exist — use fee_structures directly as plans ===
+        // === SCHOOL MODE: fee_groups exist — existing group-based logic ===
+        const isGymMode = !academicYearId && feeGroups.length === 0;
+
+        const groupTotalFees: Record<string, number> = {};
+        const classWiseData: Record<string, { groupName: string, collected: number, pending: number, memberCount: number }> = {};
+
+        if (isGymMode) {
+            // Each fee_structure is its own "plan" in gym mode
+            feeStructures.forEach((s: any) => {
+                const sId = s._id!.toString();
+                classWiseData[sId] = { groupName: s.name, collected: 0, pending: 0, memberCount: 0 };
+                groupTotalFees[sId] = s.amount;
+            });
+        } else {
+            // School mode: build from fee_groups
+            feeGroups.forEach((g: any) => {
+                const groupStructures = feeStructures.filter((s: any) => s.feeGroupId && s.feeGroupId.toString() === g._id!.toString());
+                const totalFee = groupStructures.reduce((sum: number, s: any) => sum + s.amount, 0);
+                groupTotalFees[g._id!.toString()] = totalFee;
+                classWiseData[g._id!.toString()] = { groupName: g.name, collected: 0, pending: 0, memberCount: 0 };
+            });
+        }
+        classWiseData['unassigned'] = { groupName: 'Unassigned', collected: 0, pending: 0, memberCount: 0 };
+
+        members.forEach((m: any) => {
+            const mId = m._id!.toString();
+            const memberPayments = feePayments.filter((p: any) => p.memberId.toString() === mId);
+            const memberTotalPaid = memberPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
+
+            if (isGymMode) {
+                // Gym mode: addonFeeIds[] holds the plan (fee_structure) IDs the member is subscribed to
+                const memberPlanIds: string[] = (m.addonFeeIds || [])
+                    .map((id: any) => id.toString())
+                    .filter((id: string) => !!classWiseData[id]);
+
+                if (memberPlanIds.length === 0) {
+                    // No matching plans — count as unassigned
+                    const unassigned = classWiseData['unassigned'];
+                    if (unassigned) unassigned.memberCount++;
+                    return;
+                }
+
+                // Total expected fee across all plans this member is in
+                const totalExpected = memberPlanIds.reduce((sum, sId) => sum + (groupTotalFees[sId] || 0), 0);
+
+                memberPlanIds.forEach((sId) => {
+                    const planEntry = classWiseData[sId];
+                    if (!planEntry) return;
+
+                    const planAmount = groupTotalFees[sId] || 0;
+                    planEntry.memberCount++;
+
+                    // Distribute payments proportionally across plans by their amount ratio
+                    const ratio = totalExpected > 0 ? planAmount / totalExpected : 0;
+                    const allocatedPayment = memberTotalPaid * ratio;
+                    planEntry.collected += allocatedPayment;
+
+                    const deficit = planAmount - allocatedPayment;
+                    if (deficit > 0) planEntry.pending += deficit;
+                });
+
+            } else {
+                // School mode
+                let planId: string = 'unassigned';
+                let memberTotalFee = 0;
+
+                if (academicYearId) {
+                    // School mode: match via yearlyRosters
+                    const group = feeGroups.find((g: any) => {
+                        const roster = g.yearlyRosters?.find((r: any) => r.academicYearId.toString() === academicYearId);
+                        return roster && roster.members && roster.members.some((id: any) => id.toString() === mId);
+                    });
+                    if (group) {
+                        planId = group._id!.toString();
+                        memberTotalFee = groupTotalFees[planId] || 0;
+                    }
+                } else {
+                    // School mode (no academic year): match via feeGroupId or members[]
+                    let group: any;
+                    if (m.feeGroupId) {
+                        group = feeGroups.find((g: any) => g._id!.toString() === m.feeGroupId.toString());
+                    }
+                    if (!group) {
+                        group = feeGroups.find((g: any) =>
+                            (g.members && g.members.some((id: any) => id.toString() === mId)) ||
+                            (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)))
+                        );
+                    }
+                    if (group) {
+                        planId = group._id!.toString();
+                        memberTotalFee = groupTotalFees[planId] || 0;
+                    }
+                }
+
+                // Add addon fees on top of the base plan fee (school mode only)
+                if (m.addonFeeIds && m.addonFeeIds.length > 0) {
+                    const addonAmount = feeStructures
+                        .filter((s: any) => m.addonFeeIds!.some((id: any) => id.toString() === s._id!.toString()))
+                        .reduce((sum: number, s: any) => sum + s.amount, 0);
+                    memberTotalFee += addonAmount;
+                }
+
+                const planEntry = classWiseData[planId];
+                if (planEntry) {
+                    planEntry.memberCount++;
+                    planEntry.collected += memberTotalPaid;
+                    const deficit = memberTotalFee - memberTotalPaid;
+                    if (deficit > 0) planEntry.pending += deficit;
+                }
+            }
+        });
+
+        const totalCollected = feePayments.reduce((sum: number, p: any) => sum + p.amount, 0);
+        const totalExpenses = expenses.reduce((sum: number, exp: any) => sum + exp.amount, 0);
+        
+        const expenseByCategory: Record<string, number> = {};
+        expenses.forEach((exp: any) => {
+            if (!expenseByCategory[exp.category]) expenseByCategory[exp.category] = 0;
+            expenseByCategory[exp.category] += exp.amount;
+        });
+
+        const netBalance = totalCollected - totalExpenses;
+        const entityType = entity?.type || 'gym'; // 'gym' | 'school'
+        const groupLabel = entityType === 'school' ? 'Class-wise Collections' : 'Plan-wise Collections';
+
+        res.status(HTTP_STATUS.OK).json({
+            summary: {
+                totalCollected,
+                totalExpenses,
+                netBalance
+            },
+            groupLabel,
+            entityType,
+            classWiseData: Object.values(classWiseData).filter((g: any) => g.groupName !== 'Unassigned' || g.memberCount > 0),
+            expensesByCategory: Object.entries(expenseByCategory).map(([category, amount]) => ({ category, amount })),
+            recentExpenses: expenses.sort((a: any, b: any) => new Date(b.expenseDate).getTime() - new Date(a.expenseDate).getTime()).slice(0, 10),
+            recentPayments: feePayments.sort((a: any, b: any) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime()).slice(0, 10)
+        });
     } catch (error) {
         next(error);
     }

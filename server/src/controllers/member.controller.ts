@@ -3,6 +3,7 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import memberService from '../services/member.service';
 import { Member } from '../models/member.model';
 import { User } from '../models/user.model';
+import { FeePayment } from '../models/fee-payment.model';
 import { AppError } from '../utils/AppError';
 import { HTTP_STATUS } from '../utils/constants';
 import { ObjectId } from 'mongodb';
@@ -37,7 +38,7 @@ export const getMembers = async (req: AuthRequest, res: Response, next: NextFunc
         // Calculate total structural fees per group
         const groupTotalFees: Record<string, number> = {};
         feeGroups.forEach(g => {
-            const groupStructures = feeStructures.filter(s => s.feeGroupId.toString() === g._id!.toString());
+            const groupStructures = feeStructures.filter(s => s.feeGroupId && s.feeGroupId.toString() === g._id!.toString());
             const totalFee = groupStructures.reduce((sum, s) => sum + s.amount, 0);
             groupTotalFees[g._id!.toString()] = totalFee;
         });
@@ -54,9 +55,10 @@ export const getMembers = async (req: AuthRequest, res: Response, next: NextFunc
                     return roster && roster.members && roster.members.some((id: any) => id.toString() === mId);
                 });
             } else {
-                // Fallback if no year passed: check all rosters 
+                // Fallback if no year passed: check generic members array then rosters 
                 group = feeGroups.find(g => {
-                    return g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId));
+                    return (g.members && g.members.some((id: any) => id.toString() === mId)) || 
+                           (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)));
                 });
             }
 
@@ -68,6 +70,13 @@ export const getMembers = async (req: AuthRequest, res: Response, next: NextFunc
                 groupName = group.name;
             }
 
+            let addonNames: string[] = [];
+            if (m.addonFeeIds && m.addonFeeIds.length > 0) {
+                const addons = feeStructures.filter(s => m.addonFeeIds!.some((id: any) => id.toString() === s._id!.toString()));
+                totalFee += addons.reduce((sum, s) => sum + s.amount, 0);
+                addonNames = addons.map(s => s.name);
+            }
+
             // find payments
             const memberPayments = feePayments.filter(p => p.memberId.toString() === mId);
             const totalPaid = memberPayments.reduce((sum, p) => sum + p.amount, 0);
@@ -75,11 +84,83 @@ export const getMembers = async (req: AuthRequest, res: Response, next: NextFunc
             return {
                 ...m,
                 groupName,
+                addonNames,
                 totalFee,
                 totalPaid,
                 pendingAmount: totalFee - totalPaid
             };
         });
+
+        res.status(HTTP_STATUS.OK).json(memberStats);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getMemberById = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const entityId = req.user!.entityId.toString();
+        const id = req.params.id;
+        const academicYearIdStr = req.query.academicYearId as string;
+
+        const m = await memberService.getOne({ _id: new ObjectId(id as string), entityId: new ObjectId(entityId) });
+        if (!m) {
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: 'Member not found' });
+        }
+
+        const [feeGroups, feeStructures, feePayments] = await Promise.all([
+            feeGroupService.getByEntity(entityId),
+            feeStructureService.getByEntity(entityId),
+            feePaymentService.getByEntity(entityId)
+        ]);
+
+        const groupTotalFees: Record<string, number> = {};
+        feeGroups.forEach(g => {
+            const groupStructures = feeStructures.filter(s => s.feeGroupId && s.feeGroupId.toString() === g._id!.toString());
+            const totalFee = groupStructures.reduce((sum, s) => sum + s.amount, 0);
+            groupTotalFees[g._id!.toString()] = totalFee;
+        });
+
+        const mId = m._id!.toString();
+        let group;
+        if (academicYearIdStr) {
+            group = feeGroups.find(g => {
+                const roster = g.yearlyRosters?.find((r: any) => r.academicYearId.toString() === academicYearIdStr);
+                return roster && roster.members && roster.members.some((id: any) => id.toString() === mId);
+            });
+        } else {
+            group = feeGroups.find(g => {
+                return (g.members && g.members.some((id: any) => id.toString() === mId)) || 
+                       (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)));
+            });
+        }
+
+        let totalFee = 0;
+        let groupName = 'Unassigned';
+
+        if (group) {
+            totalFee = groupTotalFees[group._id!.toString()] || 0;
+            groupName = group.name;
+        }
+
+        let addonNames: string[] = [];
+        if (m.addonFeeIds && m.addonFeeIds.length > 0) {
+            const addons = feeStructures.filter(s => m.addonFeeIds!.some((id: any) => id.toString() === s._id!.toString()));
+            totalFee += addons.reduce((sum, s) => sum + s.amount, 0);
+            addonNames = addons.map(s => s.name);
+        }
+
+        const memberPayments = feePayments.filter(p => p.memberId.toString() === mId);
+        const totalPaid = memberPayments.reduce((sum, p) => sum + p.amount, 0);
+
+        const memberStats = {
+            ...m,
+            groupName,
+            addonNames,
+            totalFee,
+            totalPaid,
+            pendingAmount: totalFee - totalPaid
+        };
 
         res.status(HTTP_STATUS.OK).json(memberStats);
     } catch (error) {
@@ -98,36 +179,61 @@ export const createMember = async (req: AuthRequest, res: Response, next: NextFu
         const result = await memberService.insert(member);
 
         // Auto-assign to fee group if requested inline
-        if (req.body.feeGroupId && req.body.academicYearId) {
+        if (req.body.feeGroupId) {
             try {
                 const groupId = new ObjectId(req.body.feeGroupId as string);
-                const yearId = new ObjectId(req.body.academicYearId as string);
                 const memberIdObj = new ObjectId(result.insertedId.toString());
 
                 // Fetch group
                 const group = await feeGroupService.getOne({ _id: groupId, entityId: new ObjectId(req.user!.entityId) });
+                
                 if (group) {
-                    let rosters = group.yearlyRosters || [];
-                    const rosterIdx = rosters.findIndex((r: any) => r.academicYearId.toString() === yearId.toString());
+                    if (req.body.academicYearId) {
+                        // School: store in yearlyRosters
+                        const yearId = new ObjectId(req.body.academicYearId as string);
+                        let rosters = group.yearlyRosters || [];
+                        const rosterIdx = rosters.findIndex((r: any) => r.academicYearId.toString() === yearId.toString());
 
-                    if (rosterIdx > -1) {
-                        let currentMembers: any[] = (rosters[rosterIdx] as any).members || [];
-                        const exists = currentMembers.some((m: any) => m.toString() === memberIdObj.toString());
-                        if (!exists) {
-                            currentMembers.push(memberIdObj);
+                        if (rosterIdx > -1) {
+                            let currentMembers: any[] = (rosters[rosterIdx] as any).members || [];
+                            const exists = currentMembers.some((m: any) => m.toString() === memberIdObj.toString());
+                            if (!exists) {
+                                currentMembers.push(memberIdObj);
+                            }
+                            (rosters[rosterIdx] as any).members = currentMembers;
+                        } else {
+                            rosters.push({
+                                academicYearId: yearId,
+                                members: [memberIdObj]
+                            });
                         }
-                        (rosters[rosterIdx] as any).members = currentMembers;
-                    } else {
-                        rosters.push({
-                            academicYearId: yearId,
-                            members: [memberIdObj]
-                        });
-                    }
 
-                    await feeGroupService.update(
-                        { _id: groupId, entityId: new ObjectId(req.user!.entityId) },
-                        { $set: { yearlyRosters: rosters } }
-                    );
+                        await feeGroupService.update(
+                            { _id: groupId, entityId: new ObjectId(req.user!.entityId) },
+                            { $set: { yearlyRosters: rosters } }
+                        );
+                        // Also store feeGroupId on the member for fast lookup
+                        await memberService.update(
+                            { _id: memberIdObj },
+                            { $set: { feeGroupId: groupId } }
+                        );
+                    } else {
+                        // Gym: store in feeGroup.members[] AND on member.feeGroupId
+                        let directMembers = group.members || [];
+                        const exists = directMembers.some((m: any) => m.toString() === memberIdObj.toString());
+                        if (!exists) {
+                            directMembers.push(memberIdObj);
+                            await feeGroupService.update(
+                                { _id: groupId, entityId: new ObjectId(req.user!.entityId) },
+                                { $set: { members: directMembers } }
+                            );
+                        }
+                        // Always write feeGroupId back to the member for fast lookup
+                        await memberService.update(
+                            { _id: memberIdObj },
+                            { $set: { feeGroupId: groupId } }
+                        );
+                    }
                 }
             } catch (e: any) {
                 console.error('Error auto-enrolling into fee group during member creation:', e);
@@ -156,7 +262,35 @@ export const createMember = async (req: AuthRequest, res: Response, next: NextFu
             console.error('Error auto-creating parent user:', e);
         }
 
-        res.status(HTTP_STATUS.CREATED).json(result);
+        let generatedReceiptNo;
+        // POS Onboarding: Inject Fee Payment
+        if (req.body.initialPayment) {
+            try {
+                const { amount, paymentMethod, nextPaymentDateStr, referenceDocumentUrl } = req.body.initialPayment;
+                const payment = new FeePayment({
+                    entityId: new ObjectId(req.user!.entityId),
+                    memberId: new ObjectId(result.insertedId.toString()),
+                    amount: amount,
+                    paymentMethod: paymentMethod || 'cash',
+                    referenceDocumentUrl: referenceDocumentUrl,
+                    paymentDate: new Date(), // Today
+                    nextPaymentDate: nextPaymentDateStr ? new Date(nextPaymentDateStr) : undefined,
+                    notes: 'POS Initial Onboarding Payment'
+                });
+
+                if (payment.valid) {
+                    payment.receiptNo = await feePaymentService.getNextSequence(req.user!.entityId);
+                    generatedReceiptNo = payment.receiptNo;
+                    await feePaymentService.insert(payment);
+                } else {
+                    console.error('Initial payment payload invalid:', payment);
+                }
+            } catch (e: any) {
+                console.error('Error recording POS initial payment:', e);
+            }
+        }
+
+        res.status(HTTP_STATUS.CREATED).json({ insertedId: result.insertedId, receiptNo: generatedReceiptNo });
     } catch (error) {
         next(error);
     }
@@ -169,7 +303,7 @@ export const updateMember = async (req: AuthRequest, res: Response, next: NextFu
 
         // Validation for partial update
         let updateData: any = { $set: {} };
-        const allowedFields = ['firstName', 'middleName', 'lastName', 'knownId', 'dob', 'contact', 'altContact', 'fatherOccupation', 'motherOccupation', 'address'];
+        const allowedFields = ['firstName', 'middleName', 'lastName', 'knownId', 'dob', 'contact', 'altContact', 'fatherOccupation', 'motherOccupation', 'address', 'addonFeeIds', 'profilePicUrl'];
         allowedFields.forEach(field => {
             if (req.body[field] !== undefined) {
                 updateData.$set[field] = req.body[field];

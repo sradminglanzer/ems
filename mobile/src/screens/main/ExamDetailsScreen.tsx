@@ -8,11 +8,12 @@ import { AuthContext } from '../../context/AuthContext';
 import { useContext } from 'react';
 import HeaderActions from '../../components/HeaderActions';
 import { LinearGradient } from 'expo-linear-gradient';
+import { getTerm } from '../../utils/terminology';
 
 const { width } = Dimensions.get('window');
 
 export default function ExamDetailsScreen() {
-    const { selectedAcademicYearId } = useContext(AuthContext);
+    const { selectedAcademicYearId, user } = useContext(AuthContext);
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
     const { exam } = route.params;
@@ -108,7 +109,7 @@ export default function ExamDetailsScreen() {
                     setMembers([]);
                 }
             } catch (err) {
-                Alert.alert('Error', 'Failed to load students for this group');
+                Alert.alert('Error', `Failed to load ${getTerm('Students', user?.entityType).toLowerCase()} for this group`);
             } finally {
                 setLoadingMembers(false);
             }
@@ -197,7 +198,7 @@ export default function ExamDetailsScreen() {
                 </View>
                 <View style={styles.memberInfo}>
                     <Text style={styles.memberName}>{item.firstName} {item.lastName}</Text>
-                    <Text style={styles.memberId}>Roll No: {item.knownId}</Text>
+                    <Text style={styles.memberId}>{getTerm('Roll No', user?.entityType)}: {item.knownId}</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end', marginLeft: 16 }}>
                     {hasResults ? (
@@ -236,7 +237,7 @@ export default function ExamDetailsScreen() {
                         </View>
                     </View>
                     <Text style={styles.gradingTitle}>{item.firstName} {item.lastName}</Text>
-                    <Text style={styles.gradingSub}>Roll No: {item.knownId}</Text>
+                    <Text style={styles.gradingSub}>{getTerm('Roll No', user?.entityType)}: {item.knownId}</Text>
 
                     <View style={styles.gradingTotalBadge}>
                         <Text style={styles.gradingTotalText}>Total: {totalScore} / {totalMax}</Text>
@@ -285,7 +286,7 @@ export default function ExamDetailsScreen() {
                         {saving ? <ActivityIndicator color="#fff" /> :
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                                 <Text style={globalStyles.submitButtonText}>
-                                    {index < members.length - 1 ? 'Save & Next Student' : 'Save & Finish'}
+                                    {index < members.length - 1 ? `Save & Next ${getTerm('Student', user?.entityType)}` : 'Save & Finish'}
                                 </Text>
                                 {index < members.length - 1 && <Ionicons name="arrow-forward" size={20} color={theme.colors.surface} />}
                             </View>
@@ -323,13 +324,13 @@ export default function ExamDetailsScreen() {
                         <Ionicons name="document-text" size={36} color={theme.colors.primary} />
                     </View>
                     <Text style={styles.heroTitle} numberOfLines={1}>{exam.name}</Text>
-                    <Text style={styles.heroSubtitle}>Class Exam Results & Grading</Text>
+                    <Text style={styles.heroSubtitle}>{getTerm('Class', user?.entityType)} Exam Results & Grading</Text>
                 </Animated.View>
 
                 {/* Embedded Group Selector in Header */}
                 <View style={styles.selectorsBlock}>
                     <Animated.Text style={[styles.selectorLabel, { opacity: headerOpacity, height: headerOpacity.interpolate({ inputRange: [0, 1], outputRange: [0, 24] }) }]}>
-                        Select Class for Grading:
+                        Select {getTerm('Class', user?.entityType)} for Grading:
                     </Animated.Text>
                     {loadingGroups ? (
                         <ActivityIndicator style={{ padding: 12 }} color={theme.colors.surface} />
@@ -369,7 +370,7 @@ export default function ExamDetailsScreen() {
                         ListEmptyComponent={
                             <View style={styles.emptyCardBox}>
                                 <Ionicons name="people-outline" size={32} color={theme.colors.border} />
-                                <Text style={[globalStyles.emptyText, { marginTop: 8 }]}>No students in this group.</Text>
+                                <Text style={[globalStyles.emptyText, { marginTop: 8 }]}>No {getTerm('Students', user?.entityType).toLowerCase()} in this group.</Text>
                             </View>
                         }
                     />

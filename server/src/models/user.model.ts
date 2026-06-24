@@ -7,6 +7,7 @@ export class User {
     name: string;
     contactNumber: string;
     mpin?: string; // Optional initially as they need to set it up
+    expoPushToken?: string;
     role: UserRole;
     createdAt?: Date;
     updatedAt?: Date;
@@ -17,6 +18,7 @@ export class User {
         this.contactNumber = data.contactNumber;
         this.role = data.role;
         this.mpin = data.mpin || '';
+        this.expoPushToken = data.expoPushToken;
         this.createdAt = data.createdAt || new Date();
         this.updatedAt = data.updatedAt || new Date();
     }
