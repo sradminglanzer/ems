@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import api, { getUploadUrl } from '../../services/api';
 import { theme, globalStyles } from '../../theme';
 import { AuthContext } from '../../context/AuthContext';
@@ -61,14 +62,16 @@ export default function SettingsScreen() {
                 const urlRes = await getUploadUrl(filename, 'image/png', 'logo');
                 const { uploadUrl, publicUrl } = urlRes.data;
 
-                // 2) Upload to S3
-                const response = await fetch(imgUri);
-                const blob = await response.blob();
-                await fetch(uploadUrl, {
-                    method: 'PUT',
-                    body: blob,
+                // Use FileSystem.uploadAsync — streams file natively, no Blob/XHR/ArrayBuffer needed.
+                // This is the only approach that reliably works in React Native release builds.
+                const uploadResult = await FileSystem.uploadAsync(uploadUrl, imgUri, {
+                    httpMethod: 'PUT',
                     headers: { 'Content-Type': 'image/png' },
+                    uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
                 });
+                if (uploadResult.status < 200 || uploadResult.status >= 300) {
+                    throw new Error(`Upload failed: ${uploadResult.status}`);
+                }
 
                 // 3) Update entity logo on server
                 await api.put('/entities/logo', { logoUrl: publicUrl });
