@@ -132,43 +132,9 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
             // Skip members on hold — they intentionally stopped paying and should not appear as overdue/due-soon
             if (m.status === 'on_hold') return;
 
-            let group;
-            if (academicYearId) {
-                group = feeGroups.find(g => {
-                    const roster = g.yearlyRosters?.find((r: any) => r.academicYearId.toString() === academicYearId);
-                    return roster && roster.members && roster.members.some((id: any) => id.toString() === mId);
-                });
-            } else {
-                group = feeGroups.find(g => {
-                    return (g.members && g.members.some((id: any) => id.toString() === mId)) ||
-                        (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)));
-                });
-            }
-
-            let memberTotalFee = 0;
-            if (group) {
-                memberTotalFee += (groupTotalFees[group._id!.toString()] || 0);
-            }
-
-            if (m.addonFeeIds && m.addonFeeIds.length > 0) {
-                const addonAmount = feeStructures
-                    .filter(s => m.addonFeeIds!.some((id: any) => id.toString() === s._id!.toString()))
-                    .reduce((sum, s) => sum + s.amount, 0);
-                memberTotalFee += addonAmount;
-            }
-
-            systemTotalFees += memberTotalFee;
-
-            // Find individual member deficit
             const memberPayments = feePayments.filter(p => p.memberId.toString() === mId);
-            const memberTotalPaid = memberPayments.reduce((sum, p) => sum + p.amount, 0);
 
-            const individualDeficit = memberTotalFee - memberTotalPaid;
-            if (individualDeficit > 0) {
-                systemTotalPendingDeficits += individualDeficit;
-            }
-
-            // Find expiry by structure
+            // ── Build payment-by-structure map (used for both deficit and expiry) ──
             const paymentsByStructure: Record<string, any[]> = {};
             memberPayments.forEach(p => {
                 const structId = p.feeStructureId ? p.feeStructureId.toString() : 'general';
@@ -176,29 +142,85 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
                 paymentsByStructure[structId].push(p);
             });
 
+            // ── Find this member's latest nextPaymentDate across all structures ──
+            let latestNextDate: Date | null = null;
             for (const structId in paymentsByStructure) {
-                const structPayments = paymentsByStructure[structId] || [];
-                const sortedStructPayments = structPayments.sort((a, b) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime());
-                const latestPayment = sortedStructPayments[0];
-                if (latestPayment && latestPayment.nextPaymentDate) {
-                    const nextDate = new Date(latestPayment.nextPaymentDate);
-                    const daysDiff = (nextDate.getTime() - today.getTime()) / (1000 * 3600 * 24);
-                    if (daysDiff <= 7 && daysDiff >= -30) {
-                        // Check if member already pushed to avoid duplicates
-                        if (!expiringMembers.some(em => em._id === m._id)) {
-                            expiringMembers.push({
-                                _id: m._id,
-                                firstName: m.firstName,
-                                lastName: m.lastName,
-                                knownId: m.knownId,
-                                contact: m.contact,
-                                nextPaymentDate: nextDate
-                            });
-                        }
+                const sorted = paymentsByStructure[structId]?.sort(
+                    (a, b) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime()
+                ) || [];
+                const latest = sorted[0];
+                if (latest?.nextPaymentDate) {
+                    const d = new Date(latest.nextPaymentDate);
+                    if (!latestNextDate || d > latestNextDate) latestNextDate = d;
+                }
+            }
+
+            // ── GYM MODE: pending deficit = plan amount if member's renewal is overdue ──
+            const isGymMode = !academicYearId && feeGroups.length === 0;
+            if (isGymMode) {
+                if (latestNextDate && latestNextDate < today) {
+                    // Member is overdue — add their subscribed plan amounts
+                    if (m.addonFeeIds && m.addonFeeIds.length > 0) {
+                        const overduePlanAmount = feeStructures
+                            .filter(s => m.addonFeeIds!.some((id: any) => id.toString() === s._id!.toString()))
+                            .reduce((sum, s) => sum + s.amount, 0);
+                        systemTotalPendingDeficits += overduePlanAmount;
+                    }
+                }
+            } else {
+                // ── SCHOOL MODE: deficit = total annual fee – total paid ──
+                let group;
+                if (academicYearId) {
+                    group = feeGroups.find(g => {
+                        const roster = g.yearlyRosters?.find((r: any) => r.academicYearId.toString() === academicYearId);
+                        return roster && roster.members && roster.members.some((id: any) => id.toString() === mId);
+                    });
+                } else {
+                    group = feeGroups.find(g => {
+                        return (g.members && g.members.some((id: any) => id.toString() === mId)) ||
+                            (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)));
+                    });
+                }
+
+                let memberTotalFee = 0;
+                if (group) memberTotalFee += (groupTotalFees[group._id!.toString()] || 0);
+                if (m.addonFeeIds && m.addonFeeIds.length > 0) {
+                    const addonAmount = feeStructures
+                        .filter(s => m.addonFeeIds!.some((id: any) => id.toString() === s._id!.toString()))
+                        .reduce((sum, s) => sum + s.amount, 0);
+                    memberTotalFee += addonAmount;
+                }
+
+                systemTotalFees += memberTotalFee;
+
+                const memberTotalPaid = memberPayments.reduce((sum, p) => sum + p.amount, 0);
+                const individualDeficit = memberTotalFee - memberTotalPaid;
+                if (individualDeficit > 0) systemTotalPendingDeficits += individualDeficit;
+            }
+
+            // ── Expiring / overdue window ──
+            // Overdue: any member whose renewal is past (no lower bound — could be months ago)
+            // Upcoming: renewals due within next 7 days
+            if (latestNextDate) {
+                const daysDiff = (latestNextDate.getTime() - today.getTime()) / (1000 * 3600 * 24);
+                const isOverdue = daysDiff < 0;
+                const isExpiringSoon = daysDiff >= 0 && daysDiff <= 7;
+                if (isOverdue || isExpiringSoon) {
+                    if (!expiringMembers.some(em => em._id === m._id)) {
+                        expiringMembers.push({
+                            _id: m._id,
+                            firstName: m.firstName,
+                            lastName: m.lastName,
+                            knownId: m.knownId,
+                            contact: m.contact,
+                            nextPaymentDate: latestNextDate,
+                            isOverdue
+                        });
                     }
                 }
             }
         });
+
 
         // Sort expiring members by date ascending
         expiringMembers.sort((a, b) => new Date(a.nextPaymentDate).getTime() - new Date(b.nextPaymentDate).getTime());
@@ -480,7 +502,7 @@ export const getComprehensiveFinancials = async (req: AuthRequest, res: Response
 
         const totalCollected = feePayments.reduce((sum: number, p: any) => sum + p.amount, 0);
         const totalExpenses = expenses.reduce((sum: number, exp: any) => sum + exp.amount, 0);
-        
+
         const expenseByCategory: Record<string, number> = {};
         expenses.forEach((exp: any) => {
             if (!expenseByCategory[exp.category]) expenseByCategory[exp.category] = 0;

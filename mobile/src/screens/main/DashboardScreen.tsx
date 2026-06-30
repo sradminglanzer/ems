@@ -177,30 +177,56 @@ export default function DashboardScreen() {
                             </View>
                         )}
 
-                        {/* Expiring Subscriptions List */}
-                        {stats.expiringMembers && stats.expiringMembers.length > 0 && (
+                        {/* Overdue Renewals */}
+                        {stats.expiringMembers?.filter((m: any) => m.isOverdue).length > 0 && (
                             <View style={styles.financeSection}>
-                                <Text style={[styles.sectionTitle, { color: theme.colors.danger }]}>Expiring Soon</Text>
-                                {stats.expiringMembers.map((m: any) => (
-                                    <TouchableOpacity 
-                                        key={m._id} 
-                                        style={[styles.financeCard, { borderColor: theme.colors.dangerLight, borderWidth: 1, marginTop: 8 }]}
+                                <Text style={[styles.sectionTitle, { color: theme.colors.danger }]}>⚠ Overdue Renewals</Text>
+                                {stats.expiringMembers.filter((m: any) => m.isOverdue).map((m: any) => (
+                                    <TouchableOpacity
+                                        key={m._id}
+                                        style={[styles.financeCard, { borderColor: theme.colors.danger + '60', borderWidth: 1.5, marginTop: 8 }]}
                                         onPress={() => navigation.navigate('MemberDetails', { member: m })}
                                     >
                                         <View style={styles.financeInfo}>
                                             <Text style={[styles.financeLabel, { color: theme.colors.textPrimary, fontWeight: 'bold' }]}>{m.firstName} {m.lastName}</Text>
-                                            <Text style={[styles.financeValue, { fontSize: 16, marginTop: 4, color: new Date(m.nextPaymentDate) < new Date() ? theme.colors.danger : theme.colors.warning }]}>
-                                                Due: {new Date(m.nextPaymentDate).toLocaleDateString()}
+                                            <Text style={[styles.financeValue, { fontSize: 14, marginTop: 4, color: theme.colors.danger }]}>
+                                                Due: {new Date(m.nextPaymentDate).toLocaleDateString()} · {Math.floor((Date.now() - new Date(m.nextPaymentDate).getTime()) / 86400000)}d overdue
                                             </Text>
                                             {m.contact && <Text style={{ fontSize: 13, color: theme.colors.textSecondary, marginTop: 4 }}>📞 {m.contact}</Text>}
                                         </View>
-                                        <View style={[styles.iconBoxLarge, { backgroundColor: theme.colors.dangerLight + '20' }]}>
-                                            <Ionicons name="time" size={28} color={theme.colors.danger} />
+                                        <View style={[styles.iconBoxLarge, { backgroundColor: theme.colors.danger + '20' }]}>
+                                            <Ionicons name="alert-circle" size={28} color={theme.colors.danger} />
                                         </View>
                                     </TouchableOpacity>
                                 ))}
                             </View>
                         )}
+
+                        {/* Expiring Soon */}
+                        {stats.expiringMembers?.filter((m: any) => !m.isOverdue).length > 0 && (
+                            <View style={styles.financeSection}>
+                                <Text style={[styles.sectionTitle, { color: '#D97706' }]}>⏰ Expiring Soon</Text>
+                                {stats.expiringMembers.filter((m: any) => !m.isOverdue).map((m: any) => (
+                                    <TouchableOpacity
+                                        key={m._id}
+                                        style={[styles.financeCard, { borderColor: '#F59E0B60', borderWidth: 1.5, marginTop: 8 }]}
+                                        onPress={() => navigation.navigate('MemberDetails', { member: m })}
+                                    >
+                                        <View style={styles.financeInfo}>
+                                            <Text style={[styles.financeLabel, { color: theme.colors.textPrimary, fontWeight: 'bold' }]}>{m.firstName} {m.lastName}</Text>
+                                            <Text style={[styles.financeValue, { fontSize: 14, marginTop: 4, color: '#D97706' }]}>
+                                                Due: {new Date(m.nextPaymentDate).toLocaleDateString()}
+                                            </Text>
+                                            {m.contact && <Text style={{ fontSize: 13, color: theme.colors.textSecondary, marginTop: 4 }}>📞 {m.contact}</Text>}
+                                        </View>
+                                        <View style={[styles.iconBoxLarge, { backgroundColor: '#FEF3C7' }]}>
+                                            <Ionicons name="time" size={28} color="#D97706" />
+                                        </View>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        )}
+
 
                     </View>
                 ) : null}

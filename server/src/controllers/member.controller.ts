@@ -57,8 +57,8 @@ export const getMembers = async (req: AuthRequest, res: Response, next: NextFunc
             } else {
                 // Fallback if no year passed: check generic members array then rosters 
                 group = feeGroups.find(g => {
-                    return (g.members && g.members.some((id: any) => id.toString() === mId)) || 
-                           (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)));
+                    return (g.members && g.members.some((id: any) => id.toString() === mId)) ||
+                        (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)));
                 });
             }
 
@@ -130,8 +130,8 @@ export const getMemberById = async (req: AuthRequest, res: Response, next: NextF
             });
         } else {
             group = feeGroups.find(g => {
-                return (g.members && g.members.some((id: any) => id.toString() === mId)) || 
-                       (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)));
+                return (g.members && g.members.some((id: any) => id.toString() === mId)) ||
+                    (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)));
             });
         }
 
@@ -186,7 +186,7 @@ export const createMember = async (req: AuthRequest, res: Response, next: NextFu
 
                 // Fetch group
                 const group = await feeGroupService.getOne({ _id: groupId, entityId: new ObjectId(req.user!.entityId) });
-                
+
                 if (group) {
                     if (req.body.academicYearId) {
                         // School: store in yearlyRosters
@@ -341,8 +341,8 @@ export const deleteMember = async (req: AuthRequest, res: Response, next: NextFu
 };
 export const holdMember = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-        const id = req.params.id;
-        const entityId = req.user!.entityId;
+        const id = req.params.id as string;
+        const entityId = String(req.user!.entityId);
 
         const member = await memberService.getOne({ _id: new ObjectId(id), entityId: new ObjectId(entityId) });
         if (!member) {
@@ -365,8 +365,8 @@ export const holdMember = async (req: AuthRequest, res: Response, next: NextFunc
 
 export const resumeMember = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-        const id = req.params.id;
-        const entityId = req.user!.entityId;
+        const id = req.params.id as string;
+        const entityId = String(req.user!.entityId);
 
         const member = await memberService.getOne({ _id: new ObjectId(id), entityId: new ObjectId(entityId) });
         if (!member) {
