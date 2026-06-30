@@ -52,6 +52,20 @@ export default function MemberDetailsScreen() {
     const [activeAddons, setActiveAddons] = useState<string[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    // Hold / Resume state
+    const [memberStatus, setMemberStatus] = useState<'active' | 'on_hold'>(member.status || 'active');
+    const [holdStartDate, setHoldStartDate] = useState<Date | null>(member.holdStartDate ? new Date(member.holdStartDate) : null);
+    const [holdHistory, setHoldHistory] = useState<{ holdDate: Date; resumeDate: Date }[]>(
+        (member.holdHistory || []).map((h: any) => ({ holdDate: new Date(h.holdDate), resumeDate: new Date(h.resumeDate) }))
+    );
+    const [resumeModalVisible, setResumeModalVisible] = useState(false);
+    const [resumeAmount, setResumeAmount] = useState('');
+    const [resumeMethod, setResumeMethod] = useState('cash');
+    const [resumeDateStr, setResumeDateStr] = useState('');
+    const [resumeDate, setResumeDate] = useState<Date | null>(null);
+    const [showResumePicker, setShowResumePicker] = useState(false);
+    const [isHoldSubmitting, setIsHoldSubmitting] = useState(false);
+
     useEffect(() => {
         loadData();
     }, [selectedAcademicYearId]);
@@ -262,6 +276,79 @@ export default function MemberDetailsScreen() {
         }
     };
 
+    const handleHold = () => {
+        const execute = async () => {
+            setIsHoldSubmitting(true);
+            try {
+                await api.put(`/members/${member._id}/hold`);
+                setMemberStatus('on_hold');
+                setHoldStartDate(new Date());
+            } catch (e: any) {
+                const msg = e?.response?.data?.message || 'Failed to place member on hold';
+                Platform.OS === 'web' ? alert(msg) : Alert.alert('Error', msg);
+            } finally {
+                setIsHoldSubmitting(false);
+            }
+        };
+        const name = `${member.firstName} ${member.lastName}`;
+        if (Platform.OS === 'web') {
+            if (window.confirm(`Place ${name} on hold? They will be removed from overdue counts.`)) execute();
+        } else {
+            Alert.alert(
+                'Place on Hold',
+                `Place ${name} on hold?\nThey will be removed from overdue/due-soon counts until resumed.`,
+                [{ text: 'Cancel', style: 'cancel' }, { text: 'Place on Hold', onPress: execute }]
+            );
+        }
+    };
+
+    const handleResume = async () => {
+        setIsHoldSubmitting(true);
+        try {
+            const payload: any = {};
+            if (resumeAmount && Number(resumeAmount) > 0) {
+                payload.initialPayment = {
+                    amount: Number(resumeAmount),
+                    paymentMethod: resumeMethod,
+                    nextPaymentDateStr: resumeDateStr || undefined,
+                };
+            }
+            const res = await api.put(`/members/${member._id}/resume`, payload);
+
+            // Update local state
+            const newEntry = { holdDate: holdStartDate || new Date(), resumeDate: new Date() };
+            setHoldHistory(prev => [...prev, newEntry]);
+            setMemberStatus('active');
+            setHoldStartDate(null);
+            setResumeModalVisible(false);
+            setResumeAmount('');
+            setResumeMethod('cash');
+            setResumeDateStr('');
+            setResumeDate(null);
+
+            // Show receipt if payment was collected
+            if (res.data?.receiptNo && payload.initialPayment) {
+                setSuccessModalData({
+                    receiptNo: res.data.receiptNo,
+                    date: new Date(),
+                    member: { name: `${member.firstName} ${member.lastName}`.trim(), knownId: member.knownId || 'N/A', contact: member.contact || 'N/A' },
+                    gymName: user?.entityName || 'Gym',
+                    items: [{ description: 'Re-join Payment', amount: Number(resumeAmount) }],
+                    totalPaid: Number(resumeAmount),
+                    paymentMethod: resumeMethod,
+                    nextRenewalDate: resumeDate || undefined
+                });
+            }
+
+            loadData();
+        } catch (e: any) {
+            const msg = e?.response?.data?.message || 'Failed to resume member';
+            Platform.OS === 'web' ? alert(msg) : Alert.alert('Error', msg);
+        } finally {
+            setIsHoldSubmitting(false);
+        }
+    };
+
     const renderHeader = () => {
         const totalPaid = payments.reduce((acc, p) => acc + p.amount, 0);
         const totalFee = member.totalFee || 0;
@@ -462,6 +549,30 @@ export default function MemberDetailsScreen() {
                         )}
                     </View>
                 )}
+
+                {/* Hold History Section */}
+                {holdHistory.length > 0 && (
+                    <View style={styles.glassCard}>
+                        <View style={styles.sectionHeader}>
+                            <Ionicons name="time-outline" size={20} color="#D97706" />
+                            <Text style={styles.sectionTitle}>Hold History</Text>
+                        </View>
+                        {holdHistory.map((h, i) => {
+                            const days = Math.round((h.resumeDate.getTime() - h.holdDate.getTime()) / 86400000);
+                            return (
+                                <View key={i} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: i < holdHistory.length - 1 ? 1 : 0, borderBottomColor: theme.colors.border }}>
+                                    <Ionicons name="pause-circle-outline" size={18} color="#D97706" style={{ marginRight: 10 }} />
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.textPrimary }}>
+                                            {h.holdDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} → {h.resumeDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                        </Text>
+                                        <Text style={{ fontSize: 12, color: theme.colors.textMuted, marginTop: 2 }}>{days} day{days !== 1 ? 's' : ''} on hold</Text>
+                                    </View>
+                                </View>
+                            );
+                        })}
+                    </View>
+                )}
             </View>
         );
     };
@@ -507,6 +618,15 @@ export default function MemberDetailsScreen() {
                             <TouchableOpacity onPress={handleUpdateMember} style={styles.actionIcon}>
                                 <Ionicons name="pencil" size={18} color={theme.colors.primary} />
                             </TouchableOpacity>
+                            {memberStatus === 'active' ? (
+                                <TouchableOpacity onPress={handleHold} style={[styles.actionIcon, { backgroundColor: '#FEF3C7' }]} disabled={isHoldSubmitting}>
+                                    <Ionicons name="pause-circle" size={18} color="#D97706" />
+                                </TouchableOpacity>
+                            ) : (
+                                <TouchableOpacity onPress={() => setResumeModalVisible(true)} style={[styles.actionIcon, { backgroundColor: '#D1FAE5' }]} disabled={isHoldSubmitting}>
+                                    <Ionicons name="play-circle" size={18} color={theme.colors.success} />
+                                </TouchableOpacity>
+                            )}
                             <TouchableOpacity onPress={handleDeleteMember} style={styles.actionIcon}>
                                 <Ionicons name="trash" size={18} color={theme.colors.danger} />
                             </TouchableOpacity>
@@ -521,6 +641,26 @@ export default function MemberDetailsScreen() {
                         </View>
                     </View>
                     <Text style={styles.heroTitle}>{member.firstName} {member.lastName}</Text>
+                    {memberStatus === 'on_hold' ? (
+                        <View style={{ alignItems: 'center' }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(251,191,36,0.25)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, marginTop: 4, borderWidth: 1, borderColor: 'rgba(251,191,36,0.5)' }}>
+                                <Ionicons name="pause-circle" size={14} color="#FCD34D" style={{ marginRight: 4 }} />
+                                <Text style={{ color: '#FCD34D', fontWeight: '700', fontSize: 13 }}>On Hold</Text>
+                                {holdStartDate && (
+                                    <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11, marginLeft: 6 }}>
+                                        {Math.floor((Date.now() - holdStartDate.getTime()) / 86400000)}d
+                                    </Text>
+                                )}
+                            </View>
+                        </View>
+                    ) : (
+                        <View style={{ alignItems: 'center' }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(52,211,153,0.2)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, marginTop: 4, borderWidth: 1, borderColor: 'rgba(52,211,153,0.4)' }}>
+                                <Ionicons name="checkmark-circle" size={14} color="#6EE7B7" style={{ marginRight: 4 }} />
+                                <Text style={{ color: '#6EE7B7', fontWeight: '700', fontSize: 13 }}>Active</Text>
+                            </View>
+                        </View>
+                    )}
                     {user?.entityType !== 'gym' && (
                         <Text style={styles.heroSubtitle}>Roll No: {member.knownId}</Text>
                     )}
@@ -580,6 +720,106 @@ export default function MemberDetailsScreen() {
                     />
                 )}
             </View>
+
+            {/* Resume Member Modal */}
+            <Modal animationType="slide" transparent={true} visible={resumeModalVisible} onRequestClose={() => setResumeModalVisible(false)}>
+                <View style={globalStyles.modalOverlay}>
+                    <View style={globalStyles.modalContent}>
+                        <View style={globalStyles.modalHeader}>
+                            <View>
+                                <Text style={globalStyles.modalTitle}>Resume Member</Text>
+                                <Text style={{ fontSize: 13, color: theme.colors.textSecondary, marginTop: 2 }}>Optionally collect a re-join payment</Text>
+                            </View>
+                            <TouchableOpacity onPress={() => setResumeModalVisible(false)} style={[globalStyles.closeButton, { alignSelf: 'flex-start' }]}>
+                                <Ionicons name="close" size={24} color={theme.colors.textSecondary} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <ScrollView style={{ maxHeight: '80%' }} showsVerticalScrollIndicator={false}>
+                            <Text style={globalStyles.label}>Amount Collected (₹)</Text>
+                            <TextInput
+                                style={globalStyles.input}
+                                placeholder="0 — leave empty to skip payment"
+                                keyboardType="numeric"
+                                value={resumeAmount}
+                                onChangeText={setResumeAmount}
+                                placeholderTextColor={theme.colors.textMuted}
+                            />
+
+                            {Number(resumeAmount) > 0 && (
+                                <>
+                                    <Text style={globalStyles.label}>Payment Method</Text>
+                                    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                                        {['cash', 'upi', 'card'].map(m => (
+                                            <TouchableOpacity
+                                                key={m}
+                                                style={[styles.pill, resumeMethod === m && styles.pillActive]}
+                                                onPress={() => setResumeMethod(m)}
+                                            >
+                                                <Text style={[styles.pillText, resumeMethod === m && styles.pillTextActive]}>{m.toUpperCase()}</Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+
+                                    <Text style={globalStyles.label}>Next Renewal Date</Text>
+                                    {Platform.OS === 'web' ? (
+                                        <TextInput
+                                            style={globalStyles.input}
+                                            placeholder="YYYY-MM-DD"
+                                            value={resumeDateStr}
+                                            onChangeText={(val) => {
+                                                setResumeDateStr(val);
+                                                const d = new Date(val);
+                                                if (!isNaN(d.getTime())) setResumeDate(d);
+                                            }}
+                                            {...{ type: 'date' } as any}
+                                            placeholderTextColor={theme.colors.textMuted}
+                                        />
+                                    ) : (
+                                        <>
+                                            <TouchableOpacity
+                                                style={[globalStyles.input, { justifyContent: 'center' }]}
+                                                onPress={() => setShowResumePicker(true)}
+                                            >
+                                                <Text style={{ color: resumeDate ? theme.colors.textPrimary : theme.colors.textMuted }}>
+                                                    {resumeDate ? resumeDate.toISOString().split('T')[0] : 'Select Renewal Date'}
+                                                </Text>
+                                            </TouchableOpacity>
+                                            {showResumePicker && (
+                                                <DateTimePicker
+                                                    value={resumeDate || new Date()}
+                                                    mode="date"
+                                                    display="default"
+                                                    onChange={(event, selectedDate) => {
+                                                        setShowResumePicker(Platform.OS === 'ios');
+                                                        if (selectedDate) {
+                                                            setResumeDate(selectedDate);
+                                                            setResumeDateStr(selectedDate.toISOString().split('T')[0]);
+                                                        }
+                                                    }}
+                                                />
+                                            )}
+                                        </>
+                                    )}
+                                </>
+                            )}
+                        </ScrollView>
+
+                        <TouchableOpacity
+                            style={[globalStyles.submitButton, { marginTop: 16, backgroundColor: theme.colors.success }, isHoldSubmitting && globalStyles.disabledButton]}
+                            onPress={handleResume}
+                            disabled={isHoldSubmitting}
+                        >
+                            {isHoldSubmitting
+                                ? <ActivityIndicator color="#fff" />
+                                : <Text style={globalStyles.submitButtonText}>
+                                    {Number(resumeAmount) > 0 ? 'Resume & Collect Payment' : 'Resume Membership'}
+                                  </Text>
+                            }
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
 
             {/* Collect Fee Modal */}
             <Modal animationType="slide" transparent={true} visible={feeModalVisible} onRequestClose={() => setFeeModalVisible(false)}>

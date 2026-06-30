@@ -339,3 +339,90 @@ export const deleteMember = async (req: AuthRequest, res: Response, next: NextFu
         next(error);
     }
 };
+export const holdMember = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const id = req.params.id;
+        const entityId = req.user!.entityId;
+
+        const member = await memberService.getOne({ _id: new ObjectId(id), entityId: new ObjectId(entityId) });
+        if (!member) {
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: 'Member not found' });
+        }
+        if (member.status === 'on_hold') {
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: 'Member is already on hold' });
+        }
+
+        await memberService.update(
+            { _id: new ObjectId(id), entityId: new ObjectId(entityId) },
+            { $set: { status: 'on_hold', holdStartDate: new Date(), updatedAt: new Date() } }
+        );
+
+        res.status(HTTP_STATUS.OK).json({ success: true, message: 'Member placed on hold' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const resumeMember = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const id = req.params.id;
+        const entityId = req.user!.entityId;
+
+        const member = await memberService.getOne({ _id: new ObjectId(id), entityId: new ObjectId(entityId) });
+        if (!member) {
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: 'Member not found' });
+        }
+        if (member.status !== 'on_hold') {
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: 'Member is not on hold' });
+        }
+
+        // Build updated hold history
+        const holdEntry = {
+            holdDate: member.holdStartDate || new Date(),
+            resumeDate: new Date()
+        };
+        const existingHistory = member.holdHistory || [];
+        const updatedHistory = [...existingHistory, holdEntry];
+
+        await memberService.update(
+            { _id: new ObjectId(id), entityId: new ObjectId(entityId) },
+            {
+                $set: {
+                    status: 'active',
+                    holdHistory: updatedHistory,
+                    updatedAt: new Date()
+                },
+                $unset: { holdStartDate: '' }
+            }
+        );
+
+        // Optional: record re-join payment in same call
+        let generatedReceiptNo;
+        if (req.body.initialPayment) {
+            try {
+                const { amount, paymentMethod, nextPaymentDateStr, referenceDocumentUrl } = req.body.initialPayment;
+                const payment = new FeePayment({
+                    entityId: new ObjectId(entityId),
+                    memberId: new ObjectId(id),
+                    amount,
+                    paymentMethod: paymentMethod || 'cash',
+                    referenceDocumentUrl,
+                    paymentDate: new Date(),
+                    nextPaymentDate: nextPaymentDateStr ? new Date(nextPaymentDateStr) : undefined,
+                    notes: 'Re-join Payment after Hold'
+                });
+                if (payment.valid) {
+                    payment.receiptNo = await feePaymentService.getNextSequence(entityId);
+                    generatedReceiptNo = payment.receiptNo;
+                    await feePaymentService.insert(payment);
+                }
+            } catch (e) {
+                console.error('Error recording re-join payment:', e);
+            }
+        }
+
+        res.status(HTTP_STATUS.OK).json({ success: true, message: 'Member resumed', receiptNo: generatedReceiptNo });
+    } catch (error) {
+        next(error);
+    }
+};

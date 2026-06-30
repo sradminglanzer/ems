@@ -129,6 +129,9 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
         members.forEach(m => {
             const mId = m._id!.toString();
 
+            // Skip members on hold — they intentionally stopped paying and should not appear as overdue/due-soon
+            if (m.status === 'on_hold') return;
+
             let group;
             if (academicYearId) {
                 group = feeGroups.find(g => {
