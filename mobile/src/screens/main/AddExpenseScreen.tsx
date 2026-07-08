@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity, TextInput,
-    ActivityIndicator, ScrollView, Platform, Alert, Image, Switch
+    ActivityIndicator, ScrollView, Platform, Alert, Image, Switch, KeyboardAvoidingView
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -159,7 +159,10 @@ export default function AddExpenseScreen() {
     };
 
     return (
-        <View style={styles.container}>
+        <KeyboardAvoidingView
+            style={styles.container}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
             {/* Header */}
             <LinearGradient
                 colors={theme.gradients.primary}
@@ -372,7 +375,7 @@ export default function AddExpenseScreen() {
 
                 <View style={{ height: 40 }} />
             </ScrollView>
-        </View>
+        </KeyboardAvoidingView>
     );
 }
 

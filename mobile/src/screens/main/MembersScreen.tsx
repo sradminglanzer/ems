@@ -12,11 +12,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import HeaderActions from '../../components/HeaderActions';
 import { AuthContext } from '../../context/AuthContext';
 import { getTerm } from '../../utils/terminology';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function MembersScreen() {
     const { user } = useContext(AuthContext);
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
+    const insets = useSafeAreaInsets();
     const [members, setMembers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -255,9 +257,9 @@ export default function MembersScreen() {
                 )}
             </View>
 
-            <TouchableOpacity 
-                style={[globalStyles.fab, { bottom: 24, right: 24, ...theme.shadows.lg }]} 
-                onPress={() => navigation.navigate('AddMember')} 
+            <TouchableOpacity
+                style={[globalStyles.fab, { bottom: Math.max(insets.bottom, 16) + 16, right: 24, ...theme.shadows.lg }]}
+                onPress={() => navigation.navigate('AddMember')}
                 activeOpacity={0.9}
             >
                 <LinearGradient

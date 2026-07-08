@@ -355,7 +355,7 @@ export default function AddMemberScreen() {
     return (
         <KeyboardAvoidingView
             style={globalStyles.container}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
             <Animated.View style={[styles.animatedHeader, { height: headerHeight }]}>
                 <LinearGradient
