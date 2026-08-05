@@ -212,13 +212,13 @@ fun AddMemberScreen(
                                         EmsDateField(
                                             label         = "Payment Date",
                                             value         = posPaymentDate,
-                                            onValueChange = { vm.posPaymentDateStr.value = it },
+                                            onValueChange = { vm.onPaymentDateChanged(it) },
                                             modifier      = Modifier.weight(1f)
                                         )
                                         EmsDateField(
                                             label         = "Next Renewal Date",
                                             value         = posNextDateStr,
-                                            onValueChange = { vm.posNextDateStr.value = it },
+                                            onValueChange = { vm.onNextDateManuallyChanged(it) },
                                             modifier      = Modifier.weight(1f)
                                         )
                                     }
