@@ -35,7 +35,7 @@ class AuthService extends BaseService<User> {
         } else {
             // === SHARED MODE: no entityId (shared gym app) ===
             // Search across all entities by phone number
-            const matches = await this.get({ contactNumber });
+            const matches = await this.get({ contactNumber, deleted: { $ne: true } });
 
             if (matches.length === 0) {
                 throw new AppError(MESSAGES.ERROR.USER_NOT_FOUND, HTTP_STATUS.NOT_FOUND);

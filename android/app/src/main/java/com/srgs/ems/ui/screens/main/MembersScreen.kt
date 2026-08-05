@@ -113,7 +113,7 @@ fun MembersScreen(
                 }
             } else {
                 LazyColumn(
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp, bottom = 80.dp),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 80.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
@@ -158,8 +158,10 @@ private fun AnimatedPill(label: String, active: Boolean, onClick: () -> Unit) {
 @Composable
 private fun ModernMemberCard(m: MemberDto, isGym: Boolean, onClick: () -> Unit) {
     val isOnHold = m.status == "on_hold"
-    val brush    = if (isOnHold) Brush.linearGradient(listOf(Color(0xFFF97316), Color(0xFFF59E0B)))
-                   else Brush.linearGradient(listOf(GradientStart, GradientEnd))
+    val brush    = remember(isOnHold) {
+        if (isOnHold) Brush.linearGradient(listOf(Color(0xFFF97316), Color(0xFFF59E0B)))
+        else          Brush.linearGradient(listOf(GradientStart, GradientEnd))
+    }
     Box(
         Modifier.fillMaxWidth().shadow(3.dp, RoundedCornerShape(16.dp), clip = false)
             .clip(RoundedCornerShape(16.dp)).background(Surface).clickable(onClick = onClick)

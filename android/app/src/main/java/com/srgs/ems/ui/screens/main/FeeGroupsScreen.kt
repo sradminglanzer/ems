@@ -119,7 +119,7 @@ private fun FeeGroupCard(group: FeeGroupDto) {
             // Gradient avatar
             Box(
                 Modifier.size(44.dp).clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(Primary, PrimaryLight))),
+                    .background(remember { Brush.linearGradient(listOf(Primary, PrimaryLight)) }),
                 Alignment.Center
             ) {
                 Text(initials, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)

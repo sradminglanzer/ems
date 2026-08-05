@@ -164,7 +164,7 @@ private fun StaffCard(staff: StaffDto, isGym: Boolean, canDelete: Boolean, onDel
             // Avatar
             Box(
                 Modifier.size(46.dp).clip(CircleShape)
-                    .background(Brush.linearGradient(avatarGradient)),
+                    .background(remember(staff.role) { Brush.linearGradient(avatarGradient) }),
                 Alignment.Center
             ) {
                 Text(initials.ifEmpty { "?" }, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)

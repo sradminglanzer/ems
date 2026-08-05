@@ -138,6 +138,41 @@ interface ApiService {
     // ── Settings ───────────────────────────────────────────────────────────────
     @PUT("fee-payments/sequence")
     suspend fun updateInvoiceSequence(@Body request: UpdateSequenceRequest): Response<Unit>
+
+    // ── Subjects ──────────────────────────────────────────────────────────────
+    @GET("subjects")
+    suspend fun getSubjects(): Response<List<SubjectDto>>
+
+    @POST("subjects")
+    suspend fun createSubject(@Body request: CreateSubjectRequest): Response<SubjectDto>
+
+    @DELETE("subjects/{id}")
+    suspend fun deleteSubject(@Path("id") id: String): Response<Unit>
+
+    // ── Exams ─────────────────────────────────────────────────────────────────
+    @GET("exams")
+    suspend fun getExams(
+        @Query("academicYearId") academicYearId: String? = null
+    ): Response<List<ExamDto>>
+
+    @POST("exams")
+    suspend fun createExam(@Body request: CreateExamRequest): Response<ExamDto>
+
+    @GET("exams/{examId}/results")
+    suspend fun getExamResults(
+        @Path("examId") examId: String
+    ): Response<List<ExamResultDto>>
+
+    @POST("exams/{examId}/results")
+    suspend fun addExamResults(
+        @Path("examId") examId: String,
+        @Body request: AddResultsRequest
+    ): Response<Unit>
+
+    @GET("exams/{examId}/rank-sheet")
+    suspend fun getRankSheet(
+        @Path("examId") examId: String
+    ): Response<List<RankSheetEntryDto>>
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -537,4 +572,88 @@ data class CreateAcademicYearRequest(
     val startDate: String,
     val endDate: String,
     val isActive: Boolean = false
+)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  SUBJECTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+data class SubjectDto(
+    @SerializedName("_id") val _id: String = "",
+    val name: String = "",
+    val code: String? = null
+)
+
+data class CreateSubjectRequest(
+    val name: String,
+    val code: String? = null
+)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  EXAMS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+data class ExamSubjectDto(
+    val name: String = "",
+    val date: String = "",
+    val startTime: String = "",
+    val endTime: String = ""
+)
+
+data class ExamDto(
+    @SerializedName("_id") val _id: String = "",
+    val name: String = "",
+    val startDate: String = "",
+    val endDate: String = "",
+    val feeGroupId: String? = null,
+    val feeGroupName: String? = null,
+    val subjects: List<ExamSubjectDto> = emptyList()
+)
+
+data class CreateExamRequest(
+    val name: String,
+    val startDate: String,
+    val endDate: String,
+    val academicYearId: String? = null,
+    val feeGroupId: String? = null,
+    val subjects: List<ExamSubjectDto> = emptyList()
+)
+
+data class ExamResultDto(
+    @SerializedName("_id") val _id: String = "",
+    val memberId: String = "",
+    val memberName: String? = null,
+    val examId: String = "",
+    val examName: String? = null,
+    val subjectScores: List<SubjectScoreDto> = emptyList(),
+    val totalMarks: Double = 0.0,
+    val maxMarks: Double = 0.0,
+    val percentage: Double = 0.0,
+    val grade: String = ""
+)
+
+data class SubjectScoreDto(
+    val subject: String = "",
+    val marks: Double = 0.0,
+    val maxMarks: Double = 0.0
+)
+
+data class RankSheetEntryDto(
+    val memberId: String = "",
+    val memberName: String = "",
+    val knownId: String? = null,
+    val totalMarks: Double = 0.0,
+    val maxMarks: Double = 0.0,
+    val percentage: Double = 0.0,
+    val grade: String = "",
+    val rank: Int = 0
+)
+
+data class AddResultsRequest(
+    val results: List<MemberResultInput>
+)
+
+data class MemberResultInput(
+    val memberId: String,
+    val subjectScores: List<SubjectScoreDto>
 )

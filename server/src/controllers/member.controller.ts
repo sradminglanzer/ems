@@ -18,6 +18,7 @@ export const getMembers = async (req: AuthRequest, res: Response, next: NextFunc
         const entityId = req.user!.entityId.toString();
 
         let members = await memberService.getByEntity(entityId);
+        console.log('members', members);
         if (req.user!.role === 'parent') {
             const parentUser = await userService.getOne({ _id: new ObjectId(req.user!.userId) });
             if (parentUser && parentUser.contactNumber) {
@@ -277,7 +278,7 @@ export const createMember = async (req: AuthRequest, res: Response, next: NextFu
                     nextPaymentDate: nextPaymentDateStr ? new Date(nextPaymentDateStr) : undefined,
                     notes: 'POS Initial Onboarding Payment'
                 });
-
+                console.log('payment ', payment, payment.valid)
                 if (payment.valid) {
                     payment.receiptNo = await feePaymentService.getNextSequence(req.user!.entityId);
                     generatedReceiptNo = payment.receiptNo;

@@ -155,10 +155,16 @@ fun DashboardScreen(
 // ─── Hero banner ──────────────────────────────────────────────────────────────
 @Composable
 private fun DashboardHero(name: String, entityName: String, initials: String, role: String) {
+    val gradient = remember {
+        Brush.linearGradient(
+            listOf(GradientStart, GradientEnd),
+            end = Offset(Float.POSITIVE_INFINITY, 0f)
+        )
+    }
     Box(
         Modifier
             .fillMaxWidth()
-            .background(Brush.linearGradient(listOf(GradientStart, GradientEnd), end = Offset(Float.POSITIVE_INFINITY, 0f)))
+            .background(gradient)
             .padding(horizontal = 20.dp, vertical = 24.dp)
     ) {
         Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {

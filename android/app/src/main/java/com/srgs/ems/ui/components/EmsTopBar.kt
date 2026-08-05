@@ -21,7 +21,10 @@ import kotlinx.coroutines.launch
 /**
  * Reusable app top bar used by all main screens.
  * Uses enterAlwaysScrollBehavior — hides on scroll down, reappears on scroll up.
- * Title text is always white on a gradient background.
+ *
+ * Performance notes:
+ *  - Gradient Brush is hoisted into `remember` so it is created once, not on every frame.
+ *  - TopAppBar colors use Color.Transparent so we avoid a double repaint.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -31,28 +34,27 @@ fun EmsTopBar(
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     val drawerState = LocalDrawerState.current
-    val scope = rememberCoroutineScope()
+    val scope       = rememberCoroutineScope()
+
+    // Hoist gradient out of recomposition — created once per composition slot,
+    // never recreated on scroll frames.
+    val gradient = remember {
+        Brush.linearGradient(
+            listOf(GradientStart, GradientEnd),
+            start = Offset(0f, 0f),
+            end   = Offset(Float.POSITIVE_INFINITY, 0f)
+        )
+    }
 
     Box {
-        // Gradient background layer
-        Box(
-            Modifier
-                .matchParentSize()
-                .background(
-                    Brush.linearGradient(
-                        listOf(GradientStart, GradientEnd),
-                        start = Offset(0f, 0f),
-                        end   = Offset(Float.POSITIVE_INFINITY, 0f)
-                    )
-                )
-        )
+        Box(Modifier.matchParentSize().background(gradient))
         TopAppBar(
             title = {
                 Text(
                     title,
                     fontWeight = FontWeight.ExtraBold,
-                    color = Color.White,
-                    fontSize = 18.sp
+                    color      = Color.White,
+                    fontSize   = 18.sp
                 )
             },
             navigationIcon = {
@@ -60,14 +62,14 @@ fun EmsTopBar(
                     Text("☰", fontSize = 22.sp, color = Color.White)
                 }
             },
-            actions = actions,
+            actions        = actions,
             scrollBehavior = scrollBehavior,
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor           = Color.Transparent,
-                scrolledContainerColor   = Color.Transparent,
-                titleContentColor        = Color.White,
+            colors         = TopAppBarDefaults.topAppBarColors(
+                containerColor             = Color.Transparent,
+                scrolledContainerColor     = Color.Transparent,
+                titleContentColor          = Color.White,
                 navigationIconContentColor = Color.White,
-                actionIconContentColor   = Color.White
+                actionIconContentColor     = Color.White
             )
         )
     }
@@ -77,6 +79,8 @@ fun EmsTopBar(
  * A hero banner that sits as the first item in a LazyColumn.
  * Shows icon + title + subtitle — scrolls with content so the
  * screen feels expansive.
+ *
+ * Gradient is hoisted into `remember` to avoid recreation on recomposition.
  */
 @Composable
 fun ScreenHeroBanner(
@@ -85,16 +89,18 @@ fun ScreenHeroBanner(
     subtitle: String,
     modifier: Modifier = Modifier
 ) {
+    val gradient = remember {
+        Brush.linearGradient(
+            listOf(GradientStart, GradientEnd),
+            start = Offset(0f, 0f),
+            end   = Offset(Float.POSITIVE_INFINITY, 0f)
+        )
+    }
+
     Box(
         modifier
             .fillMaxWidth()
-            .background(
-                Brush.linearGradient(
-                    listOf(GradientStart, GradientEnd),
-                    start = Offset(0f, 0f),
-                    end   = Offset(Float.POSITIVE_INFINITY, 0f)
-                )
-            )
+            .background(gradient)
             .padding(horizontal = 20.dp, vertical = 24.dp)
     ) {
         Row(
@@ -112,14 +118,14 @@ fun ScreenHeroBanner(
             Column {
                 Text(
                     title,
-                    fontSize = 22.sp,
+                    fontSize   = 22.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    color = Color.White
+                    color      = Color.White
                 )
                 Text(
                     subtitle,
-                    fontSize = 13.sp,
-                    color = Color.White.copy(.75f),
+                    fontSize   = 13.sp,
+                    color      = Color.White.copy(.75f),
                     fontWeight = FontWeight.Medium
                 )
             }

@@ -1,5 +1,6 @@
 package com.srgs.ems.ui.screens.main
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -32,10 +33,10 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
     val session = SessionManager.session
     val logoUrl = session?.entityLogoUrl
 
-    val sequence by vm.sequence.collectAsState()
+    val sequence    by vm.sequence.collectAsState()
     val isSubmitting by vm.isSubmitting.collectAsState()
 
-    val snackbar = remember { SnackbarHostState() }
+    val snackbar      = remember { SnackbarHostState() }
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
     LaunchedEffect(Unit) {
@@ -43,9 +44,9 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
     }
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbar) },
+        snackbarHost   = { SnackbarHost(snackbar) },
         containerColor = Background,
-        topBar = { EmsTopBar("Business Settings", scrollBehavior) }
+        topBar         = { EmsTopBar("Business Settings", scrollBehavior) }
     ) { pad ->
         Column(
             Modifier
@@ -55,26 +56,31 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                 .padding(horizontal = 16.dp, vertical = 20.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // Business Logo Card
+            // ── Business Logo Card ─────────────────────────────────────────────
             SettingsCard(
-                icon = "🏢",
-                iconBg = SecondaryLight.copy(.3f),
-                title = "Business Logo",
+                icon        = "🏢",
+                iconBg      = SecondaryLight.copy(.3f),
+                title       = "Business Logo",
                 description = "Your logo appears on the login screen and navigation menu."
             ) {
-                Column(Modifier.padding(top = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    Modifier.padding(top = 20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     Box(
-                        Modifier.size(110.dp).clip(CircleShape)
+                        Modifier
+                            .size(110.dp)
+                            .clip(CircleShape)
                             .background(Background)
                             .border(2.dp, Border, CircleShape),
                         Alignment.Center
                     ) {
                         if (!logoUrl.isNullOrBlank()) {
                             AsyncImage(
-                                model = logoUrl,
+                                model              = logoUrl,
                                 contentDescription = "Business Logo",
-                                modifier = Modifier.size(106.dp).clip(CircleShape),
-                                contentScale = ContentScale.Crop
+                                modifier           = Modifier.size(106.dp).clip(CircleShape),
+                                contentScale       = ContentScale.Crop
                             )
                         } else {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -87,51 +93,34 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                 }
             }
 
-            // Receipt Sequence Settings Card
+            // ── Receipt Sequence Card ──────────────────────────────────────────
             SettingsCard(
-                icon = "🔢",
-                iconBg = PrimaryLight.copy(.2f),
-                title = "Receipt Numbering",
-                description = "Configure prefix and starting sequence for generated payment receipts."
+                icon        = "🔢",
+                iconBg      = PrimaryLight.copy(.2f),
+                title       = "Invoice Sequence",
+                description = "Set the next invoice/receipt number to be generated."
             ) {
-                var prefix by remember(sequence) { mutableStateOf(sequence?.prefix ?: "") }
-                var nextNo by remember(sequence) { mutableStateOf(sequence?.nextNumber?.toString() ?: "1001") }
-
                 Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     OutlinedTextField(
-                        value = prefix,
-                        onValueChange = { prefix = it },
-                        label = { Text("Receipt Prefix (e.g. REC-)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        shape = RoundedCornerShape(10.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            unfocusedBorderColor = Border, focusedBorderColor = Primary
-                        )
-                    )
-
-                    OutlinedTextField(
-                        value = nextNo,
-                        onValueChange = { nextNo = it },
-                        label = { Text("Next Receipt Number") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
+                        value         = sequence,
+                        onValueChange = { vm.sequence.value = it },
+                        label         = { Text("Next Receipt Number") },
+                        modifier      = Modifier.fillMaxWidth(),
+                        singleLine    = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
+                        placeholder   = { Text("e.g. 1001") },
+                        shape         = RoundedCornerShape(10.dp),
+                        colors        = OutlinedTextFieldDefaults.colors(
                             unfocusedBorderColor = Border, focusedBorderColor = Primary
                         )
                     )
 
                     Button(
-                        onClick = {
-                            val no = nextNo.toIntOrNull() ?: 1001
-                            vm.updateSequence(prefix, no)
-                        },
-                        enabled = !isSubmitting,
+                        onClick  = { vm.updateSequence() },
+                        enabled  = !isSubmitting,
                         modifier = Modifier.fillMaxWidth().height(48.dp),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                        shape    = RoundedCornerShape(10.dp),
+                        colors   = ButtonDefaults.buttonColors(containerColor = Primary)
                     ) {
                         if (isSubmitting) {
                             CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
@@ -155,10 +144,10 @@ private fun SettingsCard(
 ) {
     Card(
         Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(Surface),
+        shape     = RoundedCornerShape(16.dp),
+        colors    = CardDefaults.cardColors(Surface),
         elevation = CardDefaults.cardElevation(2.dp),
-        border = BorderStroke(1.dp, Border)
+        border    = BorderStroke(1.dp, Border)
     ) {
         Column(Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

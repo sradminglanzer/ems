@@ -2,6 +2,8 @@ package com.srgs.ems.ui.screens.main
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -192,16 +194,17 @@ fun MainAppScreen(onSignOut: () -> Unit) {
 // ─── Premium Drawer Header ─────────────────────────────────────────────────────
 @Composable
 private fun DrawerHeader(session: UserSession?) {
+    val gradient = remember {
+        Brush.linearGradient(
+            listOf(GradientStart, GradientEnd),
+            start = Offset(0f, 0f),
+            end   = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
+        )
+    }
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(
-                Brush.linearGradient(
-                    listOf(GradientStart, GradientEnd),
-                    start = Offset(0f, 0f),
-                    end   = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
-                )
-            )
+            .background(gradient)
             .statusBarsPadding()
             .padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 28.dp)
     ) {
@@ -299,7 +302,11 @@ private fun buildDrawerSections(session: UserSession?): List<DrawerSection> {
 private fun MainNavHost(navController: NavHostController, onSignOut: () -> Unit) {
     NavHost(
         navController    = navController,
-        startDestination = MainRoute.Dashboard
+        startDestination = MainRoute.Dashboard,
+        enterTransition    = { fadeIn(animationSpec  = tween(200)) },
+        exitTransition     = { fadeOut(animationSpec = tween(150)) },
+        popEnterTransition = { fadeIn(animationSpec  = tween(200)) },
+        popExitTransition  = { fadeOut(animationSpec = tween(150)) }
     ) {
         composable(MainRoute.Dashboard) { DashboardScreen(onSignOut = onSignOut) }
         composable(MainRoute.Members) {
@@ -354,7 +361,7 @@ private fun MainNavHost(navController: NavHostController, onSignOut: () -> Unit)
         composable(MainRoute.Staff)         { StaffScreen() }
         composable(MainRoute.FeeGroups)     { FeeGroupsScreen() }
         composable(MainRoute.FeeStructures) { FeeStructuresScreen() }
-        composable(MainRoute.Exams)         { PlaceholderScreen("Exams & Results",   "📝") }
+        composable(MainRoute.Exams)         { ExamsScreen() }
         composable(MainRoute.AcademicYears) { AcademicYearsScreen() }
         composable(MainRoute.Settings)      { SettingsScreen() }
     }
