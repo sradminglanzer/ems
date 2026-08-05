@@ -275,6 +275,7 @@ data class MemberDetailDto(
     val contact: String?          = null,
     val altContact: String?       = null,
     val dob: String?              = null,
+    val joiningDate: String?      = null,
     val address: String?          = null,
     val fatherOccupation: String? = null,
     val motherOccupation: String? = null,
@@ -305,6 +306,7 @@ data class CreateMemberRequest(
     val contact: String?          = null,
     val altContact: String?       = null,
     val dob: String?              = null,
+    val joiningDate: String?      = null,
     val address: String?          = null,
     val fatherOccupation: String? = null,
     val motherOccupation: String? = null,
@@ -317,7 +319,8 @@ data class CreateMemberRequest(
 
 data class InitialPaymentDto(
     val amount: Double,
-    val paymentMethod: String = "cash",
+    val paymentMethod: String  = "cash",
+    val paymentDateStr: String? = null,
     val nextPaymentDateStr: String? = null
 )
 

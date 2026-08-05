@@ -267,14 +267,14 @@ export const createMember = async (req: AuthRequest, res: Response, next: NextFu
         // POS Onboarding: Inject Fee Payment
         if (req.body.initialPayment) {
             try {
-                const { amount, paymentMethod, nextPaymentDateStr, referenceDocumentUrl } = req.body.initialPayment;
+                const { amount, paymentMethod, nextPaymentDateStr, paymentDateStr, referenceDocumentUrl } = req.body.initialPayment;
                 const payment = new FeePayment({
                     entityId: new ObjectId(req.user!.entityId),
                     memberId: new ObjectId(result.insertedId.toString()),
                     amount: amount,
                     paymentMethod: paymentMethod || 'cash',
                     referenceDocumentUrl: referenceDocumentUrl,
-                    paymentDate: new Date(), // Today
+                    paymentDate: paymentDateStr ? new Date(paymentDateStr) : new Date(),
                     nextPaymentDate: nextPaymentDateStr ? new Date(nextPaymentDateStr) : undefined,
                     notes: 'POS Initial Onboarding Payment'
                 });

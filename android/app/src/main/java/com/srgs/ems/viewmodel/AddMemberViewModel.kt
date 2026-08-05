@@ -25,6 +25,7 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
     val lastName          = MutableStateFlow("")
     val knownId           = MutableStateFlow("")
     val dob               = MutableStateFlow("")   // "YYYY-MM-DD"
+    val joiningDate       = MutableStateFlow("")   // "YYYY-MM-DD" (optional)
     val contact           = MutableStateFlow("")
     val altContact        = MutableStateFlow("")
     val address           = MutableStateFlow("")
@@ -38,6 +39,7 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
     // ── Initial payment (gym new member) ──────────────────────────────────────
     val posAmount         = MutableStateFlow("")
     val posPaymentMethod  = MutableStateFlow("cash")  // "cash" | "online" | "card" | "upi"
+    val posPaymentDateStr = MutableStateFlow("")       // "YYYY-MM-DD" — defaults to today
     val posNextDateStr    = MutableStateFlow("")       // "YYYY-MM-DD"
 
     // ── Loaded data ────────────────────────────────────────────────────────────
@@ -86,6 +88,7 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
             lastName.value         = m.lastName
             knownId.value          = m.knownId ?: ""
             dob.value              = m.dob?.take(10) ?: ""
+            joiningDate.value      = m.joiningDate?.take(10) ?: ""
             contact.value          = m.contact ?: ""
             altContact.value       = m.altContact ?: ""
             address.value          = m.address ?: ""
@@ -130,6 +133,7 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
                 contact          = contact.value.trim().ifEmpty { null },
                 altContact       = altContact.value.trim().ifEmpty { null },
                 dob              = dob.value.trim().ifEmpty { null },
+                joiningDate      = joiningDate.value.trim().ifEmpty { null },
                 address          = address.value.trim().ifEmpty { null },
                 fatherOccupation = fatherOccupation.value.trim().ifEmpty { null },
                 motherOccupation = motherOccupation.value.trim().ifEmpty { null },
@@ -137,7 +141,12 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
                 addonFeeIds      = addonFeeIds.value.ifEmpty { null },
                 initialPayment   = if (isGym && !isEditing) {
                     val amt = posAmount.value.toDoubleOrNull() ?: 0.0
-                    if (amt > 0) InitialPaymentDto(amt, posPaymentMethod.value, posNextDateStr.value.ifEmpty { null }) else null
+                    if (amt > 0) InitialPaymentDto(
+                        amount           = amt,
+                        paymentMethod    = posPaymentMethod.value,
+                        paymentDateStr   = posPaymentDateStr.value.ifEmpty { null },
+                        nextPaymentDateStr = posNextDateStr.value.ifEmpty { null }
+                    ) else null
                 } else null
             )
 

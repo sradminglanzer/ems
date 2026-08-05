@@ -16,6 +16,7 @@ export class Member {
     feeGroupId?: ObjectId;
     addonFeeIds?: ObjectId[];
     profilePicUrl?: string;
+    joiningDate?: Date;
     status?: 'active' | 'on_hold';
     holdStartDate?: Date;
     holdHistory?: { holdDate: Date; resumeDate: Date }[];
@@ -42,6 +43,7 @@ export class Member {
             this.addonFeeIds = data.addonFeeIds.map((id: any) => new ObjectId(id));
         }
         this.profilePicUrl = data.profilePicUrl;
+        if (data.joiningDate) this.joiningDate = new Date(data.joiningDate);
         this.status = data.status || 'active';
         if (data.holdStartDate) this.holdStartDate = new Date(data.holdStartDate);
         if (Array.isArray(data.holdHistory)) {

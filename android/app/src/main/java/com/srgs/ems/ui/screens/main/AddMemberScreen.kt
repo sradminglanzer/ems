@@ -43,6 +43,7 @@ fun AddMemberScreen(
     val lName      by vm.lastName.collectAsState()
     val kId        by vm.knownId.collectAsState()
     val dob        by vm.dob.collectAsState()
+    val joiningDate by vm.joiningDate.collectAsState()
     val contact    by vm.contact.collectAsState()
     val altContact by vm.altContact.collectAsState()
     val address    by vm.address.collectAsState()
@@ -54,6 +55,7 @@ fun AddMemberScreen(
 
     val posAmount        by vm.posAmount.collectAsState()
     val posPaymentMethod by vm.posPaymentMethod.collectAsState()
+    val posPaymentDate   by vm.posPaymentDateStr.collectAsState()
     val posNextDateStr   by vm.posNextDateStr.collectAsState()
 
     val groups  by vm.feeGroups.collectAsState()
@@ -130,6 +132,12 @@ fun AddMemberScreen(
                                 onValueChange = { vm.dob.value = it },
                                 modifier      = Modifier.padding(bottom = 12.dp)
                             )
+                            EmsDateField(
+                                label         = "Joining Date (optional)",
+                                value         = joiningDate,
+                                onValueChange = { vm.joiningDate.value = it },
+                                modifier      = Modifier.padding(bottom = 12.dp)
+                            )
                             TField("Contact Number",             contact,    { vm.contact.value    = it })
                             TField("Alternate Contact",          altContact, { vm.altContact.value = it })
                             TField("Address",                    address,    { vm.address.value    = it })
@@ -197,10 +205,27 @@ fun AddMemberScreen(
                                     }
                                     Spacer(Modifier.height(16.dp))
                                     TField("Amount Collected (₹)", posAmount, { vm.posAmount.value = it })
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        EmsDateField(
+                                            label         = "Payment Date",
+                                            value         = posPaymentDate,
+                                            onValueChange = { vm.posPaymentDateStr.value = it },
+                                            modifier      = Modifier.weight(1f)
+                                        )
+                                        EmsDateField(
+                                            label         = "Next Renewal Date",
+                                            value         = posNextDateStr,
+                                            onValueChange = { vm.posNextDateStr.value = it },
+                                            modifier      = Modifier.weight(1f)
+                                        )
+                                    }
                                     Text(
                                         "Payment Method",
                                         fontSize = 12.sp, color = TextSecondary,
-                                        modifier = Modifier.padding(bottom = 4.dp)
+                                        modifier = Modifier.padding(bottom = 6.dp)
                                     )
                                     Row(
                                         Modifier.fillMaxWidth().padding(bottom = 12.dp),
@@ -228,11 +253,6 @@ fun AddMemberScreen(
                                             }
                                         }
                                     }
-                                    EmsDateField(
-                                        label         = "Next Renewal Date",
-                                        value         = posNextDateStr,
-                                        onValueChange = { vm.posNextDateStr.value = it }
-                                    )
                                 }
                             }
                         }
