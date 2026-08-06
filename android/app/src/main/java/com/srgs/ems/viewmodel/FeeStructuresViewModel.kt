@@ -13,6 +13,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+enum class FeeStructureType(val value: String, val label: String, val description: String) {
+    FeeStructure("FeeStructure", "Standard Fee", "Regular fee structure assigned to a class/group"),
+    FeeStructureAddon("FeeStructureAddon", "Add-on Fee", "Optional add-on fee available for any member")
+}
+
 class FeeStructuresViewModel(application: Application) : AndroidViewModel(application) {
     private val structRepo = FeeStructureRepository(application.applicationContext)
     private val groupRepo = FeeGroupRepository(application.applicationContext)
@@ -31,7 +36,7 @@ class FeeStructuresViewModel(application: Application) : AndroidViewModel(applic
     val amount = MutableStateFlow("")
     val frequency = MutableStateFlow("monthly")
     val selectedGroupId = MutableStateFlow("")
-    val isGlobal = MutableStateFlow(false)
+    val selectedType = MutableStateFlow(FeeStructureType.FeeStructure.value)
     val isSubmitting = MutableStateFlow(false)
 
     val snackbarEvent = MutableSharedFlow<String>()
@@ -56,25 +61,26 @@ class FeeStructuresViewModel(application: Application) : AndroidViewModel(applic
     fun create(isGymMode: Boolean) {
         val n = name.value.trim()
         val a = amount.value.trim().toDoubleOrNull()
-        val effectiveGlobal = if (isGymMode) true else isGlobal.value
+        val typeVal = selectedType.value
+        val isAddon = typeVal == FeeStructureType.FeeStructureAddon.value
 
         if (n.isEmpty() || a == null) {
             viewModelScope.launch { snackbarEvent.emit("Name and a valid amount are required") }
             return
         }
-        if (!effectiveGlobal && selectedGroupId.value.isEmpty()) {
+        if (!isAddon && !isGymMode && selectedGroupId.value.isEmpty() && groups.value.isNotEmpty()) {
             viewModelScope.launch { snackbarEvent.emit("Please select a class/group") }
             return
         }
 
-        val groupId = if (effectiveGlobal) null else selectedGroupId.value
+        val groupId = if (isAddon || isGymMode) null else selectedGroupId.value.ifEmpty { null }
 
         viewModelScope.launch {
             isSubmitting.value = true
-            when (val r = structRepo.createStructure(n, a, frequency.value, groupId)) {
+            when (val r = structRepo.createStructure(n, a, frequency.value, groupId, typeVal)) {
                 is SaveResult.Success -> {
                     snackbarEvent.emit("✅ Fee structure created!")
-                    name.value = ""; amount.value = ""; isGlobal.value = false
+                    name.value = ""; amount.value = ""; selectedType.value = FeeStructureType.FeeStructure.value
                     load()
                 }
                 is SaveResult.Error -> snackbarEvent.emit("❌ ${r.message}")

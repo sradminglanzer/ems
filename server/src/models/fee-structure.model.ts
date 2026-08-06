@@ -1,5 +1,7 @@
 import { ObjectId } from 'mongodb';
 
+export type FeeStructureType = 'FeeStructure' | 'FeeStructureAddon';
+
 export class FeeStructure {
     _id?: ObjectId;
     entityId: ObjectId;
@@ -7,6 +9,7 @@ export class FeeStructure {
     amount: number;
     frequency: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'half-yearly' | 'annual' | 'one-time';
     name: string; // e.g., "Tuition Fee", "Lab Fee"
+    type: FeeStructureType;
     createdAt?: Date;
     updatedAt?: Date;
 
@@ -17,11 +20,12 @@ export class FeeStructure {
         this.amount = Number(data.amount);
         this.frequency = data.frequency;
         this.name = data.name;
+        this.type = data.type || (data.feeGroupId ? 'FeeStructure' : 'FeeStructureAddon');
         this.createdAt = data.createdAt || new Date();
         this.updatedAt = data.updatedAt || new Date();
     }
 
     get valid() {
-        return !!(this.entityId && this.amount > 0 && this.frequency && this.name);
+        return !!(this.entityId && this.amount > 0 && this.frequency && this.name && this.type);
     }
 }

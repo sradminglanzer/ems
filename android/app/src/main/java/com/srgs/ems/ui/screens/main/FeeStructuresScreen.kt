@@ -58,8 +58,8 @@ fun FeeStructuresScreen(vm: FeeStructuresViewModel = viewModel()) {
 
     LaunchedEffect(Unit) {
         vm.snackbarEvent.collect { msg ->
+            if (msg.startsWith("✅")) showSheet = false
             snackbar.showSnackbar(msg)
-            if (showSheet && msg.startsWith("✅")) showSheet = false
         }
     }
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
@@ -128,53 +128,109 @@ fun FeeStructuresScreen(vm: FeeStructuresViewModel = viewModel()) {
 
 @Composable
 private fun FeeStructureCard(s: FeeStructureDto, classLabel: String, onDelete: () -> Unit) {
-    val groupLabel = if (s.feeGroupId != null)
-        "$classLabel: ${s.groupDetails?.name ?: "Unknown"}"
-    else "Global Add-on Fee"
+    val isAddon = s.isAddon
+    val groupLabel = when {
+        isAddon -> "Add-on Fee Structure"
+        s.feeGroupId != null -> "$classLabel: ${s.groupDetails?.name ?: "Unknown"}"
+        else -> "Standard Fee Structure"
+    }
 
     Card(
-        Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(Surface),
-        elevation = CardDefaults.cardElevation(2.dp),
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         border = BorderStroke(1.dp, Border)
     ) {
-        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(s.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary,
-                        modifier = Modifier.weight(1f))
+        Column(Modifier.padding(16.dp)) {
+            // Header Row: Title + Amount Badge + Delete Button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Name
+                Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                    Text(
+                        text = s.name,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                }
+
+                // Right actions: Amount + Delete button
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Amount Pill
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Primary.copy(alpha = 0.1f),
+                        border = BorderStroke(1.dp, Primary.copy(alpha = 0.2f))
+                    ) {
+                        Text(
+                            text = "₹${currencyFmt.format(s.amount.toLong())}",
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Primary
+                        )
+                    }
+
+                    // Delete Icon Button
                     IconButton(
                         onClick = onDelete,
-                        modifier = Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(DangerLight.copy(.5f))
-                    ) { Text("🗑", fontSize = 14.sp) }
-                }
-                Spacer(Modifier.height(6.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("👥", fontSize = 12.sp)
-                    Spacer(Modifier.width(4.dp))
-                    Text(groupLabel, fontSize = 13.sp, color = TextSecondary)
-                }
-                Spacer(Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("🕒", fontSize = 12.sp)
-                    Spacer(Modifier.width(4.dp))
-                    Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFCCFBF1)) {
-                        Text(
-                            (FREQUENCY_LABELS[s.frequency] ?: s.frequency).uppercase(),
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                            fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = Primary,
-                            letterSpacing = 0.6.sp
-                        )
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(DangerLight)
+                    ) {
+                        Text("🗑", fontSize = 14.sp)
                     }
                 }
             }
-            Spacer(Modifier.width(12.dp))
-            Surface(shape = RoundedCornerShape(10.dp), color = Color(0xFFCCFBF1).copy(.6f),
-                border = BorderStroke(1.dp, Primary.copy(.2f))) {
-                Text("₹${currencyFmt.format(s.amount.toLong())}",
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                    fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Primary)
+
+            Spacer(Modifier.height(12.dp))
+
+            // Footer Row: Class/Group + Frequency Chip
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Group / Type Indicator
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (isAddon) "🧩" else "👥", fontSize = 13.sp)
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = groupLabel,
+                        fontSize = 13.sp,
+                        color = if (isAddon) Primary else TextSecondary,
+                        fontWeight = if (isAddon) FontWeight.SemiBold else FontWeight.Normal
+                    )
+                }
+
+                // Frequency Badge
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = PrimaryLight.copy(alpha = 0.5f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("🕒 ", fontSize = 10.sp)
+                        Text(
+                            text = (FREQUENCY_LABELS[s.frequency] ?: s.frequency).uppercase(),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Primary,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+                }
             }
         }
     }
@@ -189,7 +245,7 @@ private fun CreateFeeStructureSheet(
     val amount by vm.amount.collectAsState()
     val frequency by vm.frequency.collectAsState()
     val selectedGroupId by vm.selectedGroupId.collectAsState()
-    val isGlobal by vm.isGlobal.collectAsState()
+    val selectedType by vm.selectedType.collectAsState()
     val groups by vm.groups.collectAsState()
     val isSubmitting by vm.isSubmitting.collectAsState()
 
@@ -207,7 +263,7 @@ private fun CreateFeeStructureSheet(
             // Name
             Text("Fee Name *", fontSize = 13.sp, color = TextSecondary, modifier = Modifier.padding(bottom = 6.dp))
             OutlinedTextField(value = name, onValueChange = { vm.name.value = it },
-                modifier = Modifier.fillMaxWidth(), placeholder = { Text("e.g. Tuition Fee") },
+                modifier = Modifier.fillMaxWidth(), placeholder = { Text("e.g. Tuition Fee / Personal Training") },
                 singleLine = true, shape = RoundedCornerShape(10.dp),
                 colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Border, focusedBorderColor = Primary))
             Spacer(Modifier.height(16.dp))
@@ -221,27 +277,45 @@ private fun CreateFeeStructureSheet(
                 colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Border, focusedBorderColor = Primary))
             Spacer(Modifier.height(16.dp))
 
-            // Global toggle (school/coaching only)
-            if (!isGym) {
-                Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
-                        .clickable { vm.isGlobal.value = !isGlobal }
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Checkbox(checked = isGlobal, onCheckedChange = { vm.isGlobal.value = it },
-                        colors = CheckboxDefaults.colors(checkedColor = Primary))
-                    Spacer(Modifier.width(8.dp))
-                    Column {
-                        Text("Global Add-on Fee", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                        Text("Optional fee available across all classes", fontSize = 12.sp, color = TextSecondary)
+            // Type selector (FeeStructure vs FeeStructureAddon)
+            Text("Fee Structure Type *", fontSize = 13.sp, color = TextSecondary, modifier = Modifier.padding(bottom = 8.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                com.srgs.ems.viewmodel.FeeStructureType.values().forEach { t ->
+                    val isSel = selectedType == t.value
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { vm.selectedType.value = t.value },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isSel) Primary.copy(.12f) else Background,
+                        border = BorderStroke(1.5.dp, if (isSel) Primary else Border)
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(
+                                t.label,
+                                fontSize = 14.sp,
+                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSel) Primary else TextPrimary
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                t.description,
+                                fontSize = 11.sp,
+                                color = TextSecondary,
+                                lineHeight = 14.sp
+                            )
+                        }
                     }
                 }
-                Spacer(Modifier.height(12.dp))
             }
+            Spacer(Modifier.height(16.dp))
 
-            // Group selector (school/coaching + not global)
-            if (!isGym && !isGlobal && groups.isNotEmpty()) {
+            // Group selector (school/coaching + Standard FeeStructure type)
+            if (!isGym && selectedType == com.srgs.ems.viewmodel.FeeStructureType.FeeStructure.value && groups.isNotEmpty()) {
                 Text("Assign to $classLabel", fontSize = 13.sp, color = TextSecondary, modifier = Modifier.padding(bottom = 8.dp))
                 FlowRow(groups, selectedGroupId) { vm.selectedGroupId.value = it }
                 Spacer(Modifier.height(12.dp))

@@ -89,8 +89,8 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
 
         val applicable = structures.filter { s ->
             val isGroup = m.feeGroupId != null && s.feeGroupId == m.feeGroupId
-            val isAddon = s.feeGroupId == null && m.addonFeeIds?.contains(s._id) == true
-            val fallback = m.feeGroupId == null && m.addonFeeIds.isNullOrEmpty()
+            val isAddon = s.isAddon && m.addonFeeIds?.contains(s._id) == true
+            val fallback = !s.isAddon && m.feeGroupId == null && m.addonFeeIds.isNullOrEmpty()
             isGroup || isAddon || fallback
         }
 

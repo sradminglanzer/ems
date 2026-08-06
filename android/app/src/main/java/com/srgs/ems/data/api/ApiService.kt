@@ -361,14 +361,18 @@ data class FeeStructureDto(
     val amount: Double = 0.0,
     val frequency: String = "monthly",
     val feeGroupId: String? = null,
+    val type: String = "FeeStructure", // "FeeStructure" | "FeeStructureAddon"
     val groupDetails: GroupDetailsDto? = null
-)
+) {
+    val isAddon: Boolean get() = type == "FeeStructureAddon" || (feeGroupId == null && type.isBlank())
+}
 
 data class CreateFeeStructureRequest(
     val name: String,
     val amount: Double,
     val frequency: String,
-    val feeGroupId: String? = null
+    val feeGroupId: String? = null,
+    val type: String = "FeeStructure"
 )
 
 // ═══════════════════════════════════════════════════════════════════════════════

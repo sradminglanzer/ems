@@ -139,9 +139,9 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
                     val groupsJob  = async { repository.getFeeGroups() }
                     val structsJob = async { repository.getFeeStructures() }
                     feeGroups.value        = groupsJob.await()
-                    globalStructures.value = structsJob.await().filter { it.feeGroupId == null }
+                    globalStructures.value = structsJob.await().filter { it.isAddon }
                 } else {
-                    globalStructures.value = repository.getFeeStructures().filter { it.feeGroupId == null }
+                    globalStructures.value = repository.getFeeStructures().filter { it.isAddon }
                 }
             }
             isLoadingData.value = false

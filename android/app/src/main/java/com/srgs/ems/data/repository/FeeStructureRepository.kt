@@ -16,11 +16,11 @@ class FeeStructureRepository(context: Context) {
     }
 
     suspend fun createStructure(
-        name: String, amount: Double, frequency: String, feeGroupId: String?
+        name: String, amount: Double, frequency: String, feeGroupId: String?, type: String = "FeeStructure"
     ): SaveResult {
         return try {
             val res = api.createFeeStructure(
-                CreateFeeStructureRequest(name, amount, frequency, feeGroupId)
+                CreateFeeStructureRequest(name, amount, frequency, feeGroupId, type)
             )
             if (res.isSuccessful) SaveResult.Success
             else SaveResult.Error(res.errorBody()?.string() ?: "Failed to create structure")
