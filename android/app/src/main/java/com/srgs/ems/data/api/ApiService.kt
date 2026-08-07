@@ -401,6 +401,7 @@ data class FeePaymentItemDto(
     val feeGroupId: String?       = null,
     val amount: Double,
     val notes: String?            = null,
+    val paymentMethod: String     = "cash",
     val nextPaymentDate: String?  = null,
     val academicYearId: String?   = null
 )

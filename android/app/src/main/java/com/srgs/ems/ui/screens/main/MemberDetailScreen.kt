@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -23,6 +25,7 @@ import com.srgs.ems.data.SessionManager
 import com.srgs.ems.data.api.FeePaymentDto
 import com.srgs.ems.data.api.FeeStructureDto
 import com.srgs.ems.data.api.MemberDetailDto
+import com.srgs.ems.ui.components.EmsDateField
 import com.srgs.ems.ui.theme.*
 import com.srgs.ems.viewmodel.CartItemState
 import com.srgs.ems.viewmodel.MemberDetailViewModel
@@ -96,11 +99,16 @@ fun MemberDetailScreen(
             containerColor = Surface
         ) {
             CollectFeeSheet(
-                cartItems = vm.cartItems,
-                isSaving = isSaving,
-                onToggle = { vm.toggleCartItem(it) },
-                onAmount = { id, amt -> vm.updateCartAmount(id, amt) },
-                onCollect = { vm.collectFee() }
+                cartItems     = vm.cartItems,
+                notes         = vm.notes,
+                paymentMethod = vm.paymentMethod,
+                isSaving      = isSaving,
+                onToggle      = { vm.toggleCartItem(it) },
+                onAmount      = { id, amt -> vm.updateCartAmount(id, amt) },
+                onNextDate    = { id, d   -> vm.updateNextDate(id, d) },
+                onNotes       = { vm.updateNotes(it) },
+                onPayMethod   = { vm.updatePaymentMethod(it) },
+                onCollect     = { vm.collectFee() }
             )
         }
     }
@@ -400,9 +408,14 @@ private fun SCard(content: @Composable ColumnScope.() -> Unit) {
 @Composable
 private fun CollectFeeSheet(
     cartItems: List<CartItemState>,
+    notes: String,
+    paymentMethod: String,
     isSaving: Boolean,
     onToggle: (String) -> Unit,
     onAmount: (String, String) -> Unit,
+    onNextDate: (String, String) -> Unit,
+    onNotes: (String) -> Unit,
+    onPayMethod: (String) -> Unit,
     onCollect: () -> Unit
 ) {
     val total = cartItems.filter { it.checked }.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
@@ -416,32 +429,81 @@ private fun CollectFeeSheet(
         HorizontalDivider(color = Border)
 
         if (cartItems.isEmpty()) {
-            Text("No fee structures assigned to this member.", color = TextSecondary,
+            Text("No fee structures available.", color = TextSecondary,
                 modifier = Modifier.padding(vertical = 16.dp))
         } else {
+            // ── Fee structure rows ──
             cartItems.forEach { item ->
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = item.checked, onCheckedChange = { onToggle(item.feeStructureId) },
-                        colors = CheckboxDefaults.colors(checkedColor = Primary))
-                    Column(Modifier.weight(1f).padding(start = 8.dp)) {
-                        Text(item.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                        Text("Next: ${item.nextDateStr}", fontSize = 12.sp, color = TextSecondary)
+                Column(Modifier.fillMaxWidth()) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = item.checked, onCheckedChange = { onToggle(item.feeStructureId) },
+                            colors = CheckboxDefaults.colors(checkedColor = Primary))
+                        Column(Modifier.weight(1f).padding(start = 4.dp)) {
+                            Text(item.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                            Text(item.frequency, fontSize = 11.sp, color = TextMuted)
+                        }
+                        OutlinedTextField(
+                            value         = item.amount,
+                            onValueChange = { v -> if (v.all { c -> c.isDigit() || c == '.' }) onAmount(item.feeStructureId, v) },
+                            modifier      = Modifier.width(100.dp),
+                            singleLine    = true,
+                            prefix        = { Text("₹", fontSize = 13.sp) },
+                            enabled       = item.checked,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            shape         = RoundedCornerShape(8.dp),
+                            colors        = OutlinedTextFieldDefaults.colors(
+                                unfocusedBorderColor = Border, focusedBorderColor = Primary)
+                        )
                     }
-                    OutlinedTextField(
-                        value         = item.amount,
-                        onValueChange = { onAmount(item.feeStructureId, it) },
-                        modifier      = Modifier.width(90.dp),
-                        singleLine    = true,
-                        prefix        = { Text("₹", fontSize = 13.sp) },
-                        enabled       = item.checked,
-                        shape         = RoundedCornerShape(8.dp),
-                        colors        = OutlinedTextFieldDefaults.colors(
-                            unfocusedBorderColor = Border, focusedBorderColor = Primary)
-                    )
+                    if (item.checked) {
+                        EmsDateField(
+                            label         = "Next Renewal Date",
+                            value         = item.nextDateStr,
+                            onValueChange = { onNextDate(item.feeStructureId, it) },
+                            modifier      = Modifier.fillMaxWidth().padding(start = 48.dp, bottom = 4.dp)
+                        )
+                    }
                 }
             }
 
             HorizontalDivider(color = Border)
+
+            // ── Payment Method ──
+            Text("Payment Method", fontSize = 12.sp, color = TextSecondary)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("cash", "online", "card", "upi").forEach { m ->
+                    val sel = paymentMethod == m
+                    Surface(
+                        modifier = Modifier.weight(1f).clip(RoundedCornerShape(8.dp))
+                            .clickable { onPayMethod(m) },
+                        shape  = RoundedCornerShape(8.dp),
+                        color  = if (sel) Primary else Background,
+                        border = if (!sel) BorderStroke(1.dp, Border) else null
+                    ) {
+                        Text(
+                            m.uppercase(), Modifier.padding(vertical = 10.dp),
+                            fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                            color = if (sel) Color.White else TextSecondary,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+            }
+
+            // ── Notes ──
+            OutlinedTextField(
+                value         = notes,
+                onValueChange = onNotes,
+                modifier      = Modifier.fillMaxWidth(),
+                label         = { Text("Notes (optional)", fontSize = 12.sp) },
+                minLines      = 2,
+                maxLines      = 3,
+                shape         = RoundedCornerShape(8.dp),
+                colors        = OutlinedTextFieldDefaults.colors(
+                    unfocusedBorderColor = Border, focusedBorderColor = Primary)
+            )
+
+            // ── Total & Collect button ──
             Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                 Text("Total", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Text(inrFmt(total), fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Success)

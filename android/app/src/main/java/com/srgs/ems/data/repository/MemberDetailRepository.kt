@@ -8,7 +8,9 @@ data class CollectFeeItem(
     val feeStructureId: String,
     val feeGroupId: String?,
     val amount: Double,
-    val nextDateStr: String?
+    val nextDateStr: String?,
+    val notes: String?        = null,
+    val paymentMethod: String = "cash"
 )
 
 data class CollectResult(
@@ -51,6 +53,8 @@ class MemberDetailRepository(context: Context) {
                         feeStructureId  = item.feeStructureId,
                         feeGroupId      = item.feeGroupId,
                         amount          = item.amount,
+                        notes           = item.notes?.ifEmpty { null },
+                        paymentMethod   = item.paymentMethod,
                         nextPaymentDate = item.nextDateStr?.ifEmpty { null }
                     )
                 }

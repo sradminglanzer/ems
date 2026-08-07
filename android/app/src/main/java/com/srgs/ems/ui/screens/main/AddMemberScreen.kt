@@ -13,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -256,7 +258,7 @@ fun AddMemberScreen(
                                         Text("Initial Payment", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                                     }
                                     Spacer(Modifier.height(16.dp))
-                                    TField("Amount Collected (₹)", posAmount, { vm.posAmount.value = it })
+                                    NumericTField("Amount Collected (₹)", posAmount, { vm.posAmount.value = it })
                                     Row(
                                         Modifier.fillMaxWidth().padding(bottom = 12.dp),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -411,6 +413,25 @@ private fun TField(label: String, value: String, onValueChange: (String) -> Unit
             singleLine    = true,
             shape         = RoundedCornerShape(8.dp),
             colors        = OutlinedTextFieldDefaults.colors(
+                unfocusedBorderColor = Border,
+                focusedBorderColor   = Primary
+            )
+        )
+    }
+}
+
+@Composable
+private fun NumericTField(label: String, value: String, onValueChange: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+        Text(label, fontSize = 12.sp, color = TextSecondary, modifier = Modifier.padding(bottom = 4.dp))
+        OutlinedTextField(
+            value          = value,
+            onValueChange  = { if (it.all { c -> c.isDigit() || c == '.' }) onValueChange(it) },
+            modifier       = Modifier.fillMaxWidth(),
+            singleLine     = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            shape          = RoundedCornerShape(8.dp),
+            colors         = OutlinedTextFieldDefaults.colors(
                 unfocusedBorderColor = Border,
                 focusedBorderColor   = Primary
             )

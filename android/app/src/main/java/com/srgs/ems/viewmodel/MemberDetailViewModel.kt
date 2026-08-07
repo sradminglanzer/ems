@@ -86,15 +86,11 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
     fun initCart() {
         val m          = _member.value ?: return
         val structures = _feeStructures.value
+        val assignedIds = ((m.addonFeeIds ?: emptyList()) +
+            structures.filter { it.feeGroupId != null && it.feeGroupId == m.feeGroupId }.map { it._id }
+        ).toSet()
 
-        val applicable = structures.filter { s ->
-            val isGroup = m.feeGroupId != null && s.feeGroupId == m.feeGroupId
-            val isAddon = s.isAddon && m.addonFeeIds?.contains(s._id) == true
-            val fallback = !s.isAddon && m.feeGroupId == null && m.addonFeeIds.isNullOrEmpty()
-            isGroup || isAddon || fallback
-        }
-
-        cartItems = applicable.map { s ->
+        cartItems = structures.map { s ->
             val lastPayment = _payments.value
                 .filter { p -> p.feeStructureId == s._id }
                 .maxByOrNull { p -> p.paymentDate }
@@ -103,11 +99,13 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
                 name           = s.name,
                 defaultAmount  = s.amount,
                 amount         = s.amount.toInt().toString(),
-                checked        = true,
+                checked        = assignedIds.contains(s._id),
                 nextDateStr    = calcNextDate(s.frequency, lastPayment?.paymentDate),
                 frequency      = s.frequency
             )
         }
+        notes = ""
+        paymentMethod = "cash"
     }
 
     fun toggleCartItem(id: String) {
@@ -118,7 +116,21 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
         cartItems = cartItems.map { if (it.feeStructureId == id) it.copy(amount = amount) else it }
     }
 
+    fun updateNextDate(id: String, date: String) {
+        cartItems = cartItems.map { if (it.feeStructureId == id) it.copy(nextDateStr = date) else it }
+    }
+
+    var notes by mutableStateOf("")
+        private set
+    var paymentMethod by mutableStateOf("cash")
+        private set
+
+    fun updateNotes(v: String) { notes = v }
+    fun updatePaymentMethod(m: String) { paymentMethod = m }
+
     fun collectFee() {
+        val pm    = paymentMethod
+        val note  = notes
         val items = cartItems.filter { it.checked && (it.amount.toDoubleOrNull() ?: 0.0) > 0 }
         if (items.isEmpty()) return
 
@@ -130,7 +142,9 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
                     feeStructureId = item.feeStructureId,
                     feeGroupId     = struct?.feeGroupId,
                     amount         = item.amount.toDoubleOrNull() ?: item.defaultAmount,
-                    nextDateStr    = item.nextDateStr.ifEmpty { null }
+                    nextDateStr    = item.nextDateStr.ifEmpty { null },
+                    notes          = note.ifEmpty { null },
+                    paymentMethod  = pm
                 )
             }
             val result = repository.collectFee(memberId, collectItems)
