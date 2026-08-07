@@ -37,19 +37,23 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
 
     // ── Assignment ─────────────────────────────────────────────────────────────
     val feeGroupId        = MutableStateFlow<String?>(null)
+
+    // Primary Membership Plans (!isAddon) — Single Selection
+    val primaryStructures = MutableStateFlow<List<FeeStructureDto>>(emptyList())
+    val selectedPlanId    = MutableStateFlow<String?>(null)
+
+    // Add-on Fee Structures (isAddon) — Multiple Selection
+    val addonStructures   = MutableStateFlow<List<FeeStructureDto>>(emptyList())
     val addonFeeIds       = MutableStateFlow<List<String>>(emptyList())
 
     // ── Initial payment (gym new member) ──────────────────────────────────────
     val posAmount         = MutableStateFlow("")
     val posPaymentMethod  = MutableStateFlow("cash")
-    // Default payment date to today
     val posPaymentDateStr = MutableStateFlow(fmt.format(Date()))
-    // posNextDateStr is auto-computed but the user can still override it manually
     val posNextDateStr    = MutableStateFlow("")
 
     // ── Loaded data ────────────────────────────────────────────────────────────
     val feeGroups         = MutableStateFlow<List<FeeGroupDto>>(emptyList())
-    val globalStructures  = MutableStateFlow<List<FeeStructureDto>>(emptyList())
     val isLoadingData     = MutableStateFlow(false)
     val isSubmitting      = MutableStateFlow(false)
 
@@ -59,54 +63,59 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
     private var memberIdToEdit: String? = null
     val isEditing get() = memberIdToEdit != null
 
-    // ── Auto-compute next renewal date ────────────────────────────────────────
-    // Watches payment date + selected addons + loaded structures.
-    // When any change, finds the dominant frequency from selected plans and computes
-    // paymentDate + N days.  User can still manually override after.
     private var _userOverrodeNextDate = false
 
     init {
         viewModelScope.launch {
-            combine(posPaymentDateStr, addonFeeIds, globalStructures) { payDate, addons, structs ->
-                Triple(payDate, addons, structs)
-            }.collect { (payDate, addons, structs) ->
-                if (_userOverrodeNextDate) return@collect  // respect manual override
-                val computed = autoComputeNextDate(payDate, addons, structs)
+            combine(
+                posPaymentDateStr,
+                selectedPlanId,
+                addonFeeIds,
+                primaryStructures,
+                addonStructures
+            ) { payDate, planId, addons, primaries, addonStructs ->
+                AutoComputeParams(payDate, planId, addons, primaries, addonStructs)
+            }.collect { params ->
+                if (_userOverrodeNextDate) return@collect
+                val computed = autoComputeNextDate(params)
                 if (computed != null) posNextDateStr.value = computed
             }
         }
     }
 
-    /** Called when the user explicitly taps a date on posNextDateStr — stops auto-compute. */
+    private data class AutoComputeParams(
+        val payDate: String,
+        val planId: String?,
+        val addons: List<String>,
+        val primaries: List<FeeStructureDto>,
+        val addonStructs: List<FeeStructureDto>
+    )
+
     fun onNextDateManuallyChanged(value: String) {
         _userOverrodeNextDate = true
         posNextDateStr.value = value
     }
 
-    /** Changing the payment date resets the override so auto-compute resumes. */
     fun onPaymentDateChanged(value: String) {
         _userOverrodeNextDate = false
         posPaymentDateStr.value = value
     }
 
     /**
-     * Determines the most-relevant billing frequency from the selected plans,
-     * then returns paymentDate + the corresponding number of days.
+     * Determines billing frequency primarily from the selected primary plan,
+     * or falls back to selected add-ons / first available plan.
      */
-    private fun autoComputeNextDate(
-        payDateStr: String,
-        selectedAddonIds: List<String>,
-        structs: List<FeeStructureDto>
-    ): String? {
-        if (payDateStr.isBlank()) return null
+    private fun autoComputeNextDate(params: AutoComputeParams): String? {
+        if (params.payDate.isBlank()) return null
 
-        // Find the frequency of any selected addon plan
-        val selectedStructs = structs.filter { it._id in selectedAddonIds }
-        val frequency = selectedStructs.firstOrNull()?.frequency
-            ?: structs.firstOrNull()?.frequency  // fall back to first available plan
+        // 1. Primary plan frequency
+        val primaryPlan = params.primaries.firstOrNull { it._id == params.planId }
+        val frequency = primaryPlan?.frequency
+            ?: params.addonStructs.firstOrNull { it._id in params.addons }?.frequency
+            ?: params.primaries.firstOrNull()?.frequency
             ?: return null
 
-        val base = try { fmt.parse(payDateStr) ?: return null } catch (_: Exception) { return null }
+        val base = try { fmt.parse(params.payDate) ?: return null } catch (_: Exception) { return null }
 
         val cal = Calendar.getInstance().apply { time = base }
         when (frequency) {
@@ -116,8 +125,8 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
             "quarterly"   -> cal.add(Calendar.DAY_OF_MONTH, 90)
             "half-yearly" -> cal.add(Calendar.DAY_OF_MONTH, 180)
             "annual"      -> cal.add(Calendar.YEAR, 1)
-            "one-time"    -> return null  // no renewal for one-time plans
-            else          -> cal.add(Calendar.DAY_OF_MONTH, 30) // safe default
+            "one-time"    -> return null
+            else          -> cal.add(Calendar.DAY_OF_MONTH, 30)
         }
         return fmt.format(cal.time)
     }
@@ -135,13 +144,17 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             isLoadingData.value = true
             coroutineScope {
-                if (fixedGroupId.isNullOrEmpty()) {
-                    val groupsJob  = async { repository.getFeeGroups() }
-                    val structsJob = async { repository.getFeeStructures() }
-                    feeGroups.value        = groupsJob.await()
-                    globalStructures.value = structsJob.await().filter { it.isAddon }
-                } else {
-                    globalStructures.value = repository.getFeeStructures().filter { it.isAddon }
+                val groupsJob  = async { repository.getFeeGroups() }
+                val structsJob = async { repository.getFeeStructures() }
+                val allStructs = structsJob.await()
+                feeGroups.value = groupsJob.await()
+
+                primaryStructures.value = allStructs.filter { !it.isAddon }
+                addonStructures.value   = allStructs.filter { it.isAddon }
+
+                // Auto-select first primary plan if none selected
+                if (selectedPlanId.value == null && primaryStructures.value.isNotEmpty()) {
+                    selectedPlanId.value = primaryStructures.value.first()._id
                 }
             }
             isLoadingData.value = false
@@ -163,12 +176,25 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
             fatherOccupation.value = m.fatherOccupation ?: ""
             motherOccupation.value = m.motherOccupation ?: ""
             feeGroupId.value       = m.feeGroupId
-            addonFeeIds.value      = m.addonFeeIds ?: emptyList()
+            
+            val mAddons = m.addonFeeIds ?: emptyList()
+            val primaryMatch = primaryStructures.value.firstOrNull { it._id in mAddons }
+            if (primaryMatch != null) {
+                selectedPlanId.value = primaryMatch._id
+                addonFeeIds.value = mAddons - primaryMatch._id
+            } else {
+                addonFeeIds.value = mAddons
+            }
         }
     }
 
+    fun selectPrimaryPlan(id: String?) {
+        _userOverrodeNextDate = false
+        selectedPlanId.value = id
+    }
+
     fun toggleAddon(id: String) {
-        _userOverrodeNextDate = false  // re-enable auto-compute when plan selection changes
+        _userOverrodeNextDate = false
         val curr = addonFeeIds.value
         addonFeeIds.value = if (id in curr) curr - id else curr + id
     }
@@ -192,6 +218,8 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
             return
         }
 
+        val combinedFeeIds = (listOfNotNull(selectedPlanId.value) + addonFeeIds.value).distinct()
+
         viewModelScope.launch {
             isSubmitting.value = true
             val request = CreateMemberRequest(
@@ -207,7 +235,7 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
                 fatherOccupation = fatherOccupation.value.trim().ifEmpty { null },
                 motherOccupation = motherOccupation.value.trim().ifEmpty { null },
                 feeGroupId       = feeGroupId.value,
-                addonFeeIds      = addonFeeIds.value.ifEmpty { null },
+                addonFeeIds      = combinedFeeIds.ifEmpty { null },
                 initialPayment   = if (isGym && !isEditing) {
                     val amt = posAmount.value.toDoubleOrNull() ?: 0.0
                     if (amt > 0) InitialPaymentDto(

@@ -16,6 +16,10 @@ export class BaseService<T extends Document> {
         return await this.getCollection().findOne(filter);
     }
 
+    async count(filter: Filter<T> = {}): Promise<number> {
+        return await this.getCollection().countDocuments(filter);
+    }
+
     async get(filter: Filter<T> = {}, options: any = {}): Promise<WithId<T>[]> {
         // Passing options to allow projection, sorting, etc.
         return await this.getCollection().find(filter, options).toArray();
