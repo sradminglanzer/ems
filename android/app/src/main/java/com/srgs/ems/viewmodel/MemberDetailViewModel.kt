@@ -24,10 +24,12 @@ data class CartItemState(
     val feeStructureId: String,
     val name: String,
     val defaultAmount: Double,
-    val amount: String,       // editable text
+    val amount: String,
     val checked: Boolean,
     val nextDateStr: String,
-    val frequency: String
+    val frequency: String,
+    val isAddon: Boolean,
+    val groupName: String?
 )
 
 class MemberDetailViewModel(application: Application) : AndroidViewModel(application) {
@@ -94,6 +96,11 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
             val lastPayment = _payments.value
                 .filter { p -> p.feeStructureId == s._id }
                 .maxByOrNull { p -> p.paymentDate }
+            val grpName = when {
+                s.isAddon              -> null
+                s.groupDetails != null -> s.groupDetails.name
+                else                   -> null
+            }
             CartItemState(
                 feeStructureId = s._id,
                 name           = s.name,
@@ -101,15 +108,31 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
                 amount         = s.amount.toInt().toString(),
                 checked        = assignedIds.contains(s._id),
                 nextDateStr    = calcNextDate(s.frequency, lastPayment?.paymentDate),
-                frequency      = s.frequency
+                frequency      = s.frequency,
+                isAddon        = s.isAddon,
+                groupName      = grpName
             )
         }
-        notes = ""
+        notes         = ""
         paymentMethod = "cash"
+        paymentDate   = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
     }
 
     fun toggleCartItem(id: String) {
-        cartItems = cartItems.map { if (it.feeStructureId == id) it.copy(checked = !it.checked) else it }
+        val item = cartItems.find { it.feeStructureId == id } ?: return
+        if (!item.isAddon && !item.checked) {
+            // Selecting a primary plan → uncheck all other primary plans (radio behavior)
+            cartItems = cartItems.map {
+                when {
+                    it.feeStructureId == id -> it.copy(checked = true)
+                    !it.isAddon             -> it.copy(checked = false)
+                    else                    -> it
+                }
+            }
+        } else {
+            // Toggling an addon or unchecking the current primary
+            cartItems = cartItems.map { if (it.feeStructureId == id) it.copy(checked = !it.checked) else it }
+        }
     }
 
     fun updateCartAmount(id: String, amount: String) {
@@ -124,9 +147,23 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
         private set
     var paymentMethod by mutableStateOf("cash")
         private set
+    var paymentDate by mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()))
+        private set
 
     fun updateNotes(v: String) { notes = v }
     fun updatePaymentMethod(m: String) { paymentMethod = m }
+    fun updatePaymentDate(d: String) { paymentDate = d }
+
+    /** Unconditionally select a primary plan (used from plan picker). */
+    fun selectPrimaryPlan(planId: String) {
+        cartItems = cartItems.map { item ->
+            when {
+                item.feeStructureId == planId && !item.isAddon -> item.copy(checked = true)
+                !item.isAddon -> item.copy(checked = false)
+                else          -> item
+            }
+        }
+    }
 
     fun collectFee() {
         val pm    = paymentMethod

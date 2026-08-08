@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -102,12 +103,15 @@ fun MemberDetailScreen(
                 cartItems     = vm.cartItems,
                 notes         = vm.notes,
                 paymentMethod = vm.paymentMethod,
+                paymentDate   = vm.paymentDate,
                 isSaving      = isSaving,
                 onToggle      = { vm.toggleCartItem(it) },
+                onSelectPlan  = { vm.selectPrimaryPlan(it) },
                 onAmount      = { id, amt -> vm.updateCartAmount(id, amt) },
                 onNextDate    = { id, d   -> vm.updateNextDate(id, d) },
                 onNotes       = { vm.updateNotes(it) },
                 onPayMethod   = { vm.updatePaymentMethod(it) },
+                onPaymentDate = { vm.updatePaymentDate(it) },
                 onCollect     = { vm.collectFee() }
             )
         }
@@ -404,121 +408,341 @@ private fun SCard(content: @Composable ColumnScope.() -> Unit) {
     ) { Column(Modifier.padding(16.dp), content = content) }
 }
 
-// ── Collect Fee bottom sheet ──────────────────────────────────────────────────
+// \u2500\u2500 Collect Fee bottom sheet \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+private enum class CollectMode { Quick, PlanPicker }
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CollectFeeSheet(
     cartItems: List<CartItemState>,
     notes: String,
     paymentMethod: String,
+    paymentDate: String,
     isSaving: Boolean,
     onToggle: (String) -> Unit,
+    onSelectPlan: (String) -> Unit,
     onAmount: (String, String) -> Unit,
     onNextDate: (String, String) -> Unit,
     onNotes: (String) -> Unit,
     onPayMethod: (String) -> Unit,
+    onPaymentDate: (String) -> Unit,
     onCollect: () -> Unit
 ) {
-    val total = cartItems.filter { it.checked }.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
+    var mode         by remember { mutableStateOf(CollectMode.Quick) }
+    var showAddons   by remember { mutableStateOf(false) }
 
-    Column(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Text("Collect Fee", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary,
-            modifier = Modifier.padding(top = 8.dp))
-        HorizontalDivider(color = Border)
+    val primaryPlan  = cartItems.firstOrNull { it.checked && !it.isAddon }
+    val primaryItems = cartItems.filter { !it.isAddon }
+    val addonItems   = cartItems.filter { it.isAddon }
+    val primaryTotal = primaryPlan?.amount?.toDoubleOrNull() ?: 0.0
+    val addonTotal   = addonItems.filter { it.checked }.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
+    val total        = primaryTotal + addonTotal
 
-        if (cartItems.isEmpty()) {
-            Text("No fee structures available.", color = TextSecondary,
-                modifier = Modifier.padding(vertical = 16.dp))
-        } else {
-            // ── Fee structure rows ──
-            cartItems.forEach { item ->
-                Column(Modifier.fillMaxWidth()) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = item.checked, onCheckedChange = { onToggle(item.feeStructureId) },
-                            colors = CheckboxDefaults.colors(checkedColor = Primary))
-                        Column(Modifier.weight(1f).padding(start = 4.dp)) {
-                            Text(item.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                            Text(item.frequency, fontSize = 11.sp, color = TextMuted)
-                        }
-                        OutlinedTextField(
-                            value         = item.amount,
-                            onValueChange = { v -> if (v.all { c -> c.isDigit() || c == '.' }) onAmount(item.feeStructureId, v) },
-                            modifier      = Modifier.width(100.dp),
-                            singleLine    = true,
-                            prefix        = { Text("₹", fontSize = 13.sp) },
-                            enabled       = item.checked,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            shape         = RoundedCornerShape(8.dp),
-                            colors        = OutlinedTextFieldDefaults.colors(
-                                unfocusedBorderColor = Border, focusedBorderColor = Primary)
-                        )
-                    }
-                    if (item.checked) {
-                        EmsDateField(
-                            label         = "Next Renewal Date",
-                            value         = item.nextDateStr,
-                            onValueChange = { onNextDate(item.feeStructureId, it) },
-                            modifier      = Modifier.fillMaxWidth().padding(start = 48.dp, bottom = 4.dp)
-                        )
-                    }
-                }
-            }
+    Column(Modifier.fillMaxWidth().fillMaxHeight(0.92f)) {
 
-            HorizontalDivider(color = Border)
-
-            // ── Payment Method ──
-            Text("Payment Method", fontSize = 12.sp, color = TextSecondary)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("cash", "online", "card", "upi").forEach { m ->
-                    val sel = paymentMethod == m
-                    Surface(
-                        modifier = Modifier.weight(1f).clip(RoundedCornerShape(8.dp))
-                            .clickable { onPayMethod(m) },
-                        shape  = RoundedCornerShape(8.dp),
-                        color  = if (sel) Primary else Background,
-                        border = if (!sel) BorderStroke(1.dp, Border) else null
-                    ) {
-                        Text(
-                            m.uppercase(), Modifier.padding(vertical = 10.dp),
-                            fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                            color = if (sel) Color.White else TextSecondary,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
-                    }
-                }
-            }
-
-            // ── Notes ──
-            OutlinedTextField(
-                value         = notes,
-                onValueChange = onNotes,
-                modifier      = Modifier.fillMaxWidth(),
-                label         = { Text("Notes (optional)", fontSize = 12.sp) },
-                minLines      = 2,
-                maxLines      = 3,
-                shape         = RoundedCornerShape(8.dp),
-                colors        = OutlinedTextFieldDefaults.colors(
-                    unfocusedBorderColor = Border, focusedBorderColor = Primary)
-            )
-
-            // ── Total & Collect button ──
-            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                Text("Total", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                Text(inrFmt(total), fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Success)
-            }
-
-            Button(
-                onClick   = onCollect,
-                enabled   = !isSaving && total > 0,
-                modifier  = Modifier.fillMaxWidth().height(50.dp),
-                shape     = RoundedCornerShape(12.dp),
-                colors    = ButtonDefaults.buttonColors(containerColor = Primary)
+        // \u2500\u2500 Animated content area (Quick / Plan Picker) \u2500\u2500
+        Box(Modifier.weight(1f)) {
+            // Quick collect view
+            androidx.compose.animation.AnimatedVisibility(
+                visible = mode == CollectMode.Quick,
+                enter   = androidx.compose.animation.slideInHorizontally { -it },
+                exit    = androidx.compose.animation.slideOutHorizontally { -it }
             ) {
-                if (isSaving) CircularProgressIndicator(Modifier.size(20.dp), Color.White, 2.dp)
-                else Text("Collect ${inrFmt(total)}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    item {
+                        Text("Collect Fee", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        Spacer(Modifier.height(4.dp))
+                        HorizontalDivider(color = Border)
+                    }
+                    // Current plan card
+                    item {
+                        if (primaryPlan == null) {
+                            Surface(
+                                Modifier.fillMaxWidth(), RoundedCornerShape(12.dp),
+                                color = Background, border = BorderStroke(1.dp, Border)
+                            ) {
+                                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Text("No plan selected", fontSize = 14.sp, color = TextSecondary)
+                                    OutlinedButton(
+                                        onClick = { mode = CollectMode.PlanPicker },
+                                        shape  = RoundedCornerShape(8.dp),
+                                        border = BorderStroke(1.dp, Primary)
+                                    ) { Text("Select Plan", color = Primary, fontSize = 13.sp) }
+                                }
+                            }
+                        } else {
+                            Surface(
+                                Modifier.fillMaxWidth(), RoundedCornerShape(12.dp),
+                                color  = Primary.copy(alpha = 0.05f),
+                                border = BorderStroke(1.5.dp, Primary.copy(alpha = 0.3f))
+                            ) {
+                                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.Top) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(primaryPlan.name, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                                            Spacer(Modifier.height(4.dp))
+                                            Surface(shape = RoundedCornerShape(4.dp), color = Primary.copy(alpha = 0.1f)) {
+                                                Text(
+                                                    primaryPlan.frequency.replaceFirstChar { it.uppercase() },
+                                                    Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                    fontSize = 10.sp, fontWeight = FontWeight.Medium, color = Primary
+                                                )
+                                            }
+                                        }
+                                        TextButton(
+                                            onClick = { mode = CollectMode.PlanPicker },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Text("Change Plan \u2192", fontSize = 12.sp, color = Primary, fontWeight = FontWeight.Medium)
+                                        }
+                                    }
+                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Amount", fontSize = 12.sp, color = TextSecondary, modifier = Modifier.weight(1f))
+                                        OutlinedTextField(
+                                            value = primaryPlan.amount,
+                                            onValueChange = { v -> if (v.all { c -> c.isDigit() || c == '.' }) onAmount(primaryPlan.feeStructureId, v) },
+                                            modifier = Modifier.width(130.dp),
+                                            singleLine = true,
+                                            prefix = { Text("\u20b9", fontSize = 13.sp) },
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            shape = RoundedCornerShape(8.dp),
+                                            colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Border, focusedBorderColor = Primary)
+                                        )
+                                    }
+                                    EmsDateField(
+                                        label = "Next Renewal Date",
+                                        value = primaryPlan.nextDateStr,
+                                        onValueChange = { onNextDate(primaryPlan.feeStructureId, it) },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    // Add-ons collapsible
+                    if (addonItems.isNotEmpty()) {
+                        item {
+                            val addonSel = addonItems.count { it.checked }
+                            Surface(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { showAddons = !showAddons },
+                                RoundedCornerShape(10.dp), color = Background
+                            ) {
+                                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                                    Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("\uD83E\uDDE9", fontSize = 16.sp)
+                                        Text("Add-on Services", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
+                                        if (addonSel > 0) {
+                                            Box(Modifier.size(20.dp).clip(RoundedCornerShape(10.dp)).background(Primary), Alignment.Center) {
+                                                Text("$addonSel", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                            }
+                                        }
+                                    }
+                                    Text(if (showAddons) "\u25b2" else "\u25bc", fontSize = 11.sp, color = TextMuted)
+                                }
+                            }
+                        }
+                        if (showAddons) {
+                            items(addonItems) { item ->
+                                AddonRow(item, onToggle, onAmount)
+                                Spacer(Modifier.height(4.dp))
+                            }
+                        }
+                    }
+                }
             }
+
+            // Plan picker view (slides in from right)
+            androidx.compose.animation.AnimatedVisibility(
+                visible = mode == CollectMode.PlanPicker,
+                enter   = androidx.compose.animation.slideInHorizontally { it },
+                exit    = androidx.compose.animation.slideOutHorizontally { it }
+            ) {
+                PlanPickerContent(
+                    primaryItems  = primaryItems,
+                    currentPlanId = primaryPlan?.feeStructureId,
+                    onBack        = { mode = CollectMode.Quick },
+                    onSelect      = { planId -> onSelectPlan(planId); mode = CollectMode.Quick }
+                )
+            }
+        }
+
+        // \u2500\u2500 Fixed bottom: payment controls + collect button \u2500\u2500
+        androidx.compose.animation.AnimatedVisibility(visible = mode == CollectMode.Quick) {
+            Column {
+                HorizontalDivider(color = Border)
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 12.dp, bottom = 28.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Payment date
+                    EmsDateField(
+                        label = "Payment Date",
+                        value = paymentDate,
+                        onValueChange = onPaymentDate,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    // Payment method selector
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("cash", "online", "card", "upi").forEach { m ->
+                            val sel = paymentMethod == m
+                            Surface(
+                                Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).clickable { onPayMethod(m) },
+                                RoundedCornerShape(8.dp),
+                                color  = if (sel) Primary else Background,
+                                border = if (!sel) BorderStroke(1.dp, Border) else null
+                            ) {
+                                Text(m.uppercase(), Modifier.padding(vertical = 9.dp),
+                                    fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                    color = if (sel) Color.White else TextSecondary,
+                                    textAlign = TextAlign.Center)
+                            }
+                        }
+                    }
+                    // Notes
+                    OutlinedTextField(
+                        value = notes, onValueChange = onNotes,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Notes (optional)", fontSize = 12.sp) },
+                        maxLines = 2, shape = RoundedCornerShape(8.dp),
+                        colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Border, focusedBorderColor = Primary)
+                    )
+                    // Total + Collect button
+                    Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                        Column {
+                            Text("Total", fontSize = 12.sp, color = TextSecondary)
+                            Text(inrFmt(total), fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Success)
+                        }
+                        Button(
+                            onClick  = onCollect,
+                            enabled  = !isSaving && total > 0,
+                            modifier = Modifier.height(48.dp),
+                            shape    = RoundedCornerShape(12.dp),
+                            colors   = ButtonDefaults.buttonColors(containerColor = Primary)
+                        ) {
+                            if (isSaving) CircularProgressIndicator(Modifier.size(18.dp), Color.White, 2.dp)
+                            else Text("Collect ${inrFmt(total)}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// \u2500\u2500 Plan picker \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+@Composable
+private fun PlanPickerContent(
+    primaryItems: List<CartItemState>,
+    currentPlanId: String?,
+    onBack: () -> Unit,
+    onSelect: (String) -> Unit
+) {
+    val groups = primaryItems.groupBy { it.groupName ?: "Membership Plans" }
+
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        item {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) {
+                    Text("\u2190", fontSize = 20.sp, color = Primary, fontWeight = FontWeight.Bold)
+                }
+                Text("Select Plan", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            }
+            HorizontalDivider(color = Border)
+            Spacer(Modifier.height(4.dp))
+        }
+        groups.forEach { (groupName, items) ->
+            item {
+                Text(
+                    groupName.uppercase(), fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                    color = TextMuted, letterSpacing = 1.sp,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                )
+            }
+            items(items) { item ->
+                val isSel = item.feeStructureId == currentPlanId
+                Surface(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { onSelect(item.feeStructureId) },
+                    RoundedCornerShape(10.dp),
+                    color  = if (isSel) Primary.copy(alpha = 0.06f) else Surface,
+                    border = BorderStroke(if (isSel) 1.5.dp else 1.dp, if (isSel) Primary.copy(alpha = 0.5f) else Border)
+                ) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                        Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(item.name, fontSize = 14.sp,
+                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSel) TextPrimary else TextSecondary)
+                            Spacer(Modifier.height(2.dp))
+                            Text(item.frequency.replaceFirstChar { it.uppercase() }, fontSize = 11.sp, color = TextMuted)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text("\u20b9${item.defaultAmount.toInt()}", fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                                color = if (isSel) Primary else TextSecondary)
+                            if (isSel) {
+                                Box(Modifier.size(20.dp).clip(RoundedCornerShape(10.dp)).background(Primary), Alignment.Center) {
+                                    Text("\u2713", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// \u2500\u2500 Add-on row \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+@Composable
+private fun AddonRow(
+    item: CartItemState,
+    onToggle: (String) -> Unit,
+    onAmount: (String, String) -> Unit
+) {
+    Surface(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { onToggle(item.feeStructureId) },
+        RoundedCornerShape(10.dp),
+        color  = if (item.checked) Primary.copy(alpha = 0.04f) else Surface,
+        border = BorderStroke(if (item.checked) 1.5.dp else 1.dp, if (item.checked) Primary.copy(alpha = 0.4f) else Border)
+    ) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            Arrangement.SpaceBetween, Alignment.CenterVertically) {
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(
+                    Modifier.size(18.dp).clip(RoundedCornerShape(4.dp))
+                        .background(if (item.checked) Primary else Color.Transparent)
+                        .border(BorderStroke(2.dp, if (item.checked) Primary else Border), RoundedCornerShape(4.dp)),
+                    Alignment.Center
+                ) {
+                    if (item.checked) Text("\u2713", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.ExtraBold)
+                }
+                Column {
+                    Text(item.name, fontSize = 13.sp,
+                        fontWeight = if (item.checked) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (item.checked) TextPrimary else TextSecondary)
+                    Text(item.frequency.replaceFirstChar { it.uppercase() }, fontSize = 10.sp, color = TextMuted)
+                }
+            }
+            OutlinedTextField(
+                value = item.amount,
+                onValueChange = { v -> if (v.all { c -> c.isDigit() || c == '.' }) onAmount(item.feeStructureId, v) },
+                modifier = Modifier.width(80.dp), singleLine = true,
+                prefix  = { Text("\u20b9", fontSize = 11.sp) }, enabled = item.checked,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                shape = RoundedCornerShape(8.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    unfocusedBorderColor = Border, focusedBorderColor = Primary,
+                    disabledBorderColor  = Border.copy(alpha = 0.3f)
+                )
+            )
         }
     }
 }

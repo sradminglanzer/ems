@@ -1,5 +1,7 @@
 package com.srgs.ems.ui.screens.main
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -163,77 +165,78 @@ fun AddMemberScreen(
                             CardDefaults.cardElevation(2.dp)
                         ) {
                             Column(Modifier.padding(16.dp)) {
-                                // 1. Primary Membership Plan (Single Choice - Radio)
+                                // 1. Primary Membership Plan
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("💳", fontSize = 18.sp)
-                                    Spacer(Modifier.width(8.dp))
+                                    Box(
+                                        Modifier
+                                            .size(36.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(Primary.copy(alpha = 0.12f)),
+                                        Alignment.Center
+                                    ) { Text("💳", fontSize = 18.sp) }
+                                    Spacer(Modifier.width(10.dp))
                                     Column {
-                                        Text("Membership Plan", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                                        Text("Select one primary membership plan", fontSize = 12.sp, color = TextSecondary)
+                                        Text("Membership Plan", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                                        Text("Select one plan", fontSize = 12.sp, color = TextSecondary)
                                     }
                                 }
-                                Spacer(Modifier.height(12.dp))
+                                Spacer(Modifier.height(14.dp))
                                 if (primaryStructs.isEmpty()) {
-                                    Text("No membership plans configured", color = TextSecondary, fontSize = 13.sp)
+                                    Box(
+                                        Modifier.fillMaxWidth().background(Background, RoundedCornerShape(10.dp))
+                                            .padding(16.dp),
+                                        Alignment.Center
+                                    ) {
+                                        Text("No membership plans configured", color = TextMuted, fontSize = 13.sp)
+                                    }
                                 } else {
-                                    primaryStructs.forEach { g ->
-                                        val isSel = selectedPlanId == g._id
-                                        Row(
-                                            Modifier
-                                                .fillMaxWidth()
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .clickable { vm.selectPrimaryPlan(g._id) }
-                                                .padding(vertical = 4.dp, horizontal = 2.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            RadioButton(
-                                                selected = isSel,
-                                                onClick  = { vm.selectPrimaryPlan(g._id) },
-                                                colors   = RadioButtonDefaults.colors(selectedColor = Primary)
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        primaryStructs.forEach { g ->
+                                            val isSel = selectedPlanId == g._id
+                                            PlanCard(
+                                                name      = g.name,
+                                                amount    = g.amount,
+                                                frequency = g.frequency,
+                                                selected  = isSel,
+                                                isAddon   = false,
+                                                onClick   = { vm.selectPrimaryPlan(g._id) }
                                             )
-                                            Text(
-                                                g.name,
-                                                Modifier.weight(1f).padding(start = 8.dp),
-                                                fontSize   = 14.sp,
-                                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
-                                            )
-                                            Text("₹${g.amount.toInt()}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Primary)
                                         }
                                     }
                                 }
 
-                                // 2. Add-on Services (Multiple Choice - Checkboxes)
+                                // 2. Add-on Services
                                 if (addonStructs.isNotEmpty()) {
-                                    Spacer(Modifier.height(16.dp))
+                                    Spacer(Modifier.height(20.dp))
                                     HorizontalDivider(color = Border.copy(alpha = 0.5f))
-                                    Spacer(Modifier.height(16.dp))
+                                    Spacer(Modifier.height(20.dp))
 
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("🧩", fontSize = 18.sp)
-                                        Spacer(Modifier.width(8.dp))
+                                        Box(
+                                            Modifier
+                                                .size(36.dp)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(AccentPurple.copy(alpha = 0.12f)),
+                                            Alignment.Center
+                                        ) { Text("🧩", fontSize = 18.sp) }
+                                        Spacer(Modifier.width(10.dp))
                                         Column {
-                                            Text("Add-on Services", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                                            Text("Optional extra services", fontSize = 12.sp, color = TextSecondary)
+                                            Text("Add-on Services", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                                            Text("Optional extras — select any", fontSize = 12.sp, color = TextSecondary)
                                         }
                                     }
-                                    Spacer(Modifier.height(12.dp))
-                                    addonStructs.forEach { g ->
-                                        val isChecked = selAddons.contains(g._id)
-                                        Row(
-                                            Modifier
-                                                .fillMaxWidth()
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .clickable { vm.toggleAddon(g._id) }
-                                                .padding(vertical = 4.dp, horizontal = 2.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Checkbox(
-                                                checked = isChecked,
-                                                onCheckedChange = { vm.toggleAddon(g._id) },
-                                                colors = CheckboxDefaults.colors(checkedColor = Primary)
+                                    Spacer(Modifier.height(14.dp))
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        addonStructs.forEach { g ->
+                                            val isChecked = selAddons.contains(g._id)
+                                            PlanCard(
+                                                name      = g.name,
+                                                amount    = g.amount,
+                                                frequency = g.frequency,
+                                                selected  = isChecked,
+                                                isAddon   = true,
+                                                onClick   = { vm.toggleAddon(g._id) }
                                             )
-                                            Text(g.name, Modifier.weight(1f).padding(start = 8.dp), fontSize = 14.sp)
-                                            Text("₹${g.amount.toInt()}", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }
@@ -417,6 +420,86 @@ private fun TField(label: String, value: String, onValueChange: (String) -> Unit
                 focusedBorderColor   = Primary
             )
         )
+    }
+}
+
+// ── Plan tile card ────────────────────────────────────────────────────────────
+@Composable
+private fun PlanCard(
+    name: String,
+    amount: Double,
+    frequency: String,
+    selected: Boolean,
+    isAddon: Boolean,
+    onClick: () -> Unit
+) {
+    val selColor   by animateColorAsState(if (selected) Primary else Border, label = "border")
+    val bgColor    by animateColorAsState(if (selected) Primary.copy(alpha = 0.06f) else Surface, label = "bg")
+    val accentColor = if (isAddon) AccentPurple else Primary
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onClick() },
+        shape  = RoundedCornerShape(12.dp),
+        color  = bgColor,
+        border = BorderStroke(if (selected) 2.dp else 1.dp, selColor)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Selection indicator
+            Box(
+                Modifier
+                    .size(20.dp)
+                    .clip(if (isAddon) RoundedCornerShape(4.dp) else RoundedCornerShape(10.dp))
+                    .background(if (selected) accentColor else Color.Transparent)
+                    .border(
+                        BorderStroke(2.dp, if (selected) accentColor else Border),
+                        if (isAddon) RoundedCornerShape(4.dp) else RoundedCornerShape(10.dp)
+                    ),
+                Alignment.Center
+            ) {
+                if (selected) {
+                    Text("✓", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.ExtraBold)
+                }
+            }
+
+            Spacer(Modifier.width(12.dp))
+
+            // Name + frequency
+            Column(Modifier.weight(1f)) {
+                Text(
+                    name,
+                    fontSize   = 14.sp,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                    color      = if (selected) TextPrimary else TextSecondary
+                )
+                Spacer(Modifier.height(3.dp))
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = if (selected) accentColor.copy(alpha = 0.12f) else Background
+                ) {
+                    Text(
+                        frequency.replaceFirstChar { it.uppercase() },
+                        Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        fontSize   = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        color      = if (selected) accentColor else TextMuted
+                    )
+                }
+            }
+
+            // Price
+            Text(
+                "₹${amount.toInt()}",
+                fontSize   = 15.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color      = if (selected) accentColor else TextSecondary
+            )
+        }
     }
 }
 
