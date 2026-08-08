@@ -44,8 +44,18 @@ class MemberDetailRepository(context: Context) {
         } catch (_: Exception) { emptyList() }
     }
 
-    suspend fun collectFee(memberId: String, items: List<CollectFeeItem>): CollectResult {
+    suspend fun collectFee(memberId: String, items: List<CollectFeeItem>, activeAddonFeeIds: List<String> = emptyList()): CollectResult {
         return try {
+            if (activeAddonFeeIds.isNotEmpty()) {
+                try {
+                    api.updateMember(memberId, CreateMemberRequest(
+                        firstName = "",
+                        lastName  = "",
+                        addonFeeIds = activeAddonFeeIds
+                    ))
+                } catch (_: Exception) {}
+            }
+
             val request = CollectFeeRequest(
                 payments = items.map { item ->
                     FeePaymentItemDto(

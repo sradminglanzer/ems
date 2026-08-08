@@ -171,6 +171,8 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
         val items = cartItems.filter { it.checked && (it.amount.toDoubleOrNull() ?: 0.0) > 0 }
         if (items.isEmpty()) return
 
+        val checkedStructureIds = cartItems.filter { it.checked }.map { it.feeStructureId }
+
         viewModelScope.launch {
             _isSaving.value = true
             val collectItems = items.map { item ->
@@ -184,7 +186,7 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
                     paymentMethod  = pm
                 )
             }
-            val result = repository.collectFee(memberId, collectItems)
+            val result = repository.collectFee(memberId, collectItems, checkedStructureIds)
             collectResult.emit(result)
             if (result.success) loadData()
             _isSaving.value = false

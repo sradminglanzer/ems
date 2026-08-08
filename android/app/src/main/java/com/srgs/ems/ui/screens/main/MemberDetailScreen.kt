@@ -311,8 +311,11 @@ private fun PersonalDetails(m: MemberDetailDto, isGym: Boolean) {
     Spacer(Modifier.height(12.dp))
     val items = buildList<Pair<String, String>> {
         if (!isGym && !m.knownId.isNullOrEmpty()) add("Roll / ID" to m.knownId)
-        if (isGym) add("Plans" to (m.addonNames?.joinToString(", ")?.ifEmpty { "None" } ?: "None"))
-        else m.groupName?.let { add("Class Enrolled" to it) }
+        if (isGym) add("Plans & Services" to (m.addonNames?.joinToString(", ")?.ifEmpty { "None" } ?: "None"))
+        else {
+            m.groupName?.let { add("Class Enrolled" to it) }
+            if (!m.addonNames.isNullOrEmpty()) add("Add-on Services" to m.addonNames.joinToString(", "))
+        }
         m.dob?.take(10)?.let { if (it.isNotEmpty()) add("Date of Birth" to it) }
         m.contact?.let { if (it.isNotEmpty()) add("Contact" to "📞 $it") }
         m.altContact?.let { if (it.isNotEmpty()) add("Alt Contact" to "📞 $it") }

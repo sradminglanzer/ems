@@ -156,6 +156,9 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
                 if (selectedPlanId.value == null && primaryStructures.value.isNotEmpty()) {
                     selectedPlanId.value = primaryStructures.value.first()._id
                 }
+                if (!isEditing) {
+                    updatePosAmount(selectedPlanId.value, addonFeeIds.value)
+                }
             }
             isLoadingData.value = false
         }
@@ -191,12 +194,23 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
     fun selectPrimaryPlan(id: String?) {
         _userOverrodeNextDate = false
         selectedPlanId.value = id
+        updatePosAmount(id, addonFeeIds.value)
     }
 
     fun toggleAddon(id: String) {
         _userOverrodeNextDate = false
         val curr = addonFeeIds.value
-        addonFeeIds.value = if (id in curr) curr - id else curr + id
+        val newAddons = if (id in curr) curr - id else curr + id
+        addonFeeIds.value = newAddons
+        updatePosAmount(selectedPlanId.value, newAddons)
+    }
+
+    private fun updatePosAmount(planId: String?, addons: List<String>) {
+        val primaryPlan = primaryStructures.value.firstOrNull { it._id == planId }
+        val primaryAmt  = primaryPlan?.amount ?: 0.0
+        val addonsAmt   = addonStructures.value.filter { it._id in addons }.sumOf { it.amount }
+        val totalAmt    = primaryAmt + addonsAmt
+        posAmount.value = if (totalAmt > 0) totalAmt.toInt().toString() else ""
     }
 
     fun submit(session: UserSession?) {
