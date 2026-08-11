@@ -504,7 +504,34 @@ data class ComprehensiveFinancialsDto(
     val summary: ComprehensiveSummaryDto? = null,
     val incomeDetails: IncomeDetailsDto? = null,
     val topExpenses: List<TopExpenseDto>? = null,
-    val history: List<FinancialHistoryDto>? = null
+    val history: List<FinancialHistoryDto>? = null,
+    val plansBreakdown: List<PlanBreakdownDto>? = null,
+    val addonsBreakdown: List<PlanBreakdownDto>? = null,
+    val paymentHistory: List<DetailedPaymentHistoryDto>? = null
+)
+
+data class PlanBreakdownDto(
+    val id: String = "",
+    val name: String = "",
+    val frequency: String = "",
+    val amount: Double = 0.0,
+    val isAddon: Boolean = false,
+    val memberCount: Int = 0,
+    val collectedAmount: Double = 0.0
+)
+
+data class DetailedPaymentHistoryDto(
+    val _id: String = "",
+    val receiptNo: String? = null,
+    val memberName: String = "",
+    val memberId: String = "",
+    val structureName: String = "",
+    val isAddon: Boolean = false,
+    val amount: Double = 0.0,
+    val paymentDate: String = "",
+    val nextPaymentDate: String? = null,
+    val paymentMethod: String = "cash",
+    val notes: String? = null
 )
 
 data class ComprehensiveSummaryDto(

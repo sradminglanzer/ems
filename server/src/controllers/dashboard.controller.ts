@@ -269,6 +269,66 @@ export const getComprehensiveFinancials = async (req: AuthRequest, res: Response
             }
         });
 
+        // === Detailed Plan & Add-on Breakdown ===
+        const planMap = new Map<string, { id: string, name: string, frequency: string, amount: number, isAddon: boolean, memberCount: number, collectedAmount: number }>();
+
+        feeStructures.forEach((s: any) => {
+            const sId = s._id!.toString();
+            const isAddon = s.type === 'FeeStructureAddon' || (!s.feeGroupId && s.type !== 'FeeStructure');
+
+            // Count members assigned to this structure
+            let memberCount = 0;
+            if (isGymMode || isAddon || !s.feeGroupId) {
+                memberCount = members.filter((m: any) =>
+                    (m.addonFeeIds || []).some((id: any) => id.toString() === sId)
+                ).length;
+            } else {
+                memberCount = members.filter((m: any) =>
+                    (m.feeGroupId && m.feeGroupId.toString() === s.feeGroupId.toString()) ||
+                    (m.addonFeeIds || []).some((id: any) => id.toString() === sId)
+                ).length;
+            }
+
+            // Calculate collected amount in date range
+            const collectedAmount = feePayments
+                .filter((p: any) => p.feeStructureId && p.feeStructureId.toString() === sId)
+                .reduce((sum: number, p: any) => sum + p.amount, 0);
+
+            planMap.set(sId, {
+                id: sId,
+                name: s.name,
+                frequency: s.frequency || 'monthly',
+                amount: s.amount,
+                isAddon: !!isAddon,
+                memberCount,
+                collectedAmount
+            });
+        });
+
+        const plansBreakdown = Array.from(planMap.values()).filter(p => !p.isAddon);
+        const addonsBreakdown = Array.from(planMap.values()).filter(p => p.isAddon);
+
+        // === Detailed Payment History ===
+        const paymentHistory = feePayments.map((p: any) => {
+            const member = members.find((m: any) => m._id!.toString() === p.memberId.toString());
+            const structure = feeStructures.find((s: any) => s._id!.toString() === p.feeStructureId?.toString());
+            const isAddon = structure ? (structure.type === 'FeeStructureAddon' || !structure.feeGroupId) : false;
+
+            return {
+                _id: p._id!.toString(),
+                receiptNo: p.receiptNo || null,
+                memberName: member ? `${member.firstName} ${member.lastName}`.trim() : 'Deleted Member',
+                memberId: p.memberId ? p.memberId.toString() : '',
+                structureName: structure ? structure.name : 'General Fee',
+                isAddon,
+                amount: p.amount,
+                paymentDate: p.paymentDate || p.createdAt,
+                nextPaymentDate: p.nextPaymentDate || null,
+                paymentMethod: p.paymentMethod || 'cash',
+                notes: p.notes || null
+            };
+        }).sort((a: any, b: any) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime());
+
         const totalCollected = feePayments.reduce((sum: number, p: any) => sum + p.amount, 0);
         const totalExpenses = expenses.reduce((sum: number, exp: any) => sum + exp.amount, 0);
 
@@ -282,18 +342,39 @@ export const getComprehensiveFinancials = async (req: AuthRequest, res: Response
         const entityType = entity?.type || 'gym'; // 'gym' | 'school'
         const groupLabel = entityType === 'school' ? 'Class-wise Collections' : 'Plan-wise Collections';
 
+        const incomeByGroup = Array.from(planMap.values()).map(p => ({
+            _id: p.id,
+            name: p.isAddon ? `${p.name} (Add-on)` : p.name,
+            total: p.collectedAmount,
+            count: p.memberCount
+        }));
+
         res.status(HTTP_STATUS.OK).json({
             summary: {
-                totalCollected,
-                totalExpenses,
-                netBalance
+                netBalance,
+                collections: totalCollected,
+                expenses: totalExpenses
             },
             groupLabel,
             entityType,
+            incomeDetails: {
+                byGroup: incomeByGroup
+            },
+            plansBreakdown,
+            addonsBreakdown,
+            paymentHistory,
             classWiseData: Object.values(classWiseData).filter((g: any) => g.groupName !== 'Unassigned' || g.memberCount > 0),
             expensesByCategory: Object.entries(expenseByCategory).map(([category, amount]) => ({ category, amount })),
-            recentExpenses: expenses.sort((a: any, b: any) => new Date(b.expenseDate).getTime() - new Date(a.expenseDate).getTime()).slice(0, 10),
-            recentPayments: feePayments.sort((a: any, b: any) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime()).slice(0, 10)
+            topExpenses: Object.entries(expenseByCategory)
+                .map(([category, amount]) => ({ _id: category, total: amount }))
+                .sort((a, b) => b.total - a.total),
+            history: paymentHistory.map(p => ({
+                _id: p._id,
+                date: p.paymentDate,
+                type: 'income',
+                amount: p.amount,
+                label: `${p.memberName} — ${p.structureName}`
+            }))
         });
     } catch (error) {
         next(error);
