@@ -133,185 +133,54 @@ function currentMonthDateLabel(date: Date) {
 export const getComprehensiveFinancials = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
         const entityId = req.user!.entityId.toString();
-        const academicYearId = req.query.academicYearId as string | undefined;
+        let academicYearId = req.query.academicYearId as string | undefined;
+        if (!academicYearId || academicYearId === 'null' || academicYearId === 'undefined' || academicYearId === entityId) {
+            academicYearId = undefined;
+        }
+
         const startDate = req.query.startDate as string | undefined;
         const endDate = req.query.endDate as string | undefined;
 
         const dateFilter: any = {};
         const expenseDateFilter: any = {};
         if (startDate && endDate) {
-            dateFilter.paymentDate = { $gte: new Date(startDate), $lte: new Date(endDate) };
-            expenseDateFilter.expenseDate = { $gte: new Date(startDate), $lte: new Date(endDate) };
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+
+            dateFilter.$or = [
+                { paymentDate: { $gte: start, $lte: end } },
+                { paymentDate: { $gte: startDate, $lte: endDate } },
+                { createdAt: { $gte: start, $lte: end } }
+            ];
+
+            expenseDateFilter.$or = [
+                { expenseDate: { $gte: start, $lte: end } },
+                { expenseDate: { $gte: startDate, $lte: endDate } },
+                { createdAt: { $gte: start, $lte: end } }
+            ];
         }
 
         const expenseFilter: any = { entityId: new ObjectId(entityId), ...expenseDateFilter };
         if (academicYearId) expenseFilter.academicYearId = new ObjectId(academicYearId);
 
-        const [members, feeGroups, feeStructures, feePayments, expenses, entity] = await Promise.all([
+        const [members, feeStructures, feePayments, expenses] = await Promise.all([
             memberService.getByEntity(entityId),
-            feeGroupService.getByEntity(entityId),
             feeStructureService.getByEntity(entityId),
             feePaymentService.getByEntity(entityId, academicYearId, dateFilter),
-            expenseService.get(expenseFilter),
-            getDB().collection('entities').findOne({ _id: new ObjectId(entityId) })
+            expenseService.get(expenseFilter)
         ]);
 
-        // === GYM MODE: no fee_groups exist — use fee_structures directly as plans ===
-        // === SCHOOL MODE: fee_groups exist — existing group-based logic ===
-        const isGymMode = !academicYearId && feeGroups.length === 0;
+        // Build O(1) Lookup Maps
+        const memberMap = new Map<string, any>();
+        members.forEach((m: any) => memberMap.set(m._id!.toString(), m));
 
-        const groupTotalFees: Record<string, number> = {};
-        const classWiseData: Record<string, { groupName: string, collected: number, pending: number, memberCount: number }> = {};
+        const structureMap = new Map<string, any>();
+        feeStructures.forEach((s: any) => structureMap.set(s._id!.toString(), s));
 
-        if (isGymMode) {
-            // Each fee_structure is its own "plan" in gym mode
-            feeStructures.forEach((s: any) => {
-                const sId = s._id!.toString();
-                classWiseData[sId] = { groupName: s.name, collected: 0, pending: 0, memberCount: 0 };
-                groupTotalFees[sId] = s.amount;
-            });
-        } else {
-            // School mode: build from fee_groups
-            feeGroups.forEach((g: any) => {
-                const groupStructures = feeStructures.filter((s: any) => s.feeGroupId && s.feeGroupId.toString() === g._id!.toString());
-                const totalFee = groupStructures.reduce((sum: number, s: any) => sum + s.amount, 0);
-                groupTotalFees[g._id!.toString()] = totalFee;
-                classWiseData[g._id!.toString()] = { groupName: g.name, collected: 0, pending: 0, memberCount: 0 };
-            });
-        }
-        classWiseData['unassigned'] = { groupName: 'Unassigned', collected: 0, pending: 0, memberCount: 0 };
-
-        members.forEach((m: any) => {
-            const mId = m._id!.toString();
-            const memberPayments = feePayments.filter((p: any) => p.memberId.toString() === mId);
-            const memberTotalPaid = memberPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
-
-            if (isGymMode) {
-                // Gym mode: addonFeeIds[] holds the plan (fee_structure) IDs the member is subscribed to
-                const memberPlanIds: string[] = (m.addonFeeIds || [])
-                    .map((id: any) => id.toString())
-                    .filter((id: string) => !!classWiseData[id]);
-
-                if (memberPlanIds.length === 0) {
-                    // No matching plans — count as unassigned
-                    const unassigned = classWiseData['unassigned'];
-                    if (unassigned) unassigned.memberCount++;
-                    return;
-                }
-
-                // Total expected fee across all plans this member is in
-                const totalExpected = memberPlanIds.reduce((sum, sId) => sum + (groupTotalFees[sId] || 0), 0);
-
-                memberPlanIds.forEach((sId) => {
-                    const planEntry = classWiseData[sId];
-                    if (!planEntry) return;
-
-                    const planAmount = groupTotalFees[sId] || 0;
-                    planEntry.memberCount++;
-
-                    // Distribute payments proportionally across plans by their amount ratio
-                    const ratio = totalExpected > 0 ? planAmount / totalExpected : 0;
-                    const allocatedPayment = memberTotalPaid * ratio;
-                    planEntry.collected += allocatedPayment;
-
-                    const deficit = planAmount - allocatedPayment;
-                    if (deficit > 0) planEntry.pending += deficit;
-                });
-
-            } else {
-                // School mode
-                let planId: string = 'unassigned';
-                let memberTotalFee = 0;
-
-                if (academicYearId) {
-                    // School mode: match via yearlyRosters
-                    const group = feeGroups.find((g: any) => {
-                        const roster = g.yearlyRosters?.find((r: any) => r.academicYearId.toString() === academicYearId);
-                        return roster && roster.members && roster.members.some((id: any) => id.toString() === mId);
-                    });
-                    if (group) {
-                        planId = group._id!.toString();
-                        memberTotalFee = groupTotalFees[planId] || 0;
-                    }
-                } else {
-                    // School mode (no academic year): match via feeGroupId or members[]
-                    let group: any;
-                    if (m.feeGroupId) {
-                        group = feeGroups.find((g: any) => g._id!.toString() === m.feeGroupId.toString());
-                    }
-                    if (!group) {
-                        group = feeGroups.find((g: any) =>
-                            (g.members && g.members.some((id: any) => id.toString() === mId)) ||
-                            (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)))
-                        );
-                    }
-                    if (group) {
-                        planId = group._id!.toString();
-                        memberTotalFee = groupTotalFees[planId] || 0;
-                    }
-                }
-
-                // Add addon fees on top of the base plan fee (school mode only)
-                if (m.addonFeeIds && m.addonFeeIds.length > 0) {
-                    const addonAmount = feeStructures
-                        .filter((s: any) => m.addonFeeIds!.some((id: any) => id.toString() === s._id!.toString()))
-                        .reduce((sum: number, s: any) => sum + s.amount, 0);
-                    memberTotalFee += addonAmount;
-                }
-
-                const planEntry = classWiseData[planId];
-                if (planEntry) {
-                    planEntry.memberCount++;
-                    planEntry.collected += memberTotalPaid;
-                    const deficit = memberTotalFee - memberTotalPaid;
-                    if (deficit > 0) planEntry.pending += deficit;
-                }
-            }
-        });
-
-        // === Detailed Plan & Add-on Breakdown ===
-        const planMap = new Map<string, { id: string, name: string, frequency: string, amount: number, isAddon: boolean, memberCount: number, collectedAmount: number }>();
-
-        feeStructures.forEach((s: any) => {
-            const sId = s._id!.toString();
-            const isAddon = s.type === 'FeeStructureAddon' || (!s.feeGroupId && s.type !== 'FeeStructure');
-
-            // Count members assigned to this structure
-            let memberCount = 0;
-            if (isGymMode || isAddon || !s.feeGroupId) {
-                memberCount = members.filter((m: any) =>
-                    (m.addonFeeIds || []).some((id: any) => id.toString() === sId)
-                ).length;
-            } else {
-                memberCount = members.filter((m: any) =>
-                    (m.feeGroupId && m.feeGroupId.toString() === s.feeGroupId.toString()) ||
-                    (m.addonFeeIds || []).some((id: any) => id.toString() === sId)
-                ).length;
-            }
-
-            // Calculate collected amount in date range
-            const collectedAmount = feePayments
-                .filter((p: any) => p.feeStructureId && p.feeStructureId.toString() === sId)
-                .reduce((sum: number, p: any) => sum + p.amount, 0);
-
-            planMap.set(sId, {
-                id: sId,
-                name: s.name,
-                frequency: s.frequency || 'monthly',
-                amount: s.amount,
-                isAddon: !!isAddon,
-                memberCount,
-                collectedAmount
-            });
-        });
-
-        const plansBreakdown = Array.from(planMap.values()).filter(p => !p.isAddon);
-        const addonsBreakdown = Array.from(planMap.values()).filter(p => p.isAddon);
-
-        // === Detailed Payment History ===
+        // 1. Detailed Payment History mapping (O(1) lookups)
         const paymentHistory = feePayments.map((p: any) => {
-            const member = members.find((m: any) => m._id!.toString() === p.memberId.toString());
-            const structure = feeStructures.find((s: any) => s._id!.toString() === p.feeStructureId?.toString());
+            const member = p.memberId ? memberMap.get(p.memberId.toString()) : null;
+            const structure = p.feeStructureId ? structureMap.get(p.feeStructureId.toString()) : null;
             const isAddon = structure ? (structure.type === 'FeeStructureAddon' || !structure.feeGroupId) : false;
 
             return {
@@ -329,52 +198,70 @@ export const getComprehensiveFinancials = async (req: AuthRequest, res: Response
             };
         }).sort((a: any, b: any) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime());
 
+        // 2. Aggregate collected amounts per structure in date range
+        const structureCollected = new Map<string, number>();
+        feePayments.forEach((p: any) => {
+            if (p.feeStructureId) {
+                const sId = p.feeStructureId.toString();
+                structureCollected.set(sId, (structureCollected.get(sId) || 0) + p.amount);
+            }
+        });
+
+        // 3. Plans and Add-ons Breakdown
+        const plansBreakdown: any[] = [];
+        const addonsBreakdown: any[] = [];
+
+        feeStructures.forEach((s: any) => {
+            const sId = s._id!.toString();
+            const isAddon = s.type === 'FeeStructureAddon' || (!s.feeGroupId && s.type !== 'FeeStructure');
+
+            // Count members assigned or subscribed to this structure
+            const memberCount = members.filter((m: any) =>
+                (m.feeGroupId && m.feeGroupId.toString() === s.feeGroupId?.toString()) ||
+                (m.addonFeeIds || []).some((id: any) => id.toString() === sId)
+            ).length;
+
+            const item = {
+                id: sId,
+                name: s.name,
+                frequency: s.frequency || 'monthly',
+                amount: s.amount,
+                isAddon: !!isAddon,
+                memberCount,
+                collectedAmount: structureCollected.get(sId) || 0
+            };
+
+            if (isAddon) {
+                addonsBreakdown.push(item);
+            } else {
+                plansBreakdown.push(item);
+            }
+        });
+
+        // 4. Totals and Expenses
         const totalCollected = feePayments.reduce((sum: number, p: any) => sum + p.amount, 0);
         const totalExpenses = expenses.reduce((sum: number, exp: any) => sum + exp.amount, 0);
 
-        const expenseByCategory: Record<string, number> = {};
+        const expenseByCategoryMap: Record<string, number> = {};
         expenses.forEach((exp: any) => {
-            if (!expenseByCategory[exp.category]) expenseByCategory[exp.category] = 0;
-            expenseByCategory[exp.category] += exp.amount;
+            const cat = exp.category || 'Miscellaneous';
+            expenseByCategoryMap[cat] = (expenseByCategoryMap[cat] || 0) + exp.amount;
         });
 
-        const netBalance = totalCollected - totalExpenses;
-        const entityType = entity?.type || 'gym'; // 'gym' | 'school'
-        const groupLabel = entityType === 'school' ? 'Class-wise Collections' : 'Plan-wise Collections';
-
-        const incomeByGroup = Array.from(planMap.values()).map(p => ({
-            _id: p.id,
-            name: p.isAddon ? `${p.name} (Add-on)` : p.name,
-            total: p.collectedAmount,
-            count: p.memberCount
-        }));
+        const topExpenses = Object.entries(expenseByCategoryMap)
+            .map(([category, amount]) => ({ _id: category, total: amount }))
+            .sort((a, b) => b.total - a.total);
 
         res.status(HTTP_STATUS.OK).json({
             summary: {
-                netBalance,
+                netBalance: totalCollected - totalExpenses,
                 collections: totalCollected,
                 expenses: totalExpenses
-            },
-            groupLabel,
-            entityType,
-            incomeDetails: {
-                byGroup: incomeByGroup
             },
             plansBreakdown,
             addonsBreakdown,
             paymentHistory,
-            classWiseData: Object.values(classWiseData).filter((g: any) => g.groupName !== 'Unassigned' || g.memberCount > 0),
-            expensesByCategory: Object.entries(expenseByCategory).map(([category, amount]) => ({ category, amount })),
-            topExpenses: Object.entries(expenseByCategory)
-                .map(([category, amount]) => ({ _id: category, total: amount }))
-                .sort((a, b) => b.total - a.total),
-            history: paymentHistory.map(p => ({
-                _id: p._id,
-                date: p.paymentDate,
-                type: 'income',
-                amount: p.amount,
-                label: `${p.memberName} — ${p.structureName}`
-            }))
+            topExpenses
         });
     } catch (error) {
         next(error);

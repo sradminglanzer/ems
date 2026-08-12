@@ -9,7 +9,7 @@ class FeePaymentService extends BaseService<FeePayment> {
 
     async getByEntity(entityId: string | ObjectId, academicYearId?: string, customFilter: any = {}) {
         const query: any = { entityId: new ObjectId(entityId), ...customFilter };
-        if (academicYearId) {
+        if (academicYearId && academicYearId !== 'null' && academicYearId !== 'undefined' && academicYearId.toString() !== entityId.toString()) {
             query.academicYearId = new ObjectId(academicYearId);
         }
         return this.get(query);

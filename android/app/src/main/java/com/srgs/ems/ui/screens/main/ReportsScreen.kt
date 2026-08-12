@@ -1,5 +1,9 @@
 package com.srgs.ems.ui.screens.main
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -8,20 +12,26 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.srgs.ems.data.SessionManager
+import com.srgs.ems.data.AcademicYearManager
 import com.srgs.ems.data.api.DetailedPaymentHistoryDto
 import com.srgs.ems.data.api.PlanBreakdownDto
 import com.srgs.ems.data.api.TopExpenseDto
@@ -31,38 +41,55 @@ import com.srgs.ems.viewmodel.ReportsViewModel
 import java.text.NumberFormat
 import java.util.Locale
 
-private fun inrFmt(v: Double) = "₹${NumberFormat.getNumberInstance(Locale("en", "IN")).format(v)}"
+private fun inrFmt(v: Double): String =
+    "₹${NumberFormat.getNumberInstance(Locale("en", "IN")).format(v.toLong())}"
 
+// ─────────────────────────────────────────────────────────────────────────────
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReportsScreen(vm: ReportsViewModel = viewModel()) {
-    val session = SessionManager.session
-    val academicYearId = session?.entityId
-    
-    LaunchedEffect(vm.dateFilter.value) {
-        vm.fetchReports(academicYearId)
+    val academicYearId = AcademicYearManager.selectedYearId
+
+    val dateFilter       by vm.dateFilter.collectAsState()
+    val activeTab        by vm.activeTab.collectAsState()
+    val searchQuery      by vm.searchQuery.collectAsState()
+    val methodFilter     by vm.paymentMethodFilter.collectAsState()
+
+    val summary          by vm.summary.collectAsState()
+    val paymentsResponse by vm.paymentsResponse.collectAsState()
+    val plansResponse    by vm.plansResponse.collectAsState()
+    val expensesResponse by vm.expensesResponse.collectAsState()
+
+    val isLoading        by vm.isLoading.collectAsState()
+    val isTabLoading     by vm.isTabLoading.collectAsState()
+
+    // Fetch summary & active tab on date range / academic year change
+    LaunchedEffect(dateFilter, academicYearId) {
+        vm.fetchSummary(academicYearId)
+        vm.fetchActiveTabData(academicYearId)
     }
 
-    val financials by vm.financials.collectAsState()
-    val isLoading by vm.isLoading.collectAsState()
-    val dateFilter by vm.dateFilter.collectAsState()
+    // Fetch active tab data when switching tabs, payment method, or search query
+    LaunchedEffect(activeTab, methodFilter, searchQuery) {
+        vm.fetchActiveTabData(academicYearId)
+    }
 
-    val netBalance = financials?.summary?.netBalance ?: 0.0
-    val totalColl  = financials?.summary?.collections ?: 0.0
-    val totalExp   = financials?.summary?.expenses ?: 0.0
-
-    var activeTab by remember { mutableStateOf("payment_history") }
+    val netBalance = summary?.netBalance  ?: 0.0
+    val totalColl  = summary?.collections ?: 0.0
+    val totalExp   = summary?.expenses    ?: 0.0
+    val profitPct  = if (totalColl > 0) ((netBalance / totalColl) * 100).toInt() else 0
 
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
+    val focusManager   = LocalFocusManager.current
 
     Scaffold(
         containerColor = Background,
-        topBar = { EmsTopBar("Business Reports", scrollBehavior) },
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
+        topBar         = { EmsTopBar("Business Reports", scrollBehavior) },
+        modifier       = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding())) {
-            
-            // ── 1. Date Filters ────────────────────────────────────────────────
+
+            // ── Date filter pills ─────────────────────────────────────────────
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -75,12 +102,11 @@ fun ReportsScreen(vm: ReportsViewModel = viewModel()) {
                     "last_month" to "Last Month",
                     "3_months"  to "3 Months",
                     "6_months"  to "6 Months",
-                    "ytd"       to "YTD"
+                    "ytd"       to "This Year"
                 ).forEach { (key, label) ->
                     val sel = dateFilter == key
                     Surface(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
+                        modifier = Modifier.clip(RoundedCornerShape(20.dp))
                             .clickable { vm.dateFilter.value = key },
                         shape  = RoundedCornerShape(20.dp),
                         color  = if (sel) Primary else Surface,
@@ -91,192 +117,301 @@ fun ReportsScreen(vm: ReportsViewModel = viewModel()) {
                             Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
                             fontSize   = 12.sp,
                             fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
-                            color      = if (sel) Color.White else TextPrimary
+                            color      = if (sel) Color.White else TextSecondary
                         )
                     }
                 }
             }
 
-            if (isLoading) {
-                Box(Modifier.fillMaxWidth().weight(1f), Alignment.Center) {
+            if (isLoading && summary == null) {
+                Box(Modifier.fillMaxSize(), Alignment.Center) {
                     CircularProgressIndicator(color = Primary, strokeWidth = 3.dp)
                 }
             } else {
-                // ── 2. KPI Cards ──────────────────────────────────────────────
+                // ── KPI Summary row ───────────────────────────────────────────
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    KpiCard("Total Collections", inrFmt(totalColl), Success, Modifier.weight(1f))
-                    KpiCard("Total Expenses", inrFmt(totalExp), Danger, Modifier.weight(1f))
+                    SummaryCard(
+                        label  = "Collections",
+                        value  = inrFmt(totalColl),
+                        color  = Success,
+                        icon   = "💰",
+                        modifier = Modifier.weight(1f)
+                    )
+                    SummaryCard(
+                        label  = "Expenses",
+                        value  = inrFmt(totalExp),
+                        color  = Danger,
+                        icon   = "💸",
+                        modifier = Modifier.weight(1f)
+                    )
                 }
 
+                // Net Balance card
                 Card(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(Surface),
-                    elevation = CardDefaults.cardElevation(2.dp)
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 12.dp),
+                    shape     = RoundedCornerShape(14.dp),
+                    colors    = CardDefaults.cardColors(Surface),
+                    elevation = CardDefaults.cardElevation(2.dp),
+                    border    = BorderStroke(1.dp, if (netBalance >= 0) Success.copy(.25f) else Danger.copy(.25f))
                 ) {
                     Row(
-                        Modifier.fillMaxWidth().padding(14.dp),
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                         Arrangement.SpaceBetween,
                         Alignment.CenterVertically
                     ) {
                         Column {
-                            Text("Net Balance", fontSize = 12.sp, color = TextSecondary, fontWeight = FontWeight.Bold)
+                            Text("Net Balance", fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
                             Text(
                                 inrFmt(netBalance),
-                                fontSize = 22.sp,
+                                fontSize   = 22.sp,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = if (netBalance >= 0) Success else Danger
+                                color      = if (netBalance >= 0) Success else Danger
                             )
                         }
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = (if (netBalance >= 0) Success else Danger).copy(alpha = 0.1f)
-                        ) {
-                            Text(
-                                if (netBalance >= 0) "Profit" else "Loss",
-                                Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (netBalance >= 0) Success else Danger
-                            )
+                        Column(horizontalAlignment = Alignment.End) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = (if (netBalance >= 0) Success else Danger).copy(alpha = 0.1f)
+                            ) {
+                                Text(
+                                    if (netBalance >= 0) "✅ Profit" else "⚠️ Loss",
+                                    Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                    fontSize   = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color      = if (netBalance >= 0) Success else Danger
+                                )
+                            }
+                            if (totalColl > 0) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "$profitPct% margin",
+                                    fontSize = 11.sp,
+                                    color    = TextMuted
+                                )
+                            }
                         }
                     }
                 }
 
-                Spacer(Modifier.height(8.dp))
-
-                // ── 3. Tabs Navigation ─────────────────────────────────────────
+                // ── Tab pills ─────────────────────────────────────────────────
                 Row(
                     Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                        .padding(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     listOf(
-                        "payment_history" to "💳 Payment History",
-                        "billing_plans"   to "💳 Billing Plans",
-                        "addons"          to "🧩 Add-on Services",
+                        "payment_history" to "💳 Payments",
+                        "billing_plans"   to "📋 Plans",
+                        "addons"          to "🧩 Add-ons",
                         "expenses"        to "💸 Expenses"
                     ).forEach { (key, label) ->
                         val sel = activeTab == key
                         Surface(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(10.dp))
-                                .clickable { activeTab = key },
+                                .clickable { vm.activeTab.value = key },
                             shape  = RoundedCornerShape(10.dp),
-                            color  = if (sel) Primary.copy(alpha = 0.12f) else Surface,
+                            color  = if (sel) Primary.copy(alpha = 0.1f) else Color.Transparent,
                             border = BorderStroke(1.dp, if (sel) Primary else Border)
                         ) {
                             Text(
                                 label,
                                 Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                 fontSize   = 12.sp,
-                                fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
+                                fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
                                 color      = if (sel) Primary else TextSecondary
                             )
                         }
                     }
                 }
+                Spacer(Modifier.height(10.dp))
+                HorizontalDivider(color = Border)
 
-                HorizontalDivider(color = Border, modifier = Modifier.padding(top = 8.dp))
+                // ── Tab content ───────────────────────────────────────────────
+                AnimatedContent(
+                    targetState = activeTab,
+                    transitionSpec = { fadeIn() togetherWith fadeOut() },
+                    label = "tab_switch"
+                ) { tab ->
+                    when (tab) {
 
-                // ── 4. Tab Content ─────────────────────────────────────────────
-                LazyColumn(
-                    contentPadding = PaddingValues(top = 10.dp, bottom = 80.dp, start = 16.dp, end = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.fillMaxWidth().weight(1f)
-                ) {
-                    when (activeTab) {
-                        // ── Tab 1: Payment History ─────────────────────────────
+                        // ── PAYMENTS ──────────────────────────────────────────
                         "payment_history" -> {
-                            val payments = financials?.paymentHistory ?: emptyList()
-                            if (payments.isEmpty()) {
-                                item {
-                                    Box(Modifier.fillMaxWidth().padding(32.dp), Alignment.Center) {
-                                        Text("No payment history for selected period.", fontSize = 13.sp, color = TextSecondary)
+                            Column {
+                                // Search bar
+                                OutlinedTextField(
+                                    value          = searchQuery,
+                                    onValueChange  = { vm.searchQuery.value = it },
+                                    placeholder    = { Text("Search member, plan, receipt…", fontSize = 13.sp) },
+                                    singleLine     = true,
+                                    modifier       = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                                    shape          = RoundedCornerShape(12.dp),
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                    keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+                                    colors         = OutlinedTextFieldDefaults.colors(
+                                        unfocusedBorderColor = Border,
+                                        focusedBorderColor   = Primary
+                                    )
+                                )
+
+                                // Payment method quick filters
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState())
+                                        .padding(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    listOf("all" to "All", "cash" to "💵 Cash", "upi" to "📱 UPI", "online" to "🌐 Online", "card" to "💳 Card").forEach { (key, label) ->
+                                        val sel = methodFilter == key
+                                        Surface(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(16.dp))
+                                                .clickable { vm.paymentMethodFilter.value = key },
+                                            shape  = RoundedCornerShape(16.dp),
+                                            color  = if (sel) Primary else Surface,
+                                            border = if (!sel) BorderStroke(1.dp, Border) else null
+                                        ) {
+                                            Text(
+                                                label,
+                                                Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                                fontSize   = 11.sp,
+                                                fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
+                                                color      = if (sel) Color.White else TextSecondary
+                                            )
+                                        }
                                     }
                                 }
-                            } else {
-                                item {
-                                    Text(
-                                        "${payments.size} fee payments collected",
-                                        fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextMuted
-                                    )
-                                }
-                                items(payments) { p ->
-                                    PaymentHistoryCard(p)
+                                Spacer(Modifier.height(8.dp))
+
+                                if (isTabLoading && paymentsResponse == null) {
+                                    Box(Modifier.fillMaxWidth().weight(1f), Alignment.Center) {
+                                        CircularProgressIndicator(color = Primary, strokeWidth = 3.dp)
+                                    }
+                                } else {
+                                    val payments = paymentsResponse?.payments ?: emptyList()
+                                    LazyColumn(
+                                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                                        modifier = Modifier.fillMaxSize()
+                                    ) {
+                                        if (payments.isEmpty()) {
+                                            item { EmptyState(if (searchQuery.isNotBlank()) "No results for \"$searchQuery\"" else "No payments for this period.") }
+                                        } else {
+                                            item {
+                                                Text(
+                                                    "${paymentsResponse?.total ?: payments.size} payment${if (payments.size != 1) "s" else ""}",
+                                                    fontSize = 12.sp, color = TextMuted, fontWeight = FontWeight.SemiBold
+                                                )
+                                            }
+                                            items(payments, key = { it._id }) { p ->
+                                                PaymentHistoryCard(p)
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
 
-                        // ── Tab 2: Billing Plans Breakdown ─────────────────────
+                        // ── PLANS ─────────────────────────────────────────────
                         "billing_plans" -> {
-                            val plans = financials?.plansBreakdown ?: emptyList()
-                            if (plans.isEmpty()) {
-                                item {
-                                    Box(Modifier.fillMaxWidth().padding(32.dp), Alignment.Center) {
-                                        Text("No billing plans found.", fontSize = 13.sp, color = TextSecondary)
-                                    }
+                            if (isTabLoading && plansResponse == null) {
+                                Box(Modifier.fillMaxSize(), Alignment.Center) {
+                                    CircularProgressIndicator(color = Primary, strokeWidth = 3.dp)
                                 }
                             } else {
-                                item {
-                                    Text(
-                                        "Assigned Members & Collected Amounts by Plan",
-                                        fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextMuted
-                                    )
-                                }
-                                items(plans) { plan ->
-                                    PlanBreakdownCard(plan, totalColl)
+                                val plans = plansResponse?.plans ?: emptyList()
+                                LazyColumn(
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier.fillMaxSize()
+                                ) {
+                                    if (plans.isEmpty()) {
+                                        item { EmptyState("No billing plans configured.") }
+                                    } else {
+                                        item {
+                                            Text(
+                                                "${plans.size} plan${if (plans.size != 1) "s" else ""} · Total collected ${inrFmt(plans.sumOf { it.collectedAmount })}",
+                                                fontSize = 12.sp, color = TextMuted, fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                        items(plans, key = { it.id }) { plan ->
+                                            PlanBreakdownCard(plan = plan, totalCollections = totalColl, accentColor = Primary)
+                                        }
+                                    }
                                 }
                             }
                         }
 
-                        // ── Tab 3: Add-on Services Breakdown ──────────────────
+                        // ── ADD-ONS ───────────────────────────────────────────
                         "addons" -> {
-                            val addons = financials?.addonsBreakdown ?: emptyList()
-                            if (addons.isEmpty()) {
-                                item {
-                                    Box(Modifier.fillMaxWidth().padding(32.dp), Alignment.Center) {
-                                        Text("No add-on services found.", fontSize = 13.sp, color = TextSecondary)
-                                    }
+                            if (isTabLoading && plansResponse == null) {
+                                Box(Modifier.fillMaxSize(), Alignment.Center) {
+                                    CircularProgressIndicator(color = Primary, strokeWidth = 3.dp)
                                 }
                             } else {
-                                item {
-                                    Text(
-                                        "Subscribed Members & Collected Amounts by Add-on",
-                                        fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextMuted
-                                    )
-                                }
-                                items(addons) { addon ->
-                                    AddonBreakdownCard(addon, totalColl)
+                                val addons = plansResponse?.addons ?: emptyList()
+                                LazyColumn(
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier.fillMaxSize()
+                                ) {
+                                    if (addons.isEmpty()) {
+                                        item { EmptyState("No add-on services configured.") }
+                                    } else {
+                                        item {
+                                            Text(
+                                                "${addons.size} add-on${if (addons.size != 1) "s" else ""} · Total collected ${inrFmt(addons.sumOf { it.collectedAmount })}",
+                                                fontSize = 12.sp, color = TextMuted, fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                        items(addons, key = { it.id }) { addon ->
+                                            PlanBreakdownCard(plan = addon, totalCollections = totalColl, accentColor = AccentPurple)
+                                        }
+                                    }
                                 }
                             }
                         }
 
-                        // ── Tab 4: Expenses Breakdown ─────────────────────────
+                        // ── EXPENSES ──────────────────────────────────────────
                         "expenses" -> {
-                            val expensesList = financials?.topExpenses ?: emptyList()
-                            if (expensesList.isEmpty()) {
-                                item {
-                                    Box(Modifier.fillMaxWidth().padding(32.dp), Alignment.Center) {
-                                        Text("No expenses recorded for selected period.", fontSize = 13.sp, color = TextSecondary)
-                                    }
+                            if (isTabLoading && expensesResponse == null) {
+                                Box(Modifier.fillMaxSize(), Alignment.Center) {
+                                    CircularProgressIndicator(color = Primary, strokeWidth = 3.dp)
                                 }
                             } else {
-                                item {
-                                    Text(
-                                        "Expenses by Category",
-                                        fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextMuted
-                                    )
-                                }
-                                items(expensesList) { exp ->
-                                    ExpenseCategoryCard(exp, totalExp)
+                                val expList = expensesResponse?.expenses ?: emptyList()
+                                LazyColumn(
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier.fillMaxSize()
+                                ) {
+                                    if (expList.isEmpty()) {
+                                        item { EmptyState("No expenses recorded for this period.") }
+                                    } else {
+                                        item {
+                                            Text(
+                                                "${expList.size} categor${if (expList.size != 1) "ies" else "y"} · Total ${inrFmt(totalExp)}",
+                                                fontSize = 12.sp, color = TextMuted, fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                        items(expList, key = { it._id }) { exp ->
+                                            ExpenseCategoryCard(exp = exp, totalExpenses = totalExp)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -287,170 +422,206 @@ fun ReportsScreen(vm: ReportsViewModel = viewModel()) {
     }
 }
 
-// ── Components ────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// COMPONENTS
+// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun KpiCard(label: String, value: String, color: Color, modifier: Modifier) {
+private fun SummaryCard(label: String, value: String, color: Color, icon: String, modifier: Modifier) {
     Card(
-        modifier,
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(Surface),
+        modifier  = modifier,
+        shape     = RoundedCornerShape(12.dp),
+        colors    = CardDefaults.cardColors(Surface),
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
-        Column(Modifier.padding(14.dp)) {
-            Text(label, fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(4.dp))
-            Text(value, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = color)
+        Row(
+            Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(color.copy(alpha = 0.1f)),
+                Alignment.Center
+            ) {
+                Text(icon, fontSize = 16.sp)
+            }
+            Column {
+                Text(label, fontSize = 10.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
+                Text(value, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = color)
+            }
         }
     }
 }
 
 @Composable
 private fun PaymentHistoryCard(p: DetailedPaymentHistoryDto) {
+    val methodColor = when (p.paymentMethod.lowercase()) {
+        "upi"    -> AccentGreen
+        "card"   -> AccentBlue
+        "online" -> AccentPurple
+        else     -> AccentOrange   // cash
+    }
     Card(
         Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(Surface),
-        elevation = CardDefaults.cardElevation(1.dp),
-        border = BorderStroke(1.dp, Border)
+        shape     = RoundedCornerShape(12.dp),
+        colors    = CardDefaults.cardColors(Surface),
+        elevation = CardDefaults.cardElevation(0.dp),
+        border    = BorderStroke(1.dp, Border)
     ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(if (p.isAddon) "🧩" else "💳", fontSize = 14.sp)
-                    Text(p.memberName, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+        Column(Modifier.padding(14.dp)) {
+            // Row 1 – name + amount
+            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.Top) {
+                Row(
+                    Modifier.weight(1f).padding(end = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(
+                        Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(if (p.isAddon) AccentPurple.copy(.12f) else Primary.copy(.1f)),
+                        Alignment.Center
+                    ) {
+                        Text(if (p.isAddon) "🧩" else "💳", fontSize = 14.sp)
+                    }
+                    Column {
+                        Text(
+                            p.memberName,
+                            fontSize   = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color      = TextPrimary,
+                            maxLines   = 1,
+                            overflow   = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            p.structureName,
+                            fontSize = 11.sp,
+                            color    = TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
                 Text(
                     "+${inrFmt(p.amount)}",
-                    fontSize = 15.sp,
+                    fontSize   = 15.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    color = Success
+                    color      = Success
                 )
             }
-            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                Text(p.structureName, fontSize = 12.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
+
+            Spacer(Modifier.height(8.dp))
+            HorizontalDivider(color = Border.copy(.5f))
+            Spacer(Modifier.height(8.dp))
+
+            // Row 2 – date · receipt · method badge
+            Row(
+                Modifier.fillMaxWidth(),
+                Arrangement.SpaceBetween,
+                Alignment.CenterVertically
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment     = Alignment.CenterVertically
+                ) {
+                    Text(p.paymentDate.take(10), fontSize = 11.sp, color = TextMuted)
+                    p.receiptNo?.let {
+                        Text(
+                            "#$it",
+                            fontSize   = 11.sp,
+                            color      = Primary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
                 Surface(
-                    shape = RoundedCornerShape(4.dp),
-                    color = Primary.copy(alpha = 0.08f)
+                    shape = RoundedCornerShape(6.dp),
+                    color = methodColor.copy(alpha = 0.12f)
                 ) {
                     Text(
                         p.paymentMethod.uppercase(),
-                        Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        fontSize = 10.sp,
+                        Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        fontSize   = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Primary
+                        color      = methodColor
                     )
                 }
             }
-            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                Text(
-                    p.paymentDate.take(10),
-                    fontSize = 11.sp,
-                    color = TextMuted
-                )
-                p.receiptNo?.let {
-                    Text("#$it", fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.Medium)
-                }
-            }
+
+            // Optional notes
             if (!p.notes.isNullOrBlank()) {
-                Text("Note: ${p.notes}", fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.Normal)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "📝 ${p.notes}",
+                    fontSize = 11.sp,
+                    color    = TextSecondary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }
 }
 
 @Composable
-private fun PlanBreakdownCard(plan: PlanBreakdownDto, totalCollections: Double) {
-    val ratio = if (totalCollections > 0) (plan.collectedAmount / totalCollections).toFloat() else 0f
+private fun PlanBreakdownCard(plan: PlanBreakdownDto, totalCollections: Double, accentColor: Color) {
+    val ratio = if (totalCollections > 0) (plan.collectedAmount / totalCollections).coerceIn(0.0, 1.0).toFloat() else 0f
+    val pct   = (ratio * 100).toInt()
 
     Card(
         Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(Surface),
+        shape     = RoundedCornerShape(14.dp),
+        colors    = CardDefaults.cardColors(Surface),
         elevation = CardDefaults.cardElevation(1.dp),
-        border = BorderStroke(1.dp, Primary.copy(alpha = 0.2f))
+        border    = BorderStroke(1.dp, accentColor.copy(alpha = 0.2f))
     ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                Column {
-                    Text(plan.name, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                    Spacer(Modifier.height(2.dp))
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            // Header – name + collected amount
+            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.Top) {
+                Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                    Text(plan.name, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
-                        "₹${plan.amount.toInt()} / ${plan.frequency.replaceFirstChar { it.uppercase() }}",
-                        fontSize = 11.sp,
-                        color = TextSecondary
+                        "₹${plan.amount.toInt().let { NumberFormat.getNumberInstance(Locale("en","IN")).format(it) }} / ${plan.frequency.replaceFirstChar { it.uppercase() }}",
+                        fontSize = 11.sp, color = TextSecondary
                     )
                 }
                 Column(horizontalAlignment = Alignment.End) {
-                    Text(inrFmt(plan.collectedAmount), fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Success)
+                    Text(inrFmt(plan.collectedAmount), fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = accentColor)
                     Text("Collected", fontSize = 10.sp, color = TextMuted)
                 }
             }
-            HorizontalDivider(color = Border.copy(alpha = 0.5f))
-            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = Primary.copy(alpha = 0.1f)
-                ) {
-                    Text(
-                        "👥 ${plan.memberCount} Members Assigned",
-                        Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Primary
-                    )
-                }
-                Text("${(ratio * 100).toInt()}% of Revenue", fontSize = 11.sp, color = TextMuted)
-            }
-        }
-    }
-}
 
-@Composable
-private fun AddonBreakdownCard(addon: PlanBreakdownDto, totalCollections: Double) {
-    val ratio = if (totalCollections > 0) (addon.collectedAmount / totalCollections).toFloat() else 0f
-
-    Card(
-        Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(Surface),
-        elevation = CardDefaults.cardElevation(1.dp),
-        border = BorderStroke(1.dp, AccentPurple.copy(alpha = 0.3f))
-    ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("🧩", fontSize = 14.sp)
-                        Text(addon.name, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                    }
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        "₹${addon.amount.toInt()} / ${addon.frequency.replaceFirstChar { it.uppercase() }}",
-                        fontSize = 11.sp,
-                        color = TextSecondary
-                    )
+            // Progress bar
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
+                    Text("Revenue share", fontSize = 10.sp, color = TextMuted)
+                    Text("$pct%", fontSize = 10.sp, color = accentColor, fontWeight = FontWeight.Bold)
                 }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(inrFmt(addon.collectedAmount), fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = AccentPurple)
-                    Text("Collected", fontSize = 10.sp, color = TextMuted)
-                }
+                LinearProgressIndicator(
+                    progress       = { ratio },
+                    modifier       = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                    color          = accentColor,
+                    trackColor     = accentColor.copy(alpha = 0.12f),
+                    strokeCap      = StrokeCap.Round
+                )
             }
-            HorizontalDivider(color = Border.copy(alpha = 0.5f))
-            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = AccentPurple.copy(alpha = 0.1f)
-                ) {
-                    Text(
-                        "👥 ${addon.memberCount} Subscribed",
-                        Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = AccentPurple
-                    )
-                }
-                Text("${(ratio * 100).toInt()}% of Revenue", fontSize = 11.sp, color = TextMuted)
+
+            // Footer – member count badge
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = accentColor.copy(alpha = 0.08f)
+            ) {
+                Text(
+                    "👥  ${plan.memberCount} ${if (plan.isAddon) "subscribed" else "assigned"}",
+                    Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    fontSize   = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color      = accentColor
+                )
             }
         }
     }
@@ -458,23 +629,50 @@ private fun AddonBreakdownCard(addon: PlanBreakdownDto, totalCollections: Double
 
 @Composable
 private fun ExpenseCategoryCard(exp: TopExpenseDto, totalExpenses: Double) {
+    val ratio = if (totalExpenses > 0) (exp.total / totalExpenses).coerceIn(0.0, 1.0).toFloat() else 0f
+    val pct   = (ratio * 100).toInt()
+
     Card(
         Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(Surface),
+        shape     = RoundedCornerShape(12.dp),
+        colors    = CardDefaults.cardColors(Surface),
         elevation = CardDefaults.cardElevation(1.dp),
-        border = BorderStroke(1.dp, Border)
+        border    = BorderStroke(1.dp, Danger.copy(alpha = 0.15f))
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(14.dp),
-            Arrangement.SpaceBetween,
-            Alignment.CenterVertically
-        ) {
-            Column {
-                Text(exp._id.replaceFirstChar { it.uppercase() }, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                Text(
+                    exp._id.replaceFirstChar { it.uppercase() },
+                    fontSize   = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color      = TextPrimary
+                )
+                Text(inrFmt(exp.total), fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Danger)
             }
-            Text(inrFmt(exp.total), fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Danger)
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
+                    Text("Of total expenses", fontSize = 10.sp, color = TextMuted)
+                    Text("$pct%", fontSize = 10.sp, color = Danger, fontWeight = FontWeight.Bold)
+                }
+                LinearProgressIndicator(
+                    progress   = { ratio },
+                    modifier   = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(3.dp)),
+                    color      = Danger,
+                    trackColor = Danger.copy(alpha = 0.1f),
+                    strokeCap  = StrokeCap.Round
+                )
+            }
         }
     }
 }
 
+@Composable
+private fun EmptyState(message: String) {
+    Box(Modifier.fillMaxWidth().padding(vertical = 48.dp), Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("📭", fontSize = 36.sp)
+            Spacer(Modifier.height(8.dp))
+            Text(message, fontSize = 13.sp, color = TextSecondary)
+        }
+    }
+}

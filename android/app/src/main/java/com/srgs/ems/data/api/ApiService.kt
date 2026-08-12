@@ -98,6 +98,39 @@ interface ApiService {
         @Query("endDate") endDate: String? = null
     ): Response<ComprehensiveFinancialsDto>
 
+    // ── Modular Reports ────────────────────────────────────────────────────────
+    @GET("reports/summary")
+    suspend fun getReportSummary(
+        @Query("academicYearId") academicYearId: String? = null,
+        @Query("startDate") startDate: String? = null,
+        @Query("endDate") endDate: String? = null
+    ): Response<ComprehensiveSummaryDto>
+
+    @GET("reports/payments")
+    suspend fun getPaymentHistoryReport(
+        @Query("academicYearId") academicYearId: String? = null,
+        @Query("startDate") startDate: String? = null,
+        @Query("endDate") endDate: String? = null,
+        @Query("paymentMethod") paymentMethod: String? = null,
+        @Query("search") search: String? = null,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 50
+    ): Response<PaymentHistoryReportResponseDto>
+
+    @GET("reports/plans-breakdown")
+    suspend fun getPlansBreakdownReport(
+        @Query("academicYearId") academicYearId: String? = null,
+        @Query("startDate") startDate: String? = null,
+        @Query("endDate") endDate: String? = null
+    ): Response<PlansBreakdownReportResponseDto>
+
+    @GET("reports/expense-breakdown")
+    suspend fun getExpenseBreakdownReport(
+        @Query("academicYearId") academicYearId: String? = null,
+        @Query("startDate") startDate: String? = null,
+        @Query("endDate") endDate: String? = null
+    ): Response<ExpenseBreakdownReportResponseDto>
+
     // ── Staff / Users ─────────────────────────────────────────────────────────
     @GET("users")
     suspend fun getStaff(): Response<List<StaffDto>>
@@ -554,6 +587,22 @@ data class IncomeGroupDto(
 data class TopExpenseDto(
     val _id: String = "",
     val total: Double = 0.0
+)
+
+data class PaymentHistoryReportResponseDto(
+    val payments: List<DetailedPaymentHistoryDto> = emptyList(),
+    val total: Int = 0,
+    val page: Int = 1,
+    val totalPages: Int = 1
+)
+
+data class PlansBreakdownReportResponseDto(
+    val plans: List<PlanBreakdownDto> = emptyList(),
+    val addons: List<PlanBreakdownDto> = emptyList()
+)
+
+data class ExpenseBreakdownReportResponseDto(
+    val expenses: List<TopExpenseDto> = emptyList()
 )
 
 data class FinancialHistoryDto(

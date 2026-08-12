@@ -1,35 +1,74 @@
 package com.srgs.ems.data.repository
 
 import android.content.Context
-import com.srgs.ems.data.api.ApiClient
-import com.srgs.ems.data.api.ComprehensiveFinancialsDto
-import com.srgs.ems.data.api.ReportDataDto
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import com.srgs.ems.data.api.*
 
 class ReportsRepository(context: Context) {
     private val api = ApiClient.getApiService(context)
+
+    suspend fun getSummary(
+        academicYearId: String?,
+        startDate: String?,
+        endDate: String?
+    ): ComprehensiveSummaryDto? {
+        return try {
+            val r = api.getReportSummary(academicYearId, startDate, endDate)
+            if (r.isSuccessful) r.body() else null
+        } catch (_: Exception) { null }
+    }
+
+    suspend fun getPaymentHistory(
+        academicYearId: String?,
+        startDate: String?,
+        endDate: String?,
+        paymentMethod: String? = null,
+        search: String? = null,
+        page: Int = 1,
+        limit: Int = 50
+    ): PaymentHistoryReportResponseDto? {
+        return try {
+            val r = api.getPaymentHistoryReport(academicYearId, startDate, endDate, paymentMethod, search, page, limit)
+            if (r.isSuccessful) r.body() else null
+        } catch (_: Exception) { null }
+    }
+
+    suspend fun getPlansBreakdown(
+        academicYearId: String?,
+        startDate: String?,
+        endDate: String?
+    ): PlansBreakdownReportResponseDto? {
+        return try {
+            val r = api.getPlansBreakdownReport(academicYearId, startDate, endDate)
+            if (r.isSuccessful) r.body() else null
+        } catch (_: Exception) { null }
+    }
+
+    suspend fun getExpenseBreakdown(
+        academicYearId: String?,
+        startDate: String?,
+        endDate: String?
+    ): ExpenseBreakdownReportResponseDto? {
+        return try {
+            val r = api.getExpenseBreakdownReport(academicYearId, startDate, endDate)
+            if (r.isSuccessful) r.body() else null
+        } catch (_: Exception) { null }
+    }
+
+    /** Legacy fallback method kept for compatibility */
+    suspend fun getFinancials(
+        academicYearId: String?,
+        startDate: String?,
+        endDate: String?
+    ): ComprehensiveFinancialsDto? {
+        return try {
+            val r = api.getComprehensiveFinancials(academicYearId, startDate, endDate)
+            if (r.isSuccessful) r.body() else null
+        } catch (_: Exception) { null }
+    }
 
     suspend fun getReportsData(
         academicYearId: String?,
         startDate: String?,
         endDate: String?
-    ): Pair<ReportDataDto?, ComprehensiveFinancialsDto?> {
-        return coroutineScope {
-            try {
-                val reportsDef = async { api.getReports(academicYearId, startDate, endDate) }
-                val financialsDef = async { api.getComprehensiveFinancials(academicYearId, startDate, endDate) }
-                
-                val reportsRes = reportsDef.await()
-                val financialsRes = financialsDef.await()
-                
-                val r = if (reportsRes.isSuccessful) reportsRes.body() else null
-                val f = if (financialsRes.isSuccessful) financialsRes.body() else null
-                
-                Pair(r, f)
-            } catch (_: Exception) {
-                Pair(null, null)
-            }
-        }
-    }
+    ): ComprehensiveFinancialsDto? = getFinancials(academicYearId, startDate, endDate)
 }
