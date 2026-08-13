@@ -132,14 +132,23 @@ interface ApiService {
     ): Response<ExpenseBreakdownReportResponseDto>
 
     // ── Staff / Users ─────────────────────────────────────────────────────────
-    @GET("users")
+    @GET("staff")
     suspend fun getStaff(): Response<List<StaffDto>>
 
-    @POST("users")
+    @POST("staff")
     suspend fun createStaff(@Body request: CreateStaffRequest): Response<StaffDto>
 
-    @DELETE("users/{id}")
+    @DELETE("staff/{id}")
     suspend fun deleteStaff(@Path("id") id: String): Response<Unit>
+
+    @PATCH("staff/{id}/toggle-login")
+    suspend fun toggleStaffLogin(@Path("id") id: String): Response<ToggleLoginResponseDto>
+
+    @GET("entity-settings")
+    suspend fun getEntitySettings(): Response<EntitySettingsDto>
+
+    @PUT("entity-settings")
+    suspend fun updateEntitySettings(@Body settings: EntitySettingsDto): Response<EntitySettingsDto>
 
     // ── Fee Groups ──────────────────────────────────────────────────────────────
     @GET("fee-groups")
@@ -621,13 +630,32 @@ data class StaffDto(
     @SerializedName("_id") val _id: String = "",
     val name: String = "",
     val contactNumber: String = "",
-    val role: String = "staff"
+    val role: String = "staff",
+    val enableLogin: Boolean = false,
+    val hasUserAccount: Boolean = false
 )
 
 data class CreateStaffRequest(
     val name: String,
     val contactNumber: String,
     val role: String
+)
+
+data class StaffRoleSettingDto(
+    val label: String = "",
+    val code: String = "",
+    val enable_login: Boolean = false
+)
+
+data class EntitySettingsDto(
+    @SerializedName("_id") val _id: String = "",
+    val entityId: String = "",
+    val staffRoles: List<StaffRoleSettingDto> = emptyList()
+)
+
+data class ToggleLoginResponseDto(
+    val message: String = "",
+    val enableLogin: Boolean = false
 )
 
 // ═══════════════════════════════════════════════════════════════════════════════

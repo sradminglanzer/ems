@@ -65,6 +65,11 @@ class AuthService extends BaseService<User> {
             user = matches[0];
         }
 
+        // Block login if enableLogin === false
+        if (user.enableLogin === false) {
+            throw new AppError('Login is disabled for this staff account. Please contact your administrator.', HTTP_STATUS.FORBIDDEN);
+        }
+
         // Fetch entity details (name, type, logo)
         let entityName = 'EMS Portal';
         let entityType = 'school';

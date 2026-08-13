@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.srgs.ems.data.SessionManager
 import com.srgs.ems.data.api.StaffDto
+import com.srgs.ems.data.api.StaffRoleSettingDto
 import com.srgs.ems.ui.components.EmsTopBar
 import com.srgs.ems.ui.theme.*
 import com.srgs.ems.viewmodel.StaffViewModel
@@ -33,10 +34,10 @@ import com.srgs.ems.viewmodel.StaffViewModel
 @Composable
 fun StaffScreen(vm: StaffViewModel = viewModel()) {
     val session = SessionManager.session
-    val isGym = session?.entityType == "gym"
     val canManage = session?.role == "admin" || session?.role == "owner" || session?.role == "superadmin"
 
     val staffList by vm.staffList.collectAsState()
+    val staffRoles by vm.staffRoles.collectAsState()
     val isLoading by vm.isLoading.collectAsState()
 
     val snackbar = remember { SnackbarHostState() }
@@ -99,8 +100,10 @@ fun StaffScreen(vm: StaffViewModel = viewModel()) {
                 }
                 items(staffList, key = { it._id }) { staff ->
                     StaffCard(
-                        staff = staff, isGym = isGym,
+                        staff = staff,
+                        roles = staffRoles,
                         canDelete = canManage && staff.role != "owner",
+                        onToggleLogin = { vm.toggleStaffLogin(staff._id) },
                         onDelete = { deleteTarget = staff }
                     )
                 }
@@ -110,7 +113,11 @@ fun StaffScreen(vm: StaffViewModel = viewModel()) {
 
     // ── Add Staff Bottom Sheet ─────────────────────────────────────────────────
     if (showAddSheet) {
-        AddStaffSheet(vm = vm, isGym = isGym, onDismiss = { showAddSheet = false })
+        AddStaffSheet(
+            vm = vm,
+            roles = staffRoles,
+            onDismiss = { showAddSheet = false }
+        )
     }
 
     // ── Delete Confirmation Dialog ─────────────────────────────────────────────
@@ -133,24 +140,26 @@ fun StaffScreen(vm: StaffViewModel = viewModel()) {
 }
 
 @Composable
-private fun StaffCard(staff: StaffDto, isGym: Boolean, canDelete: Boolean, onDelete: () -> Unit) {
+private fun StaffCard(
+    staff: StaffDto,
+    roles: List<StaffRoleSettingDto>,
+    canDelete: Boolean,
+    onToggleLogin: () -> Unit,
+    onDelete: () -> Unit
+) {
     val initials = staff.name.split(" ").take(2).mapNotNull { it.firstOrNull()?.uppercaseChar() }.joinToString("")
+
+    val roleSetting = roles.find { it.code == staff.role }
+    val displayRole = roleSetting?.label ?: staff.role.replaceFirstChar { it.uppercaseChar() }
+    val hasLogin = staff.enableLogin
 
     val (avatarGradient, roleColor, roleBg) = when (staff.role) {
         "admin", "owner", "superadmin" -> Triple(
-            listOf(Danger, Color(0xFFFF6B6B)), Danger, DangerLight
-        )
-        "teacher" -> Triple(
-            listOf(Success, Color(0xFF34D399)), Success, SuccessLight
+            listOf(Primary, PrimaryLight), Primary, Primary.copy(alpha = 0.1f)
         )
         else -> Triple(
-            listOf(Primary, PrimaryLight), Primary, Color(0xFFCCFBF1)
+            listOf(Color(0xFF6B7280), Color(0xFF9CA3AF)), TextSecondary, Border
         )
-    }
-
-    val displayRole = when {
-        staff.role == "teacher" && isGym -> "Trainer"
-        else -> staff.role.replaceFirstChar { it.uppercaseChar() }
     }
 
     Card(
@@ -182,26 +191,42 @@ private fun StaffCard(staff: StaffDto, isGym: Boolean, canDelete: Boolean, onDel
                     Text(staff.contactNumber, fontSize = 13.sp, color = TextSecondary)
                 }
                 Spacer(Modifier.height(8.dp))
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = roleBg.copy(.5f)
-                ) {
-                    Text(
-                        displayRole.uppercase(),
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                        fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = roleColor,
-                        letterSpacing = 0.8.sp
-                    )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // Role badge
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = roleBg
+                    ) {
+                        Text(
+                            displayRole.uppercase(),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = roleColor,
+                            letterSpacing = 0.8.sp
+                        )
+                    }
+
+                    // Login status badge
+                    Surface(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { if (canDelete) onToggleLogin() },
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (hasLogin) Success.copy(alpha = 0.12f) else TextMuted.copy(alpha = 0.12f)
+                    ) {
+                        Text(
+                            if (hasLogin) "🔑 Login Enabled" else "🔒 No Login",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                            color = if (hasLogin) Success else TextMuted
+                        )
+                    }
                 }
             }
 
             // Delete button
             if (canDelete) {
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(40.dp).clip(CircleShape).background(DangerLight.copy(.5f))
-                ) {
-                    Text("🗑", fontSize = 16.sp)
+                IconButton(onClick = onDelete) {
+                    Text("🗑️", fontSize = 18.sp)
                 }
             }
         }
@@ -210,13 +235,15 @@ private fun StaffCard(staff: StaffDto, isGym: Boolean, canDelete: Boolean, onDel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddStaffSheet(vm: StaffViewModel, isGym: Boolean, onDismiss: () -> Unit) {
+private fun AddStaffSheet(
+    vm: StaffViewModel,
+    roles: List<StaffRoleSettingDto>,
+    onDismiss: () -> Unit
+) {
     val name by vm.name.collectAsState()
     val contact by vm.contactNumber.collectAsState()
     val role by vm.selectedRole.collectAsState()
     val isSubmitting by vm.isSubmitting.collectAsState()
-
-    val roles = if (isGym) listOf("admin", "staff", "trainer") else listOf("admin", "staff", "teacher")
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -241,7 +268,10 @@ private fun AddStaffSheet(vm: StaffViewModel, isGym: Boolean, onDismiss: () -> U
             // Contact Field
             Text("Contact Number *", fontSize = 13.sp, color = TextSecondary, modifier = Modifier.padding(bottom = 6.dp))
             OutlinedTextField(
-                value = contact, onValueChange = { vm.contactNumber.value = it },
+                value = contact,
+                onValueChange = { input ->
+                    if (input.isEmpty() || input.all { it.isDigit() }) vm.contactNumber.value = input
+                },
                 modifier = Modifier.fillMaxWidth(), placeholder = { Text("e.g. 9876543210") },
                 singleLine = true, shape = RoundedCornerShape(10.dp),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
@@ -250,23 +280,36 @@ private fun AddStaffSheet(vm: StaffViewModel, isGym: Boolean, onDismiss: () -> U
             Spacer(Modifier.height(16.dp))
 
             // Role Selector
-            Text("Assign Role", fontSize = 13.sp, color = TextSecondary, modifier = Modifier.padding(bottom = 8.dp))
+            Text("Assign Role *", fontSize = 13.sp, color = TextSecondary, modifier = Modifier.padding(bottom = 8.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 roles.forEach { r ->
-                    val isSelected = role == r
+                    val isSelected = role == r.code
                     Surface(
-                        modifier = Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).clickable { vm.selectedRole.value = r },
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { vm.selectedRole.value = r.code },
                         shape = RoundedCornerShape(10.dp),
                         color = if (isSelected) Primary else Background,
                         border = if (!isSelected) BorderStroke(1.dp, Border) else null
                     ) {
-                        Text(
-                            r.replaceFirstChar { it.uppercaseChar() },
-                            modifier = Modifier.padding(vertical = 12.dp),
-                            fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                            color = if (isSelected) Color.White else TextSecondary,
-                            textAlign = TextAlign.Center
-                        )
+                        Column(
+                            Modifier.padding(vertical = 12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                r.label,
+                                fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                                color = if (isSelected) Color.White else TextSecondary,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                if (r.enable_login) "🔑 App Login" else "🔒 No Login",
+                                fontSize = 10.sp,
+                                color = if (isSelected) Color.White.copy(alpha = 0.8f) else TextMuted
+                            )
+                        }
                     }
                 }
             }
@@ -283,7 +326,7 @@ private fun AddStaffSheet(vm: StaffViewModel, isGym: Boolean, onDismiss: () -> U
                 if (isSubmitting) {
                     CircularProgressIndicator(Modifier.size(20.dp), Color.White, 2.dp)
                 } else {
-                    Text("👤  Create Account", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("👤 Create Staff Member", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
             }
         }
