@@ -42,6 +42,11 @@ private fun greeting(): String {
 @Composable
 fun DashboardScreen(
     vm: DashboardViewModel = viewModel(),
+    onNavigateToMembers: () -> Unit = {},
+    onNavigateToPlans: () -> Unit = {},
+    onNavigateToReports: () -> Unit = {},
+    onNavigateToExpenses: () -> Unit = {},
+    onNavigateToMemberDetail: (memberId: String) -> Unit = {},
     onSignOut: () -> Unit
 ) {
     val stats        by vm.stats.collectAsState()
@@ -73,7 +78,7 @@ fun DashboardScreen(
             ),
             modifier = Modifier.fillMaxSize()
         ) {
-            // Hero banner (scrolls with content — no sticky 80dp bar eating space)
+            // Hero banner (scrolls with content)
             item {
                 DashboardHero(
                     name = session?.name ?: "Admin",
@@ -102,7 +107,14 @@ fun DashboardScreen(
                         color = TextMuted, letterSpacing = 1.2.sp
                     )
                 }
-                item { StatChips(s, session?.isGym ?: false) }
+                item {
+                    StatChips(
+                        s = s,
+                        isGym = session?.isGym ?: false,
+                        onMembersClick = onNavigateToMembers,
+                        onPlansClick = onNavigateToPlans
+                    )
+                }
 
                 // Finance
                 if (session?.isTeacher != true) {
@@ -115,7 +127,14 @@ fun DashboardScreen(
                             color = TextMuted, letterSpacing = 1.2.sp
                         )
                     }
-                    item { FinanceCard(s, expenseStats) }
+                    item {
+                        FinanceCard(
+                            s = s,
+                            expenses = expenseStats,
+                            onReportsClick = onNavigateToReports,
+                            onExpensesClick = onNavigateToExpenses
+                        )
+                    }
                 }
 
                 // Alerts
@@ -132,7 +151,7 @@ fun DashboardScreen(
                             color = Danger, letterSpacing = 1.2.sp
                         )
                     }
-                    items(overdue) { AlertRow(it, isOverdue = true) }
+                    items(overdue) { AlertRow(it, isOverdue = true, onClick = { onNavigateToMemberDetail(it.id) }) }
                 }
                 if (expiring.isNotEmpty()) {
                     item { Spacer(Modifier.height(20.dp)) }
@@ -144,7 +163,7 @@ fun DashboardScreen(
                             color = Warning, letterSpacing = 1.2.sp
                         )
                     }
-                    items(expiring) { AlertRow(it, isOverdue = false) }
+                    items(expiring) { AlertRow(it, isOverdue = false, onClick = { onNavigateToMemberDetail(it.id) }) }
                 }
                 item { Spacer(Modifier.height(16.dp)) }
             }
@@ -197,12 +216,18 @@ private fun DashboardHero(name: String, entityName: String, initials: String, ro
 
 // ─── Stat chips ───────────────────────────────────────────────────────────────
 @Composable
-private fun StatChips(s: DashboardStatsDto, isGym: Boolean) {
+private fun StatChips(
+    s: DashboardStatsDto,
+    isGym: Boolean,
+    onMembersClick: () -> Unit,
+    onPlansClick: () -> Unit
+) {
     val chips = listOf(
         Triple("👥", if (isGym) "Members" else "Students", s.totalMembers.toString()),
         Triple(if (isGym) "💳" else "📚", if (isGym) "Plans" else "Classes",
             if (isGym) s.totalFeeStructures.toString() else s.totalFeeGroups.toString())
     )
+    val actions = listOf(onMembersClick, onPlansClick)
     val accents = listOf(AccentBlue, AccentPurple)
 
     Row(
@@ -215,6 +240,7 @@ private fun StatChips(s: DashboardStatsDto, isGym: Boolean) {
                     .shadow(4.dp, RoundedCornerShape(18.dp), clip = false)
                     .clip(RoundedCornerShape(18.dp))
                     .background(Surface)
+                    .clickable { actions[i]() }
                     .padding(16.dp)
             ) {
                 Column {
@@ -233,12 +259,18 @@ private fun StatChips(s: DashboardStatsDto, isGym: Boolean) {
 
 // ─── Finance card ─────────────────────────────────────────────────────────────
 @Composable
-private fun FinanceCard(s: DashboardStatsDto, expenses: DashboardRepository.ExpenseStats?) {
+private fun FinanceCard(
+    s: DashboardStatsDto,
+    expenses: DashboardRepository.ExpenseStats?,
+    onReportsClick: () -> Unit,
+    onExpensesClick: () -> Unit
+) {
     Box(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp)
             .shadow(4.dp, RoundedCornerShape(18.dp), clip = false)
             .clip(RoundedCornerShape(18.dp))
             .background(Surface)
+            .clickable { onReportsClick() }
             .padding(20.dp)
     ) {
         Column {
@@ -249,32 +281,29 @@ private fun FinanceCard(s: DashboardStatsDto, expenses: DashboardRepository.Expe
                             color = TextMuted, letterSpacing = 1.sp)
                         Text(inr(s.totalPendingAmount), fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Danger)
                     }
-                    Box(Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(DangerLight), Alignment.Center) {
-                        Text("⚠️", fontSize = 20.sp)
+                    Surface(shape = RoundedCornerShape(20.dp), color = DangerLight) {
+                        Text("⚠️ Pending", Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Danger)
                     }
                 }
-                HorizontalDivider(Modifier.padding(vertical = 14.dp), color = Border)
+                Spacer(Modifier.height(16.dp))
+                HorizontalDivider(color = Border)
+                Spacer(Modifier.height(16.dp))
             }
-            FRow("Today", inr(s.collectionToday), Success)
-            FRow("This Month", inr(s.collectionThisMonth), Success)
-            FRow("Last Month", inr(s.collectionLastMonth), TextSecondary, last = expenses == null)
 
-            expenses?.let { e ->
-                HorizontalDivider(Modifier.padding(vertical = 14.dp), color = Border)
-                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                    Column {
-                        Text("EXPENSES THIS MONTH", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold,
-                            color = TextMuted, letterSpacing = 1.sp)
-                        Text(inr(e.total), fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Warning)
-                    }
-                    if (e.topCategories.isNotEmpty()) {
-                        Surface(shape = RoundedCornerShape(8.dp), color = WarningLight) {
-                            Text(
-                                e.topCategories.first().first.split(" / ").first(),
-                                Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Warning
-                            )
-                        }
+            // Summary breakdown row
+            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
+                Column(Modifier.clickable { onReportsClick() }) {
+                    Text("Total Collections", fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
+                    Text(inr(s.collectionThisMonth), fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Success)
+                }
+                expenses?.let { exp ->
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        modifier = Modifier.clickable { onExpensesClick() }
+                    ) {
+                        Text("Total Expenses", fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
+                        Text(inr(exp.total), fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Danger)
                     }
                 }
             }
@@ -282,18 +311,9 @@ private fun FinanceCard(s: DashboardStatsDto, expenses: DashboardRepository.Expe
     }
 }
 
-@Composable
-private fun FRow(label: String, value: String, valueColor: Color, last: Boolean = false) {
-    Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-        Text(label, fontSize = 14.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
-        Text(value, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = valueColor)
-    }
-    if (!last) HorizontalDivider(Modifier.padding(vertical = 10.dp), color = Border)
-}
-
 // ─── Alert row ────────────────────────────────────────────────────────────────
 @Composable
-private fun AlertRow(m: ExpiringMemberDto, isOverdue: Boolean) {
+private fun AlertRow(m: ExpiringMemberDto, isOverdue: Boolean, onClick: () -> Unit) {
     val accent = if (isOverdue) Danger else Warning
     val bg     = if (isOverdue) DangerLight else WarningLight
 
@@ -302,6 +322,7 @@ private fun AlertRow(m: ExpiringMemberDto, isOverdue: Boolean) {
             .shadow(2.dp, RoundedCornerShape(14.dp), clip = false)
             .clip(RoundedCornerShape(14.dp))
             .background(Surface)
+            .clickable { onClick() }
     ) {
         Box(Modifier.width(4.dp).fillMaxHeight().background(accent))
         Row(

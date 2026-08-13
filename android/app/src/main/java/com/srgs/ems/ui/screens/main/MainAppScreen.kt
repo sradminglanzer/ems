@@ -308,7 +308,16 @@ private fun MainNavHost(navController: NavHostController, onSignOut: () -> Unit)
         popEnterTransition = { fadeIn(animationSpec  = tween(200)) },
         popExitTransition  = { fadeOut(animationSpec = tween(150)) }
     ) {
-        composable(MainRoute.Dashboard) { DashboardScreen(onSignOut = onSignOut) }
+        composable(MainRoute.Dashboard) {
+            DashboardScreen(
+                onNavigateToMembers      = { navController.navigate(MainRoute.Members) },
+                onNavigateToPlans        = { navController.navigate(MainRoute.FeeStructures) },
+                onNavigateToReports      = { navController.navigate(MainRoute.Reports) },
+                onNavigateToExpenses     = { navController.navigate(MainRoute.Expenses) },
+                onNavigateToMemberDetail = { id -> navController.navigate("main_member_detail/$id") },
+                onSignOut                = onSignOut
+            )
+        }
         composable(MainRoute.Members) {
             MembersScreen(
                 onMemberClick = { id -> navController.navigate("main_member_detail/$id") },
@@ -339,8 +348,14 @@ private fun MainNavHost(navController: NavHostController, onSignOut: () -> Unit)
                 onBack         = { navController.popBackStack() }
             )
         }
-        composable(MainRoute.Attendance)    { AttendanceScreen() }
-        composable(MainRoute.Reports)       { ReportsScreen() }
+        composable(MainRoute.Attendance) { AttendanceScreen() }
+        composable(MainRoute.Reports) {
+            ReportsScreen(
+                onNavigateToMemberDetail = { id -> navController.navigate("main_member_detail/$id") },
+                onNavigateToMembers      = { navController.navigate(MainRoute.Members) },
+                onNavigateToExpenses     = { navController.navigate(MainRoute.Expenses) }
+            )
+        }
         composable(MainRoute.Expenses) {
             ExpensesScreen(
                 onAddExpense = { id ->
@@ -360,7 +375,11 @@ private fun MainNavHost(navController: NavHostController, onSignOut: () -> Unit)
         }
         composable(MainRoute.Staff)         { StaffScreen() }
         composable(MainRoute.FeeGroups)     { FeeGroupsScreen() }
-        composable(MainRoute.FeeStructures) { FeeStructuresScreen() }
+        composable(MainRoute.FeeStructures) {
+            FeeStructuresScreen(
+                onNavigateToMembers = { navController.navigate(MainRoute.Members) }
+            )
+        }
         composable(MainRoute.Exams)         { ExamsScreen() }
         composable(MainRoute.AcademicYears) { AcademicYearsScreen() }
         composable(MainRoute.Settings)      { SettingsScreen() }

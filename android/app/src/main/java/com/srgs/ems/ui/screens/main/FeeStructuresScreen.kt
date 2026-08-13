@@ -44,7 +44,10 @@ private val currencyFmt = NumberFormat.getNumberInstance(Locale("en", "IN"))
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FeeStructuresScreen(vm: FeeStructuresViewModel = viewModel()) {
+fun FeeStructuresScreen(
+    vm: FeeStructuresViewModel = viewModel(),
+    onNavigateToMembers: () -> Unit = {}
+) {
     val session = SessionManager.session
     val isGym = session?.entityType == "gym"
     val classLabel = when (session?.entityType) { "gym" -> "Plan"; "coaching" -> "Batch"; else -> "Class" }
@@ -99,7 +102,12 @@ fun FeeStructuresScreen(vm: FeeStructuresViewModel = viewModel()) {
                         fontSize = 13.sp, color = TextSecondary, modifier = Modifier.padding(vertical = 4.dp))
                 }
                 items(structures, key = { it._id }) { s ->
-                    FeeStructureCard(s, classLabel, onDelete = { vm.deleteTarget.value = s })
+                    FeeStructureCard(
+                        s = s,
+                        classLabel = classLabel,
+                        onClick = onNavigateToMembers,
+                        onDelete = { vm.deleteTarget.value = s }
+                    )
                 }
             }
         }
@@ -127,7 +135,12 @@ fun FeeStructuresScreen(vm: FeeStructuresViewModel = viewModel()) {
 }
 
 @Composable
-private fun FeeStructureCard(s: FeeStructureDto, classLabel: String, onDelete: () -> Unit) {
+private fun FeeStructureCard(
+    s: FeeStructureDto,
+    classLabel: String,
+    onClick: () -> Unit = {},
+    onDelete: () -> Unit
+) {
     val isAddon = s.isAddon
     val groupLabel = when {
         isAddon -> "Add-on Fee Structure"
@@ -136,7 +149,7 @@ private fun FeeStructureCard(s: FeeStructureDto, classLabel: String, onDelete: (
     }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable { onClick() },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),

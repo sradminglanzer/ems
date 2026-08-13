@@ -1,9 +1,9 @@
 package com.srgs.ems.ui.screens.main
 
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -45,9 +45,14 @@ private fun inrFmt(v: Double): String =
     "₹${NumberFormat.getNumberInstance(Locale("en", "IN")).format(v.toLong())}"
 
 // ─────────────────────────────────────────────────────────────────────────────
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun ReportsScreen(vm: ReportsViewModel = viewModel()) {
+fun ReportsScreen(
+    vm: ReportsViewModel = viewModel(),
+    onNavigateToMemberDetail: (memberId: String) -> Unit = {},
+    onNavigateToMembers: () -> Unit = {},
+    onNavigateToExpenses: () -> Unit = {}
+) {
     val academicYearId = AcademicYearManager.selectedYearId
 
     val dateFilter       by vm.dateFilter.collectAsState()
@@ -87,331 +92,361 @@ fun ReportsScreen(vm: ReportsViewModel = viewModel()) {
         topBar         = { EmsTopBar("Business Reports", scrollBehavior) },
         modifier       = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding())) {
+        LazyColumn(
+            contentPadding = PaddingValues(bottom = 80.dp),
+            modifier       = Modifier
+                .fillMaxSize()
+                .padding(top = padding.calculateTopPadding())
+        ) {
 
-            // ── Date filter pills ─────────────────────────────────────────────
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                listOf(
-                    "this_month" to "This Month",
-                    "last_month" to "Last Month",
-                    "3_months"  to "3 Months",
-                    "6_months"  to "6 Months",
-                    "ytd"       to "This Year"
-                ).forEach { (key, label) ->
-                    val sel = dateFilter == key
-                    Surface(
-                        modifier = Modifier.clip(RoundedCornerShape(20.dp))
-                            .clickable { vm.dateFilter.value = key },
-                        shape  = RoundedCornerShape(20.dp),
-                        color  = if (sel) Primary else Surface,
-                        border = if (!sel) BorderStroke(1.dp, Border) else null
+            // ── 1. Scrollable Top Header (Date Filter + KPI Summary Cards) ────
+            item {
+                Column(Modifier.fillMaxWidth()) {
+                    // Date filter pills
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            label,
-                            Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                            fontSize   = 12.sp,
-                            fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
-                            color      = if (sel) Color.White else TextSecondary
-                        )
+                        listOf(
+                            "this_month" to "This Month",
+                            "last_month" to "Last Month",
+                            "3_months"  to "3 Months",
+                            "6_months"  to "6 Months",
+                            "ytd"       to "This Year"
+                        ).forEach { (key, label) ->
+                            val sel = dateFilter == key
+                            Surface(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .clickable { vm.dateFilter.value = key },
+                                shape  = RoundedCornerShape(20.dp),
+                                color  = if (sel) Primary else Surface,
+                                border = if (!sel) BorderStroke(1.dp, Border) else null
+                            ) {
+                                Text(
+                                    label,
+                                    Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                    fontSize   = 12.sp,
+                                    fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
+                                    color      = if (sel) Color.White else TextSecondary
+                                )
+                            }
+                        }
+                    }
+
+                    if (isLoading && summary == null) {
+                        Box(Modifier.fillMaxWidth().height(160.dp), Alignment.Center) {
+                            CircularProgressIndicator(color = Primary, strokeWidth = 3.dp)
+                        }
+                    } else {
+                        // Summary Cards Row
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .padding(bottom = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            SummaryCard(
+                                label  = "Collections",
+                                value  = inrFmt(totalColl),
+                                color  = Success,
+                                icon   = "💰",
+                                modifier = Modifier.weight(1f)
+                            )
+                            SummaryCard(
+                                label  = "Expenses",
+                                value  = inrFmt(totalExp),
+                                color  = Danger,
+                                icon   = "💸",
+                                onClick = onNavigateToExpenses,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        // Net Balance card
+                        Card(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .padding(bottom = 10.dp),
+                            shape     = RoundedCornerShape(14.dp),
+                            colors    = CardDefaults.cardColors(Surface),
+                            elevation = CardDefaults.cardElevation(2.dp),
+                            border    = BorderStroke(1.dp, if (netBalance >= 0) Success.copy(.25f) else Danger.copy(.25f))
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                                Arrangement.SpaceBetween,
+                                Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text("Net Balance", fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        inrFmt(netBalance),
+                                        fontSize   = 22.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color      = if (netBalance >= 0) Success else Danger
+                                    )
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = (if (netBalance >= 0) Success else Danger).copy(alpha = 0.1f)
+                                    ) {
+                                        Text(
+                                            if (netBalance >= 0) "✅ Profit" else "⚠️ Loss",
+                                            Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                            fontSize   = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color      = if (netBalance >= 0) Success else Danger
+                                        )
+                                    }
+                                    if (totalColl > 0) {
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            "$profitPct% margin",
+                                            fontSize = 11.sp,
+                                            color    = TextMuted
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
 
-            if (isLoading && summary == null) {
-                Box(Modifier.fillMaxSize(), Alignment.Center) {
-                    CircularProgressIndicator(color = Primary, strokeWidth = 3.dp)
-                }
-            } else {
-                // ── KPI Summary row ───────────────────────────────────────────
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                        .padding(bottom = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+            // ── 2. STICKY HEADER (Pins Tabs & Search Bar to Top on Scroll) ────
+            stickyHeader {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color    = Background
                 ) {
-                    SummaryCard(
-                        label  = "Collections",
-                        value  = inrFmt(totalColl),
-                        color  = Success,
-                        icon   = "💰",
-                        modifier = Modifier.weight(1f)
-                    )
-                    SummaryCard(
-                        label  = "Expenses",
-                        value  = inrFmt(totalExp),
-                        color  = Danger,
-                        icon   = "💸",
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
-                // Net Balance card
-                Card(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                        .padding(bottom = 12.dp),
-                    shape     = RoundedCornerShape(14.dp),
-                    colors    = CardDefaults.cardColors(Surface),
-                    elevation = CardDefaults.cardElevation(2.dp),
-                    border    = BorderStroke(1.dp, if (netBalance >= 0) Success.copy(.25f) else Danger.copy(.25f))
-                ) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                        Arrangement.SpaceBetween,
-                        Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("Net Balance", fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                inrFmt(netBalance),
-                                fontSize   = 22.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color      = if (netBalance >= 0) Success else Danger
-                            )
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = (if (netBalance >= 0) Success else Danger).copy(alpha = 0.1f)
-                            ) {
-                                Text(
-                                    if (netBalance >= 0) "✅ Profit" else "⚠️ Loss",
-                                    Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                    fontSize   = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color      = if (netBalance >= 0) Success else Danger
-                                )
-                            }
-                            if (totalColl > 0) {
-                                Spacer(Modifier.height(4.dp))
-                                Text(
-                                    "$profitPct% margin",
-                                    fontSize = 11.sp,
-                                    color    = TextMuted
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // ── Tab pills ─────────────────────────────────────────────────
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    listOf(
-                        "payment_history" to "💳 Payments",
-                        "billing_plans"   to "📋 Plans",
-                        "addons"          to "🧩 Add-ons",
-                        "expenses"        to "💸 Expenses"
-                    ).forEach { (key, label) ->
-                        val sel = activeTab == key
-                        Surface(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable { vm.activeTab.value = key },
-                            shape  = RoundedCornerShape(10.dp),
-                            color  = if (sel) Primary.copy(alpha = 0.1f) else Color.Transparent,
-                            border = BorderStroke(1.dp, if (sel) Primary else Border)
+                    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                        // Tab pills
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text(
-                                label,
-                                Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                fontSize   = 12.sp,
-                                fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
-                                color      = if (sel) Primary else TextSecondary
+                            listOf(
+                                "payment_history" to "💳 Payments",
+                                "billing_plans"   to "📋 Plans",
+                                "addons"          to "🧩 Add-ons",
+                                "expenses"        to "💸 Expenses"
+                            ).forEach { (key, label) ->
+                                val sel = activeTab == key
+                                Surface(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable { vm.activeTab.value = key },
+                                    shape  = RoundedCornerShape(10.dp),
+                                    color  = if (sel) Primary.copy(alpha = 0.12f) else Surface,
+                                    border = BorderStroke(1.dp, if (sel) Primary else Border)
+                                ) {
+                                    Text(
+                                        label,
+                                        Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                        fontSize   = 12.sp,
+                                        fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
+                                        color      = if (sel) Primary else TextSecondary
+                                    )
+                                }
+                            }
+                        }
+
+                        // Persistent Search Bar & Payment Method Filter Chips (for Payments tab)
+                        if (activeTab == "payment_history") {
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value          = searchQuery,
+                                onValueChange  = { vm.searchQuery.value = it },
+                                placeholder    = { Text("Search member, plan, receipt…", fontSize = 13.sp) },
+                                singleLine     = true,
+                                modifier       = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp),
+                                shape          = RoundedCornerShape(12.dp),
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+                                colors         = OutlinedTextFieldDefaults.colors(
+                                    unfocusedBorderColor    = Border,
+                                    focusedBorderColor      = Primary,
+                                    focusedContainerColor   = Surface,
+                                    unfocusedContainerColor = Surface
+                                )
                             )
+                            Spacer(Modifier.height(6.dp))
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                listOf("all" to "All", "cash" to "💵 Cash", "upi" to "📱 UPI", "online" to "🌐 Online", "card" to "💳 Card").forEach { (key, label) ->
+                                    val sel = methodFilter == key
+                                    Surface(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(16.dp))
+                                            .clickable { vm.paymentMethodFilter.value = key },
+                                        shape  = RoundedCornerShape(16.dp),
+                                        color  = if (sel) Primary else Surface,
+                                        border = if (!sel) BorderStroke(1.dp, Border) else null
+                                    ) {
+                                        Text(
+                                            label,
+                                            Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                            fontSize   = 11.sp,
+                                            fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
+                                            color      = if (sel) Color.White else TextSecondary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        HorizontalDivider(color = Border)
+                    }
+                }
+            }
+
+            // ── 3. Tab List Items (Maximized Scroll Height) ───────────────────
+            when (activeTab) {
+
+                // ── PAYMENTS TAB ──────────────────────────────────────────────
+                "payment_history" -> {
+                    if (isTabLoading && paymentsResponse == null) {
+                        item {
+                            Box(Modifier.fillMaxWidth().height(200.dp), Alignment.Center) {
+                                CircularProgressIndicator(color = Primary, strokeWidth = 3.dp)
+                            }
+                        }
+                    } else {
+                        val payments = paymentsResponse?.payments ?: emptyList()
+                        if (payments.isEmpty()) {
+                            item { EmptyState(if (searchQuery.isNotBlank()) "No results for \"$searchQuery\"" else "No payments for this period.") }
+                        } else {
+                            item {
+                                Text(
+                                    "${paymentsResponse?.total ?: payments.size} payment${if (payments.size != 1) "s" else ""}",
+                                    Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                    fontSize = 12.sp, color = TextMuted, fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            items(payments, key = { it._id }) { p ->
+                                Box(Modifier.padding(horizontal = 16.dp, vertical = 5.dp)) {
+                                    PaymentHistoryCard(
+                                        p = p,
+                                        onClick = { if (p.memberId.isNotBlank()) onNavigateToMemberDetail(p.memberId) }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
-                Spacer(Modifier.height(10.dp))
-                HorizontalDivider(color = Border)
 
-                // ── Tab content ───────────────────────────────────────────────
-                AnimatedContent(
-                    targetState = activeTab,
-                    transitionSpec = { fadeIn() togetherWith fadeOut() },
-                    label = "tab_switch"
-                ) { tab ->
-                    when (tab) {
-
-                        // ── PAYMENTS ──────────────────────────────────────────
-                        "payment_history" -> {
-                            Column {
-                                // Search bar
-                                OutlinedTextField(
-                                    value          = searchQuery,
-                                    onValueChange  = { vm.searchQuery.value = it },
-                                    placeholder    = { Text("Search member, plan, receipt…", fontSize = 13.sp) },
-                                    singleLine     = true,
-                                    modifier       = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                                    shape          = RoundedCornerShape(12.dp),
-                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                                    keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
-                                    colors         = OutlinedTextFieldDefaults.colors(
-                                        unfocusedBorderColor = Border,
-                                        focusedBorderColor   = Primary
-                                    )
+                // ── PLANS TAB ─────────────────────────────────────────────────
+                "billing_plans" -> {
+                    if (isTabLoading && plansResponse == null) {
+                        item {
+                            Box(Modifier.fillMaxWidth().height(200.dp), Alignment.Center) {
+                                CircularProgressIndicator(color = Primary, strokeWidth = 3.dp)
+                            }
+                        }
+                    } else {
+                        val plans = plansResponse?.plans ?: emptyList()
+                        if (plans.isEmpty()) {
+                            item { EmptyState("No billing plans configured.") }
+                        } else {
+                            item {
+                                Text(
+                                    "${plans.size} plan${if (plans.size != 1) "s" else ""} · Total collected ${inrFmt(plans.sumOf { it.collectedAmount })}",
+                                    Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                    fontSize = 12.sp, color = TextMuted, fontWeight = FontWeight.SemiBold
                                 )
-
-                                // Payment method quick filters
-                                Row(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState())
-                                        .padding(horizontal = 16.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    listOf("all" to "All", "cash" to "💵 Cash", "upi" to "📱 UPI", "online" to "🌐 Online", "card" to "💳 Card").forEach { (key, label) ->
-                                        val sel = methodFilter == key
-                                        Surface(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(16.dp))
-                                                .clickable { vm.paymentMethodFilter.value = key },
-                                            shape  = RoundedCornerShape(16.dp),
-                                            color  = if (sel) Primary else Surface,
-                                            border = if (!sel) BorderStroke(1.dp, Border) else null
-                                        ) {
-                                            Text(
-                                                label,
-                                                Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                                fontSize   = 11.sp,
-                                                fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
-                                                color      = if (sel) Color.White else TextSecondary
-                                            )
-                                        }
-                                    }
-                                }
-                                Spacer(Modifier.height(8.dp))
-
-                                if (isTabLoading && paymentsResponse == null) {
-                                    Box(Modifier.fillMaxWidth().weight(1f), Alignment.Center) {
-                                        CircularProgressIndicator(color = Primary, strokeWidth = 3.dp)
-                                    }
-                                } else {
-                                    val payments = paymentsResponse?.payments ?: emptyList()
-                                    LazyColumn(
-                                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                                        modifier = Modifier.fillMaxSize()
-                                    ) {
-                                        if (payments.isEmpty()) {
-                                            item { EmptyState(if (searchQuery.isNotBlank()) "No results for \"$searchQuery\"" else "No payments for this period.") }
-                                        } else {
-                                            item {
-                                                Text(
-                                                    "${paymentsResponse?.total ?: payments.size} payment${if (payments.size != 1) "s" else ""}",
-                                                    fontSize = 12.sp, color = TextMuted, fontWeight = FontWeight.SemiBold
-                                                )
-                                            }
-                                            items(payments, key = { it._id }) { p ->
-                                                PaymentHistoryCard(p)
-                                            }
-                                        }
-                                    }
+                            }
+                            items(plans, key = { it.id }) { plan ->
+                                Box(Modifier.padding(horizontal = 16.dp, vertical = 5.dp)) {
+                                    PlanBreakdownCard(
+                                        plan = plan,
+                                        totalCollections = totalColl,
+                                        accentColor = Primary,
+                                        onMembersClick = onNavigateToMembers
+                                    )
                                 }
                             }
                         }
+                    }
+                }
 
-                        // ── PLANS ─────────────────────────────────────────────
-                        "billing_plans" -> {
-                            if (isTabLoading && plansResponse == null) {
-                                Box(Modifier.fillMaxSize(), Alignment.Center) {
-                                    CircularProgressIndicator(color = Primary, strokeWidth = 3.dp)
-                                }
-                            } else {
-                                val plans = plansResponse?.plans ?: emptyList()
-                                LazyColumn(
-                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                                    modifier = Modifier.fillMaxSize()
-                                ) {
-                                    if (plans.isEmpty()) {
-                                        item { EmptyState("No billing plans configured.") }
-                                    } else {
-                                        item {
-                                            Text(
-                                                "${plans.size} plan${if (plans.size != 1) "s" else ""} · Total collected ${inrFmt(plans.sumOf { it.collectedAmount })}",
-                                                fontSize = 12.sp, color = TextMuted, fontWeight = FontWeight.SemiBold
-                                            )
-                                        }
-                                        items(plans, key = { it.id }) { plan ->
-                                            PlanBreakdownCard(plan = plan, totalCollections = totalColl, accentColor = Primary)
-                                        }
-                                    }
+                // ── ADD-ONS TAB ───────────────────────────────────────────────
+                "addons" -> {
+                    if (isTabLoading && plansResponse == null) {
+                        item {
+                            Box(Modifier.fillMaxWidth().height(200.dp), Alignment.Center) {
+                                CircularProgressIndicator(color = Primary, strokeWidth = 3.dp)
+                            }
+                        }
+                    } else {
+                        val addons = plansResponse?.addons ?: emptyList()
+                        if (addons.isEmpty()) {
+                            item { EmptyState("No add-on services configured.") }
+                        } else {
+                            item {
+                                Text(
+                                    "${addons.size} add-on${if (addons.size != 1) "s" else ""} · Total collected ${inrFmt(addons.sumOf { it.collectedAmount })}",
+                                    Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                    fontSize = 12.sp, color = TextMuted, fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            items(addons, key = { it.id }) { addon ->
+                                Box(Modifier.padding(horizontal = 16.dp, vertical = 5.dp)) {
+                                    PlanBreakdownCard(
+                                        plan = addon,
+                                        totalCollections = totalColl,
+                                        accentColor = AccentPurple,
+                                        onMembersClick = onNavigateToMembers
+                                    )
                                 }
                             }
                         }
+                    }
+                }
 
-                        // ── ADD-ONS ───────────────────────────────────────────
-                        "addons" -> {
-                            if (isTabLoading && plansResponse == null) {
-                                Box(Modifier.fillMaxSize(), Alignment.Center) {
-                                    CircularProgressIndicator(color = Primary, strokeWidth = 3.dp)
-                                }
-                            } else {
-                                val addons = plansResponse?.addons ?: emptyList()
-                                LazyColumn(
-                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                                    modifier = Modifier.fillMaxSize()
-                                ) {
-                                    if (addons.isEmpty()) {
-                                        item { EmptyState("No add-on services configured.") }
-                                    } else {
-                                        item {
-                                            Text(
-                                                "${addons.size} add-on${if (addons.size != 1) "s" else ""} · Total collected ${inrFmt(addons.sumOf { it.collectedAmount })}",
-                                                fontSize = 12.sp, color = TextMuted, fontWeight = FontWeight.SemiBold
-                                            )
-                                        }
-                                        items(addons, key = { it.id }) { addon ->
-                                            PlanBreakdownCard(plan = addon, totalCollections = totalColl, accentColor = AccentPurple)
-                                        }
-                                    }
-                                }
+                // ── EXPENSES TAB ──────────────────────────────────────────────
+                "expenses" -> {
+                    if (isTabLoading && expensesResponse == null) {
+                        item {
+                            Box(Modifier.fillMaxWidth().height(200.dp), Alignment.Center) {
+                                CircularProgressIndicator(color = Primary, strokeWidth = 3.dp)
                             }
                         }
-
-                        // ── EXPENSES ──────────────────────────────────────────
-                        "expenses" -> {
-                            if (isTabLoading && expensesResponse == null) {
-                                Box(Modifier.fillMaxSize(), Alignment.Center) {
-                                    CircularProgressIndicator(color = Primary, strokeWidth = 3.dp)
-                                }
-                            } else {
-                                val expList = expensesResponse?.expenses ?: emptyList()
-                                LazyColumn(
-                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                                    modifier = Modifier.fillMaxSize()
-                                ) {
-                                    if (expList.isEmpty()) {
-                                        item { EmptyState("No expenses recorded for this period.") }
-                                    } else {
-                                        item {
-                                            Text(
-                                                "${expList.size} categor${if (expList.size != 1) "ies" else "y"} · Total ${inrFmt(totalExp)}",
-                                                fontSize = 12.sp, color = TextMuted, fontWeight = FontWeight.SemiBold
-                                            )
-                                        }
-                                        items(expList, key = { it._id }) { exp ->
-                                            ExpenseCategoryCard(exp = exp, totalExpenses = totalExp)
-                                        }
-                                    }
+                    } else {
+                        val expList = expensesResponse?.expenses ?: emptyList()
+                        if (expList.isEmpty()) {
+                            item { EmptyState("No expenses recorded for this period.") }
+                        } else {
+                            item {
+                                Text(
+                                    "${expList.size} categor${if (expList.size != 1) "ies" else "y"} · Total ${inrFmt(totalExp)}",
+                                    Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                    fontSize = 12.sp, color = TextMuted, fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            items(expList, key = { it._id }) { exp ->
+                                Box(Modifier.padding(horizontal = 16.dp, vertical = 5.dp)) {
+                                    ExpenseCategoryCard(
+                                        exp = exp,
+                                        totalExpenses = totalExp,
+                                        onClick = onNavigateToExpenses
+                                    )
                                 }
                             }
                         }
@@ -427,9 +462,16 @@ fun ReportsScreen(vm: ReportsViewModel = viewModel()) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun SummaryCard(label: String, value: String, color: Color, icon: String, modifier: Modifier) {
+private fun SummaryCard(
+    label: String,
+    value: String,
+    color: Color,
+    icon: String,
+    onClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
     Card(
-        modifier  = modifier,
+        modifier  = modifier.then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
         shape     = RoundedCornerShape(12.dp),
         colors    = CardDefaults.cardColors(Surface),
         elevation = CardDefaults.cardElevation(2.dp)
@@ -457,7 +499,7 @@ private fun SummaryCard(label: String, value: String, color: Color, icon: String
 }
 
 @Composable
-private fun PaymentHistoryCard(p: DetailedPaymentHistoryDto) {
+private fun PaymentHistoryCard(p: DetailedPaymentHistoryDto, onClick: () -> Unit) {
     val methodColor = when (p.paymentMethod.lowercase()) {
         "upi"    -> AccentGreen
         "card"   -> AccentBlue
@@ -465,7 +507,7 @@ private fun PaymentHistoryCard(p: DetailedPaymentHistoryDto) {
         else     -> AccentOrange   // cash
     }
     Card(
-        Modifier.fillMaxWidth(),
+        Modifier.fillMaxWidth().clickable { onClick() },
         shape     = RoundedCornerShape(12.dp),
         colors    = CardDefaults.cardColors(Surface),
         elevation = CardDefaults.cardElevation(0.dp),
@@ -568,7 +610,12 @@ private fun PaymentHistoryCard(p: DetailedPaymentHistoryDto) {
 }
 
 @Composable
-private fun PlanBreakdownCard(plan: PlanBreakdownDto, totalCollections: Double, accentColor: Color) {
+private fun PlanBreakdownCard(
+    plan: PlanBreakdownDto,
+    totalCollections: Double,
+    accentColor: Color,
+    onMembersClick: () -> Unit
+) {
     val ratio = if (totalCollections > 0) (plan.collectedAmount / totalCollections).coerceIn(0.0, 1.0).toFloat() else 0f
     val pct   = (ratio * 100).toInt()
 
@@ -612,14 +659,15 @@ private fun PlanBreakdownCard(plan: PlanBreakdownDto, totalCollections: Double, 
 
             // Footer – member count badge
             Surface(
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onMembersClick() },
                 shape = RoundedCornerShape(8.dp),
-                color = accentColor.copy(alpha = 0.08f)
+                color = accentColor.copy(alpha = 0.12f)
             ) {
                 Text(
-                    "👥  ${plan.memberCount} ${if (plan.isAddon) "subscribed" else "assigned"}",
+                    "👥  ${plan.memberCount} ${if (plan.isAddon) "subscribed" else "assigned"}  →",
                     Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                     fontSize   = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Bold,
                     color      = accentColor
                 )
             }
@@ -628,12 +676,12 @@ private fun PlanBreakdownCard(plan: PlanBreakdownDto, totalCollections: Double, 
 }
 
 @Composable
-private fun ExpenseCategoryCard(exp: TopExpenseDto, totalExpenses: Double) {
+private fun ExpenseCategoryCard(exp: TopExpenseDto, totalExpenses: Double, onClick: () -> Unit) {
     val ratio = if (totalExpenses > 0) (exp.total / totalExpenses).coerceIn(0.0, 1.0).toFloat() else 0f
     val pct   = (ratio * 100).toInt()
 
     Card(
-        Modifier.fillMaxWidth(),
+        Modifier.fillMaxWidth().clickable { onClick() },
         shape     = RoundedCornerShape(12.dp),
         colors    = CardDefaults.cardColors(Surface),
         elevation = CardDefaults.cardElevation(1.dp),

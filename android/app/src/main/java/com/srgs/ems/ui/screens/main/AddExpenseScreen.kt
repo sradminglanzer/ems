@@ -2,28 +2,20 @@ package com.srgs.ems.ui.screens.main
 
 import android.app.DatePickerDialog
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -31,7 +23,6 @@ import com.srgs.ems.data.repository.SaveResult
 import com.srgs.ems.ui.theme.*
 import com.srgs.ems.viewmodel.AddExpenseViewModel
 import java.util.Calendar
-
 
 private val CATEGORIES = listOf(
     "Rent / Lease", "Electricity", "Water", "Internet & Phone",
@@ -48,9 +39,6 @@ fun AddExpenseScreen(
     onBack: () -> Unit,
     vm: AddExpenseViewModel = viewModel()
 ) {
-    // We assume if editing, data should be fetched. But since we didn't pass full data in route,
-    // we would ideally fetch it. For now, we will just support adding or if data was pre-loaded.
-    // Given the Phase 4 scope, we'll initialize with basic support.
     LaunchedEffect(expenseId) {
         if (expenseId == null) vm.initialize(null, null, null, null, null, null, null, null, null, null)
     }
@@ -101,125 +89,217 @@ fun AddExpenseScreen(
             )
         }
     ) { pad ->
-        LazyColumn(contentPadding = PaddingValues(top = pad.calculateTopPadding() + 8.dp, bottom = 80.dp), modifier = Modifier.fillMaxSize()) {
-                item {
-                    Card(Modifier.fillMaxWidth().padding(16.dp), RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(Surface), elevation = CardDefaults.cardElevation(2.dp)) {
-                        Column(Modifier.padding(16.dp)) {
-                            TField("Title *", title, { vm.title.value = it })
-                            
-                            // Category Dropdown
-                            Text("Category *", fontSize = 12.sp, color = TextSecondary, modifier = Modifier.padding(bottom = 4.dp))
-                            var expanded by remember { mutableStateOf(false) }
-                            Box {
-                                OutlinedTextField(
-                                    value = category, onValueChange = {}, modifier = Modifier.fillMaxWidth().clickable { expanded = true },
-                                    readOnly = true, singleLine = true, shape = RoundedCornerShape(8.dp),
-                                    colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Border, focusedBorderColor = Primary)
+        LazyColumn(
+            contentPadding = PaddingValues(top = pad.calculateTopPadding() + 8.dp, bottom = 80.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            item {
+                Card(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(Surface),
+                    elevation = CardDefaults.cardElevation(2.dp)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        // Title
+                        TField(
+                            label = "Title *",
+                            value = title,
+                            onValueChange = { vm.title.value = it }
+                        )
+
+                        // Category Dropdown
+                        Text("Category *", fontSize = 12.sp, color = TextSecondary, modifier = Modifier.padding(bottom = 4.dp))
+                        var expanded by remember { mutableStateOf(false) }
+                        Box(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                            OutlinedTextField(
+                                value = if (category.isEmpty()) "Select Category" else category,
+                                onValueChange = {},
+                                modifier = Modifier.fillMaxWidth(),
+                                readOnly = true,
+                                singleLine = true,
+                                shape = RoundedCornerShape(8.dp),
+                                trailingIcon = { Text("▼", fontSize = 12.sp, color = TextSecondary) },
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    unfocusedBorderColor = if (category.isEmpty()) Border else Primary,
+                                    focusedBorderColor   = Primary
                                 )
-                                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                                    CATEGORIES.forEach { cat ->
-                                        DropdownMenuItem(text = { Text(cat) }, onClick = { vm.category.value = cat; expanded = false })
-                                    }
+                            )
+                            Box(
+                                Modifier
+                                    .matchParentSize()
+                                    .clickable { expanded = true }
+                            )
+                            DropdownMenu(
+                                expanded = expanded,
+                                onDismissRequest = { expanded = false },
+                                modifier = Modifier.fillMaxWidth(0.85f)
+                            ) {
+                                CATEGORIES.forEach { cat ->
+                                    DropdownMenuItem(
+                                        text = { Text(cat, fontSize = 14.sp) },
+                                        onClick = {
+                                            vm.category.value = cat
+                                            expanded = false
+                                        }
+                                    )
                                 }
                             }
-                            Spacer(Modifier.height(12.dp))
+                        }
 
-                            TField("Amount *", amount, { vm.amount.value = it })
+                        // Amount (Restricted to Decimal / Numbers only)
+                        TField(
+                            label = "Amount (₹) *",
+                            value = amount,
+                            keyboardType = KeyboardType.Decimal,
+                            onValueChange = { input ->
+                                if (input.isEmpty() || input.matches(Regex("^\\d*\\.?\\d{0,2}$"))) {
+                                    vm.amount.value = input
+                                }
+                            }
+                        )
 
-                            // Date Picker
-                            Text("Expense Date", fontSize = 12.sp, color = TextSecondary, modifier = Modifier.padding(bottom = 4.dp))
+                        // Expense Date Picker
+                        Text("Expense Date", fontSize = 12.sp, color = TextSecondary, modifier = Modifier.padding(bottom = 4.dp))
+                        Box(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
                             OutlinedTextField(
-                                value = expenseDate, onValueChange = {}, modifier = Modifier.fillMaxWidth().clickable { showDatePicker() },
-                                readOnly = true, singleLine = true, shape = RoundedCornerShape(8.dp),
+                                value = expenseDate,
+                                onValueChange = {},
+                                modifier = Modifier.fillMaxWidth(),
+                                readOnly = true,
+                                singleLine = true,
+                                shape = RoundedCornerShape(8.dp),
                                 trailingIcon = { Text("📅", fontSize = 16.sp) },
-                                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Border, focusedBorderColor = Primary)
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    unfocusedBorderColor = Border,
+                                    focusedBorderColor   = Primary
+                                )
                             )
-                            Spacer(Modifier.height(12.dp))
+                            Box(
+                                Modifier
+                                    .matchParentSize()
+                                    .clickable { showDatePicker() }
+                            )
+                        }
 
-                            Text("Payment Method", fontSize = 12.sp, color = TextSecondary, modifier = Modifier.padding(bottom = 4.dp))
-                            Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf("cash", "upi", "bank_transfer", "card").forEach { m ->
-                                    val sel = paymentMethod == m
+                        // Payment Method Selection
+                        Text("Payment Method", fontSize = 12.sp, color = TextSecondary, modifier = Modifier.padding(bottom = 4.dp))
+                        Row(
+                            Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf("cash", "upi", "bank_transfer", "card").forEach { m ->
+                                val sel = paymentMethod == m
+                                Surface(
+                                    modifier = Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).clickable { vm.paymentMethod.value = m },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (sel) Primary else Background,
+                                    border = if (!sel) BorderStroke(1.dp, Border) else null
+                                ) {
+                                    Text(
+                                        m.replace("_", " ").uppercase(),
+                                        Modifier.padding(vertical = 10.dp),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (sel) Color.White else TextSecondary,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                    )
+                                }
+                            }
+                        }
+
+                        // Vendor & Notes
+                        TField(label = "Vendor / Payee", value = vendor, onValueChange = { vm.vendor.value = it })
+                        TField(label = "Notes", value = notes, onValueChange = { vm.notes.value = it })
+
+                        // Recurring Switch
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Is this a recurring expense?", Modifier.weight(1f), fontSize = 14.sp)
+                            Switch(checked = isRecurring, onCheckedChange = { vm.isRecurring.value = it })
+                        }
+
+                        if (isRecurring) {
+                            Text("Frequency", fontSize = 12.sp, color = TextSecondary, modifier = Modifier.padding(bottom = 4.dp))
+                            Row(
+                                Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                listOf("weekly", "monthly", "annual").forEach { f ->
+                                    val sel = recurringFrequency == f
                                     Surface(
-                                        modifier = Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).clickable { vm.paymentMethod.value = m },
-                                        shape = RoundedCornerShape(8.dp), color = if (sel) Primary else Background,
+                                        modifier = Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).clickable { vm.recurringFrequency.value = f },
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (sel) Primary else Background,
                                         border = if (!sel) BorderStroke(1.dp, Border) else null
                                     ) {
-                                        Text(m.replace("_", " ").uppercase(), Modifier.padding(vertical = 10.dp),
-                                            fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                        Text(
+                                            f.uppercase(),
+                                            Modifier.padding(vertical = 10.dp),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
                                             color = if (sel) Color.White else TextSecondary,
-                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                                    }
-                                }
-                            }
-
-                            TField("Vendor / Payee", vendor, { vm.vendor.value = it })
-                            TField("Notes", notes, { vm.notes.value = it })
-
-                            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text("Is this a recurring expense?", Modifier.weight(1f), fontSize = 14.sp)
-                                Switch(checked = isRecurring, onCheckedChange = { vm.isRecurring.value = it })
-                            }
-
-                            if (isRecurring) {
-                                Text("Frequency", fontSize = 12.sp, color = TextSecondary, modifier = Modifier.padding(bottom = 4.dp))
-                                Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    listOf("weekly", "monthly", "annual").forEach { f ->
-                                        val sel = recurringFrequency == f
-                                        Surface(
-                                            modifier = Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).clickable { vm.recurringFrequency.value = f },
-                                            shape = RoundedCornerShape(8.dp), color = if (sel) Primary else Background,
-                                            border = if (!sel) BorderStroke(1.dp, Border) else null
-                                        ) {
-                                            Text(f.uppercase(), Modifier.padding(vertical = 10.dp),
-                                                fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                                                color = if (sel) Color.White else TextSecondary,
-                                                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                                        }
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                        )
                                     }
                                 }
                             }
                         }
                     }
-                }
-
-                item {
-                    Spacer(Modifier.height(16.dp))
-                    Button(
-                        onClick = { vm.submit() },
-                        enabled = !isSubmitting,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(50.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Primary)
-                    ) {
-                        if (isSubmitting) CircularProgressIndicator(Modifier.size(20.dp), Color.White, 2.dp)
-                        else Text(if (vm.isEditing) "Save Changes" else "Add Expense", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    }
-                    if (vm.isEditing) {
-                        Spacer(Modifier.height(12.dp))
-                        OutlinedButton(
-                            onClick = { vm.deleteExpense() },
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(50.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, Danger)
-                        ) {
-                            Text("Delete Expense", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Danger)
-                        }
-                    }
-                    Spacer(Modifier.height(32.dp))
                 }
             }
+
+            item {
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    onClick = { vm.submit() },
+                    enabled = !isSubmitting,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(50.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                ) {
+                    if (isSubmitting) CircularProgressIndicator(Modifier.size(20.dp), Color.White, 2.dp)
+                    else Text(if (vm.isEditing) "Save Changes" else "Add Expense", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+                if (vm.isEditing) {
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = { vm.deleteExpense() },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(50.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Danger)
+                    ) {
+                        Text("Delete Expense", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Danger)
+                    }
+                }
+                Spacer(Modifier.height(32.dp))
+            }
+        }
     }
 }
 
 @Composable
-private fun TField(label: String, value: String, onValueChange: (String) -> Unit) {
+private fun TField(
+    label: String,
+    value: String,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    onValueChange: (String) -> Unit
+) {
     Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
         Text(label, fontSize = 12.sp, color = TextSecondary, modifier = Modifier.padding(bottom = 4.dp))
         OutlinedTextField(
-            value = value, onValueChange = onValueChange, modifier = Modifier.fillMaxWidth(),
-            singleLine = true, shape = RoundedCornerShape(8.dp),
-            colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Border, focusedBorderColor = Primary)
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            shape = RoundedCornerShape(8.dp),
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+            colors = OutlinedTextFieldDefaults.colors(
+                unfocusedBorderColor = Border,
+                focusedBorderColor   = Primary
+            )
         )
     }
 }
