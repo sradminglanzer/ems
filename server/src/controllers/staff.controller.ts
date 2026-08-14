@@ -53,8 +53,8 @@ export const createStaff = async (req: AuthRequest, res: Response, next: NextFun
             throw new AppError('Name, Contact Number, and Role are required', HTTP_STATUS.BAD_REQUEST);
         }
 
-        // 1. Insert into staff collection
-        const staff = new Staff({ entityId, name, contactNumber, role });
+        // 1. Insert into staff collection with all HR fields
+        const staff = new Staff({ ...req.body, entityId });
         const staffInsertResult = await staffService.insert(staff);
 
         // 2. Check entity-settings for role enable_login flag
@@ -86,13 +86,60 @@ export const createStaff = async (req: AuthRequest, res: Response, next: NextFun
             }
         }
 
+        const createdDoc = await staffService.getOne({ _id: staffInsertResult.insertedId });
+
         res.status(HTTP_STATUS.CREATED).json({
+            ...createdDoc,
             _id: staffInsertResult.insertedId.toString(),
-            entityId,
-            name,
-            contactNumber,
-            role,
             enableLogin: shouldEnableLogin
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/** PUT /api/staff/:id — Update staff profile and HR details */
+export const updateStaff = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        if (!req.user?.entityId) {
+            throw new AppError('Entity ID is required', HTTP_STATUS.BAD_REQUEST);
+        }
+        const staffId = req.params.id as string;
+        if (!staffId || !ObjectId.isValid(staffId)) {
+            throw new AppError('Valid Staff ID is required', HTTP_STATUS.BAD_REQUEST);
+        }
+
+        const entityId = req.user.entityId.toString();
+        const existing = await staffService.getOne({
+            _id: new ObjectId(staffId),
+            entityId: new ObjectId(entityId)
+        });
+
+        if (!existing) {
+            throw new AppError('Staff member not found', HTTP_STATUS.NOT_FOUND);
+        }
+
+        const updateData = {
+            ...req.body,
+            entityId: new ObjectId(entityId),
+            updatedAt: new Date()
+        };
+        delete updateData._id;
+
+        await staffService.update({ _id: new ObjectId(staffId) }, { $set: updateData });
+
+        // Update user account name/role if exists
+        if (req.body.name || req.body.role) {
+            await userService.update(
+                { entityId: new ObjectId(entityId), contactNumber: existing.contactNumber },
+                { $set: { ...(req.body.name && { name: req.body.name }), ...(req.body.role && { role: req.body.role }) } }
+            );
+        }
+
+        const updatedStaff = await staffService.getOne({ _id: new ObjectId(staffId) });
+        res.status(HTTP_STATUS.OK).json({
+            ...updatedStaff,
+            _id: staffId
         });
     } catch (error) {
         next(error);

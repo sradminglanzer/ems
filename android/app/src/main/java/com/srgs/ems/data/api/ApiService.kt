@@ -138,6 +138,9 @@ interface ApiService {
     @POST("staff")
     suspend fun createStaff(@Body request: CreateStaffRequest): Response<StaffDto>
 
+    @PUT("staff/{id}")
+    suspend fun updateStaff(@Path("id") id: String, @Body request: CreateStaffRequest): Response<StaffDto>
+
     @DELETE("staff/{id}")
     suspend fun deleteStaff(@Path("id") id: String): Response<Unit>
 
@@ -631,6 +634,15 @@ data class StaffDto(
     val name: String = "",
     val contactNumber: String = "",
     val role: String = "staff",
+    val email: String? = null,
+    val designation: String? = null,
+    val qualifications: List<String> = emptyList(),
+    val monthlySalary: Double? = null,
+    val salaryType: String = "monthly",
+    val joiningDate: String? = null,
+    val employmentType: String = "full-time",
+    val status: String = "active",
+    val address: String? = null,
     val enableLogin: Boolean = false,
     val hasUserAccount: Boolean = false
 )
@@ -638,7 +650,16 @@ data class StaffDto(
 data class CreateStaffRequest(
     val name: String,
     val contactNumber: String,
-    val role: String
+    val role: String,
+    val email: String? = null,
+    val designation: String? = null,
+    val qualifications: List<String> = emptyList(),
+    val monthlySalary: Double? = null,
+    val salaryType: String? = "monthly",
+    val joiningDate: String? = null,
+    val employmentType: String? = "full-time",
+    val status: String? = "active",
+    val address: String? = null
 )
 
 data class StaffRoleSettingDto(

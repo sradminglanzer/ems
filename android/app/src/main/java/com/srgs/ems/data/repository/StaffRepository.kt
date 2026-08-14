@@ -20,10 +20,19 @@ class StaffRepository(context: Context) {
         } catch (_: Exception) { null }
     }
 
-    suspend fun createStaff(name: String, contactNumber: String, role: String): SaveResult {
+    suspend fun createStaff(req: CreateStaffRequest): SaveResult {
         return try {
-            val res = api.createStaff(CreateStaffRequest(name, contactNumber, role))
+            val res = api.createStaff(req)
             if (res.isSuccessful) SaveResult.Success else SaveResult.Error("Failed to create staff member")
+        } catch (e: Exception) {
+            SaveResult.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun updateStaff(id: String, req: CreateStaffRequest): SaveResult {
+        return try {
+            val res = api.updateStaff(id, req)
+            if (res.isSuccessful) SaveResult.Success else SaveResult.Error("Failed to update staff member")
         } catch (e: Exception) {
             SaveResult.Error(e.message ?: "Unknown error")
         }
