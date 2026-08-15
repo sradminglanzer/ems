@@ -153,6 +153,19 @@ interface ApiService {
     @PUT("entity-settings")
     suspend fun updateEntitySettings(@Body settings: EntitySettingsDto): Response<EntitySettingsDto>
 
+    // ── Salary Payments & Payroll ──────────────────────────────────────────────
+    @GET("salary-payments")
+    suspend fun getMonthlyPayroll(
+        @Query("month") month: Int,
+        @Query("year") year: Int
+    ): Response<MonthlyPayrollResponseDto>
+
+    @POST("salary-payments")
+    suspend fun processSalary(@Body request: ProcessSalaryRequest): Response<SalaryPaymentRecordDto>
+
+    @GET("salary-payments/{id}/payslip")
+    suspend fun getPayslip(@Path("id") id: String): Response<SalaryPaymentRecordDto>
+
     // ── Fee Groups ──────────────────────────────────────────────────────────────
     @GET("fee-groups")
     suspend fun getFeeGroups(): Response<List<FeeGroupDto>>
@@ -677,6 +690,62 @@ data class EntitySettingsDto(
 data class ToggleLoginResponseDto(
     val message: String = "",
     val enableLogin: Boolean = false
+)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  SALARY & PAYROLL DTOs
+// ═══════════════════════════════════════════════════════════════════════════════
+
+data class SalaryPaymentRecordDto(
+    @SerializedName("_id") val _id: String = "",
+    val entityId: String = "",
+    val staffId: String = "",
+    val staffName: String = "",
+    val staffRole: String = "",
+    val month: Int = 1,
+    val year: Int = 2026,
+    val baseSalary: Double = 0.0,
+    val allowances: Double = 0.0,
+    val deductions: Double = 0.0,
+    val netSalary: Double = 0.0,
+    val paymentDate: String = "",
+    val paymentMethod: String = "bank_transfer",
+    val status: String = "paid",
+    val remarks: String? = null,
+    val expenseId: String? = null
+)
+
+data class PayrollStaffItemDto(
+    val staffId: String = "",
+    val staffName: String = "",
+    val staffRole: String = "",
+    val designation: String? = null,
+    val contactNumber: String = "",
+    val monthlySalary: Double = 0.0,
+    val status: String = "pending",
+    val paymentRecord: SalaryPaymentRecordDto? = null
+)
+
+data class MonthlyPayrollResponseDto(
+    val month: Int = 1,
+    val year: Int = 2026,
+    val totalStaff: Int = 0,
+    val paidCount: Int = 0,
+    val pendingCount: Int = 0,
+    val totalDisbursed: Double = 0.0,
+    val payroll: List<PayrollStaffItemDto> = emptyList()
+)
+
+data class ProcessSalaryRequest(
+    val staffId: String,
+    val month: Int,
+    val year: Int,
+    val baseSalary: Double,
+    val allowances: Double = 0.0,
+    val deductions: Double = 0.0,
+    val paymentMethod: String = "bank_transfer",
+    val paymentDate: String? = null,
+    val remarks: String? = null
 )
 
 // ═══════════════════════════════════════════════════════════════════════════════

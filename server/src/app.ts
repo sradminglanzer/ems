@@ -19,6 +19,7 @@ import entityRoutes from './routes/entity.route';
 import reportsRoutes from './routes/reports.route';
 import entitySettingsRoutes from './routes/entity-settings.route';
 import staffRoutes from './routes/staff.route';
+import salaryPaymentRoutes from './routes/salary-payment.route';
 import { errorHandler } from './middleware/error.middleware';
 
 const app = express();
@@ -50,6 +51,7 @@ app.use('/api/entities', entityRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/entity-settings', entitySettingsRoutes);
 app.use('/api/staff', staffRoutes);
+app.use('/api/salary-payments', salaryPaymentRoutes);
 
 // Catch-all route for undefined API endpoints
 app.use((req, res, next) => {

@@ -55,4 +55,20 @@ class StaffRepository(context: Context) {
             SaveResult.Error(e.message ?: "Unknown error")
         }
     }
+
+    suspend fun getMonthlyPayroll(month: Int, year: Int): MonthlyPayrollResponseDto? {
+        return try {
+            val res = api.getMonthlyPayroll(month, year)
+            if (res.isSuccessful) res.body() else null
+        } catch (_: Exception) { null }
+    }
+
+    suspend fun processSalary(req: ProcessSalaryRequest): SaveResult {
+        return try {
+            val res = api.processSalary(req)
+            if (res.isSuccessful) SaveResult.Success else SaveResult.Error("Failed to process salary")
+        } catch (e: Exception) {
+            SaveResult.Error(e.message ?: "Unknown error")
+        }
+    }
 }

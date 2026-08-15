@@ -41,7 +41,7 @@ export class Staff {
         this.email = data.email || undefined;
         this.designation = data.designation || undefined;
         this.qualifications = Array.isArray(data.qualifications) ? data.qualifications : [];
-        this.monthlySalary = data.monthlySalary != null ? Number(data.monthlySalary) : undefined;
+        this.monthlySalary = data.monthlySalary != null ? Number(data.monthlySalary) : 0;
         this.salaryType = data.salaryType || 'monthly';
         this.joiningDate = data.joiningDate || undefined;
         this.employmentType = data.employmentType || 'full-time';
