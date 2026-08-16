@@ -8,6 +8,7 @@ import LoginScreen from '../screens/auth/LoginScreen';
 import SetupMpinScreen from '../screens/auth/SetupMpinScreen';
 import MainDrawerNavigator from './MainDrawerNavigator';
 import AddMemberScreen from '../screens/main/AddMemberScreen';
+import AddExpenseScreen from '../screens/main/AddExpenseScreen';
 import FeeGroupDetailsScreen from '../screens/main/FeeGroupDetailsScreen';
 import MemberDetailsScreen from '../screens/main/MemberDetailsScreen';
 import CreateExamScreen from '../screens/main/CreateExamScreen';
@@ -21,6 +22,7 @@ type RootStackParamList = {
     SetupMpin: { contactNumber: string };
     Main: undefined;
     AddMember: { feeGroupId?: string } | undefined;
+    AddExpense: { expenseToEdit?: any } | undefined;
     FeeGroupDetails: { group: any };
     MemberDetails: { member: any };
     CreateExam: undefined;
@@ -63,6 +65,7 @@ export default function AppNavigator() {
                     <>
                         <Stack.Screen name="Main" component={MainDrawerNavigator} />
                         <Stack.Screen name="AddMember" component={AddMemberScreen} />
+                        <Stack.Screen name="AddExpense" component={AddExpenseScreen} />
                         <Stack.Screen name="FeeGroupDetails" component={FeeGroupDetailsScreen} />
                         <Stack.Screen name="MemberDetails" component={MemberDetailsScreen} />
                         <Stack.Screen name="CreateExam" component={CreateExamScreen} />

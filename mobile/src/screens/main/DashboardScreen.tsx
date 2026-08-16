@@ -17,14 +17,29 @@ export default function DashboardScreen() {
     const { user, signOut, selectedAcademicYearId } = useContext(AuthContext);
     const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [expenseStats, setExpenseStats] = useState<{ total: number; topCategories: { _id: string; total: number }[] } | null>(null);
 
     useFocusEffect(
         useCallback(() => {
             const fetchStats = async () => {
                 try {
                     const params = selectedAcademicYearId ? { academicYearId: selectedAcademicYearId } : {};
-                    const response = await api.get('/dashboard/stats', { params });
-                    setStats(response.data);
+                    const now = new Date();
+                    const [statsRes, expRes] = await Promise.all([
+                        api.get('/dashboard/stats', { params }),
+                        api.get('/expenses', {
+                            params: {
+                                startDate: new Date(now.getFullYear(), now.getMonth(), 1).toISOString(),
+                                endDate: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString(),
+                                year: now.getFullYear(),
+                                month: now.getMonth() + 1,
+                            }
+                        }).catch(() => ({ data: { expenses: [], summary: [] } }))
+                    ]);
+                    setStats(statsRes.data);
+                    const confirmedExpenses = (expRes.data.expenses || []).filter((e: any) => e.status === 'confirmed');
+                    const total = confirmedExpenses.reduce((s: number, e: any) => s + e.amount, 0);
+                    setExpenseStats({ total, topCategories: expRes.data.summary?.slice(0, 2) || [] });
                 } catch (e) {
                     console.error('Failed to load stats', e);
                 } finally {
@@ -174,33 +189,91 @@ export default function DashboardScreen() {
                                         <Text style={{ fontWeight: 'bold', color: theme.colors.textPrimary, fontSize: 16 }}>₹{(stats.collectionLastMonth || 0).toLocaleString('en-IN')}</Text>
                                     </View>
                                 </View>
+
+                                {/* Expenses This Month */}
+                                {expenseStats !== null && (
+                                    <TouchableOpacity
+                                        style={[styles.financeCard, { borderColor: '#F59E0B40', borderWidth: 1, flexDirection: 'column', alignItems: 'stretch' }]}
+                                        activeOpacity={0.8}
+                                        onPress={() => navigation.navigate('Expenses')}
+                                    >
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                                            <View style={[styles.iconBoxLarge, { backgroundColor: '#FEF3C7', width: 44, height: 44, borderRadius: 22 }]}>
+                                                <Ionicons name="receipt" size={22} color="#D97706" />
+                                            </View>
+                                            <Text style={[styles.financeLabel, { marginLeft: 12, flex: 1, fontSize: 16 }]}>Expenses This Month</Text>
+                                            <Ionicons name="chevron-forward" size={18} color={theme.colors.border} />
+                                        </View>
+                                        <Text style={[styles.financeValue, { fontSize: 26, color: '#D97706', marginBottom: 8 }]}>
+                                            ₹{(expenseStats.total || 0).toLocaleString('en-IN')}
+                                        </Text>
+                                        {expenseStats.topCategories.length > 0 && (
+                                            <View style={{ flexDirection: 'row', gap: 8 }}>
+                                                {expenseStats.topCategories.map((c: any) => (
+                                                    <View key={c._id} style={{ backgroundColor: '#FEF3C7', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}>
+                                                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#92400E' }}>
+                                                            {c._id.split(' / ')[0].split(' & ')[0]} · ₹{c.total.toLocaleString('en-IN')}
+                                                        </Text>
+                                                    </View>
+                                                ))}
+                                            </View>
+                                        )}
+                                    </TouchableOpacity>
+                                )}
+
                             </View>
                         )}
 
-                        {/* Expiring Subscriptions List */}
-                        {stats.expiringMembers && stats.expiringMembers.length > 0 && (
+                        {/* Overdue Renewals */}
+                        {stats.expiringMembers?.filter((m: any) => m.isOverdue).length > 0 && (
                             <View style={styles.financeSection}>
-                                <Text style={[styles.sectionTitle, { color: theme.colors.danger }]}>Expiring Soon</Text>
-                                {stats.expiringMembers.map((m: any) => (
-                                    <TouchableOpacity 
-                                        key={m._id} 
-                                        style={[styles.financeCard, { borderColor: theme.colors.dangerLight, borderWidth: 1, marginTop: 8 }]}
+                                <Text style={[styles.sectionTitle, { color: theme.colors.danger }]}>⚠ Overdue Renewals</Text>
+                                {stats.expiringMembers.filter((m: any) => m.isOverdue).map((m: any) => (
+                                    <TouchableOpacity
+                                        key={m._id}
+                                        style={[styles.financeCard, { borderColor: theme.colors.danger + '60', borderWidth: 1.5, marginTop: 8 }]}
                                         onPress={() => navigation.navigate('MemberDetails', { member: m })}
                                     >
                                         <View style={styles.financeInfo}>
                                             <Text style={[styles.financeLabel, { color: theme.colors.textPrimary, fontWeight: 'bold' }]}>{m.firstName} {m.lastName}</Text>
-                                            <Text style={[styles.financeValue, { fontSize: 16, marginTop: 4, color: new Date(m.nextPaymentDate) < new Date() ? theme.colors.danger : theme.colors.warning }]}>
-                                                Due: {new Date(m.nextPaymentDate).toLocaleDateString()}
+                                            <Text style={[styles.financeValue, { fontSize: 14, marginTop: 4, color: theme.colors.danger }]}>
+                                                Due: {new Date(m.nextPaymentDate).toLocaleDateString()} · {Math.floor((Date.now() - new Date(m.nextPaymentDate).getTime()) / 86400000)}d overdue
                                             </Text>
                                             {m.contact && <Text style={{ fontSize: 13, color: theme.colors.textSecondary, marginTop: 4 }}>📞 {m.contact}</Text>}
                                         </View>
-                                        <View style={[styles.iconBoxLarge, { backgroundColor: theme.colors.dangerLight + '20' }]}>
-                                            <Ionicons name="time" size={28} color={theme.colors.danger} />
+                                        <View style={[styles.iconBoxLarge, { backgroundColor: theme.colors.danger + '20' }]}>
+                                            <Ionicons name="alert-circle" size={28} color={theme.colors.danger} />
                                         </View>
                                     </TouchableOpacity>
                                 ))}
                             </View>
                         )}
+
+                        {/* Expiring Soon */}
+                        {stats.expiringMembers?.filter((m: any) => !m.isOverdue).length > 0 && (
+                            <View style={styles.financeSection}>
+                                <Text style={[styles.sectionTitle, { color: '#D97706' }]}>⏰ Expiring Soon</Text>
+                                {stats.expiringMembers.filter((m: any) => !m.isOverdue).map((m: any) => (
+                                    <TouchableOpacity
+                                        key={m._id}
+                                        style={[styles.financeCard, { borderColor: '#F59E0B60', borderWidth: 1.5, marginTop: 8 }]}
+                                        onPress={() => navigation.navigate('MemberDetails', { member: m })}
+                                    >
+                                        <View style={styles.financeInfo}>
+                                            <Text style={[styles.financeLabel, { color: theme.colors.textPrimary, fontWeight: 'bold' }]}>{m.firstName} {m.lastName}</Text>
+                                            <Text style={[styles.financeValue, { fontSize: 14, marginTop: 4, color: '#D97706' }]}>
+                                                Due: {new Date(m.nextPaymentDate).toLocaleDateString()}
+                                            </Text>
+                                            {m.contact && <Text style={{ fontSize: 13, color: theme.colors.textSecondary, marginTop: 4 }}>📞 {m.contact}</Text>}
+                                        </View>
+                                        <View style={[styles.iconBoxLarge, { backgroundColor: '#FEF3C7' }]}>
+                                            <Ionicons name="time" size={28} color="#D97706" />
+                                        </View>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        )}
+
 
                     </View>
                 ) : null}

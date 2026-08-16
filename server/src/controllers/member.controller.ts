@@ -18,6 +18,7 @@ export const getMembers = async (req: AuthRequest, res: Response, next: NextFunc
         const entityId = req.user!.entityId.toString();
 
         let members = await memberService.getByEntity(entityId);
+        console.log('members', members);
         if (req.user!.role === 'parent') {
             const parentUser = await userService.getOne({ _id: new ObjectId(req.user!.userId) });
             if (parentUser && parentUser.contactNumber) {
@@ -57,8 +58,8 @@ export const getMembers = async (req: AuthRequest, res: Response, next: NextFunc
             } else {
                 // Fallback if no year passed: check generic members array then rosters 
                 group = feeGroups.find(g => {
-                    return (g.members && g.members.some((id: any) => id.toString() === mId)) || 
-                           (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)));
+                    return (g.members && g.members.some((id: any) => id.toString() === mId)) ||
+                        (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)));
                 });
             }
 
@@ -130,8 +131,8 @@ export const getMemberById = async (req: AuthRequest, res: Response, next: NextF
             });
         } else {
             group = feeGroups.find(g => {
-                return (g.members && g.members.some((id: any) => id.toString() === mId)) || 
-                       (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)));
+                return (g.members && g.members.some((id: any) => id.toString() === mId)) ||
+                    (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)));
             });
         }
 
@@ -186,7 +187,7 @@ export const createMember = async (req: AuthRequest, res: Response, next: NextFu
 
                 // Fetch group
                 const group = await feeGroupService.getOne({ _id: groupId, entityId: new ObjectId(req.user!.entityId) });
-                
+
                 if (group) {
                     if (req.body.academicYearId) {
                         // School: store in yearlyRosters
@@ -266,18 +267,18 @@ export const createMember = async (req: AuthRequest, res: Response, next: NextFu
         // POS Onboarding: Inject Fee Payment
         if (req.body.initialPayment) {
             try {
-                const { amount, paymentMethod, nextPaymentDateStr, referenceDocumentUrl } = req.body.initialPayment;
+                const { amount, paymentMethod, nextPaymentDateStr, paymentDateStr, referenceDocumentUrl } = req.body.initialPayment;
                 const payment = new FeePayment({
                     entityId: new ObjectId(req.user!.entityId),
                     memberId: new ObjectId(result.insertedId.toString()),
                     amount: amount,
                     paymentMethod: paymentMethod || 'cash',
                     referenceDocumentUrl: referenceDocumentUrl,
-                    paymentDate: new Date(), // Today
+                    paymentDate: paymentDateStr ? new Date(paymentDateStr) : new Date(),
                     nextPaymentDate: nextPaymentDateStr ? new Date(nextPaymentDateStr) : undefined,
                     notes: 'POS Initial Onboarding Payment'
                 });
-
+                console.log('payment ', payment, payment.valid)
                 if (payment.valid) {
                     payment.receiptNo = await feePaymentService.getNextSequence(req.user!.entityId);
                     generatedReceiptNo = payment.receiptNo;
@@ -335,6 +336,93 @@ export const deleteMember = async (req: AuthRequest, res: Response, next: NextFu
         } else {
             res.status(HTTP_STATUS.NOT_FOUND).json({ message: 'Member not found' });
         }
+    } catch (error) {
+        next(error);
+    }
+};
+export const holdMember = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const id = req.params.id as string;
+        const entityId = String(req.user!.entityId);
+
+        const member = await memberService.getOne({ _id: new ObjectId(id), entityId: new ObjectId(entityId) });
+        if (!member) {
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: 'Member not found' });
+        }
+        if (member.status === 'on_hold') {
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: 'Member is already on hold' });
+        }
+
+        await memberService.update(
+            { _id: new ObjectId(id), entityId: new ObjectId(entityId) },
+            { $set: { status: 'on_hold', holdStartDate: new Date(), updatedAt: new Date() } }
+        );
+
+        res.status(HTTP_STATUS.OK).json({ success: true, message: 'Member placed on hold' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const resumeMember = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const id = req.params.id as string;
+        const entityId = String(req.user!.entityId);
+
+        const member = await memberService.getOne({ _id: new ObjectId(id), entityId: new ObjectId(entityId) });
+        if (!member) {
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: 'Member not found' });
+        }
+        if (member.status !== 'on_hold') {
+            return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: 'Member is not on hold' });
+        }
+
+        // Build updated hold history
+        const holdEntry = {
+            holdDate: member.holdStartDate || new Date(),
+            resumeDate: new Date()
+        };
+        const existingHistory = member.holdHistory || [];
+        const updatedHistory = [...existingHistory, holdEntry];
+
+        await memberService.update(
+            { _id: new ObjectId(id), entityId: new ObjectId(entityId) },
+            {
+                $set: {
+                    status: 'active',
+                    holdHistory: updatedHistory,
+                    updatedAt: new Date()
+                },
+                $unset: { holdStartDate: '' }
+            }
+        );
+
+        // Optional: record re-join payment in same call
+        let generatedReceiptNo;
+        if (req.body.initialPayment) {
+            try {
+                const { amount, paymentMethod, nextPaymentDateStr, referenceDocumentUrl } = req.body.initialPayment;
+                const payment = new FeePayment({
+                    entityId: new ObjectId(entityId),
+                    memberId: new ObjectId(id),
+                    amount,
+                    paymentMethod: paymentMethod || 'cash',
+                    referenceDocumentUrl,
+                    paymentDate: new Date(),
+                    nextPaymentDate: nextPaymentDateStr ? new Date(nextPaymentDateStr) : undefined,
+                    notes: 'Re-join Payment after Hold'
+                });
+                if (payment.valid) {
+                    payment.receiptNo = await feePaymentService.getNextSequence(entityId);
+                    generatedReceiptNo = payment.receiptNo;
+                    await feePaymentService.insert(payment);
+                }
+            } catch (e) {
+                console.error('Error recording re-join payment:', e);
+            }
+        }
+
+        res.status(HTTP_STATUS.OK).json({ success: true, message: 'Member resumed', receiptNo: generatedReceiptNo });
     } catch (error) {
         next(error);
     }

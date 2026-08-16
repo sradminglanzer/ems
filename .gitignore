@@ -3,3 +3,6 @@ dist
 *.env
 *.bat
 node_modules
+.gradle
+.idea
+build

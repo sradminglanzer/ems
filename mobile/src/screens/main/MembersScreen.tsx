@@ -12,15 +12,18 @@ import { LinearGradient } from 'expo-linear-gradient';
 import HeaderActions from '../../components/HeaderActions';
 import { AuthContext } from '../../context/AuthContext';
 import { getTerm } from '../../utils/terminology';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function MembersScreen() {
     const { user } = useContext(AuthContext);
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
+    const insets = useSafeAreaInsets();
     const [members, setMembers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'on_hold'>('all');
 
     const isPendingFeesFilter = route.params?.filter === 'pendingFees';
 
@@ -74,6 +77,9 @@ export default function MembersScreen() {
                 .filter((m: any) => (m.pendingAmount || 0) > 0)
                 .sort((a: any, b: any) => (b.pendingAmount || 0) - (a.pendingAmount || 0));
         }
+        if (statusFilter !== 'all') {
+            list = list.filter((m: any) => (m.status || 'active') === statusFilter);
+        }
         if (searchQuery.trim()) {
             const q = searchQuery.trim().toLowerCase();
             list = list.filter((m: any) => {
@@ -86,14 +92,19 @@ export default function MembersScreen() {
             });
         }
         return list;
-    }, [members, isPendingFeesFilter, searchQuery]);
+    }, [members, isPendingFeesFilter, searchQuery, statusFilter]);
 
     const renderItem = ({ item }: { item: any }) => {
         const initials = `${item.firstName.charAt(0)}${item.lastName.charAt(0)}`.toUpperCase();
+        const isOnHold = item.status === 'on_hold';
 
         return (
             <TouchableOpacity
-                style={[styles.memberCard, isPendingFeesFilter ? { borderColor: theme.colors.dangerLight } : undefined]}
+                style={[
+                    styles.memberCard,
+                    isPendingFeesFilter ? { borderColor: theme.colors.dangerLight } : undefined,
+                    isOnHold ? { borderColor: '#F59E0B50', backgroundColor: '#FFFBEB' } : undefined
+                ]}
                 activeOpacity={0.8}
                 onPress={() => navigation.navigate('MemberDetails', { member: item })}
             >
@@ -103,7 +114,7 @@ export default function MembersScreen() {
                             <Image source={{ uri: item.profilePicUrl }} style={styles.avatarImage} />
                         ) : (
                             <LinearGradient
-                                colors={isPendingFeesFilter ? theme.gradients.danger : theme.gradients.primary}
+                                colors={isOnHold ? ['#F59E0B', '#D97706'] : isPendingFeesFilter ? theme.gradients.danger : theme.gradients.primary}
                                 style={styles.avatarGradient}
                             >
                                 <Text style={styles.avatarText}>{initials}</Text>
@@ -115,11 +126,16 @@ export default function MembersScreen() {
                         <View style={styles.badgeRow}>
                             <View style={[styles.groupBadge, user?.entityType === 'gym' && (!item.addonNames || item.addonNames.length === 0) && { backgroundColor: theme.colors.border }]}>
                                 <Text style={[styles.groupBadgeText, user?.entityType === 'gym' && (!item.addonNames || item.addonNames.length === 0) && { color: theme.colors.textMuted }]}>
-                                    {user?.entityType === 'gym' 
+                                    {user?.entityType === 'gym'
                                         ? ((item.addonNames && item.addonNames.length > 0) ? item.addonNames.join(', ') : 'No Active Plan')
                                         : (item.groupName || 'Unassigned')}
                                 </Text>
                             </View>
+                            {isOnHold && (
+                                <View style={styles.holdBadge}>
+                                    <Text style={styles.holdBadgeText}>⏸ On Hold</Text>
+                                </View>
+                            )}
                             <Text style={styles.detailsText}>ID: {item.knownId}</Text>
                         </View>
                     </View>
@@ -191,6 +207,23 @@ export default function MembersScreen() {
                         </TouchableOpacity>
                     )}
                 </View>
+
+            {/* Status Filter Pills — only in normal (non-pending) mode */}
+            {!isPendingFeesFilter && (
+                <View style={styles.filterRow}>
+                    {(['all', 'active', 'on_hold'] as const).map(f => (
+                        <TouchableOpacity
+                            key={f}
+                            style={[styles.filterPill, statusFilter === f && styles.filterPillActive]}
+                            onPress={() => setStatusFilter(f)}
+                        >
+                            <Text style={[styles.filterPillText, statusFilter === f && styles.filterPillTextActive]}>
+                                {f === 'all' ? 'All' : f === 'active' ? '● Active' : '⏸ On Hold'}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+            )}
             </View>
 
             <View style={styles.listWrapper}>
@@ -224,9 +257,9 @@ export default function MembersScreen() {
                 )}
             </View>
 
-            <TouchableOpacity 
-                style={[globalStyles.fab, { bottom: 24, right: 24, ...theme.shadows.lg }]} 
-                onPress={() => navigation.navigate('AddMember')} 
+            <TouchableOpacity
+                style={[globalStyles.fab, { bottom: Math.max(insets.bottom, 16) + 16, right: 24, ...theme.shadows.lg }]}
+                onPress={() => navigation.navigate('AddMember')}
                 activeOpacity={0.9}
             >
                 <LinearGradient
@@ -418,6 +451,45 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: 'bold',
         color: theme.colors.danger,
+    },
+    holdBadge: {
+        backgroundColor: '#FEF3C7',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: theme.borderRadius.s,
+        borderWidth: 1,
+        borderColor: '#F59E0B50',
+    },
+    holdBadgeText: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: '#D97706',
+    },
+    filterRow: {
+        flexDirection: 'row',
+        paddingHorizontal: theme.spacing.m,
+        paddingBottom: 8,
+        gap: 8,
+    },
+    filterPill: {
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+        borderRadius: theme.borderRadius.round,
+        backgroundColor: theme.colors.surface,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+    },
+    filterPillActive: {
+        backgroundColor: theme.colors.primary,
+        borderColor: theme.colors.primary,
+    },
+    filterPillText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: theme.colors.textSecondary,
+    },
+    filterPillTextActive: {
+        color: theme.colors.surface,
     },
     emptyContainer: {
         alignItems: 'center',
