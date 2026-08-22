@@ -41,10 +41,13 @@ fun MembersScreen(
     val searchQuery  by vm.searchQuery.collectAsState()
     val statusFilter by vm.statusFilter.collectAsState()
     val session       = SessionManager.session
+    val labels       = session?.labels ?: com.srgs.ems.data.api.EntityLabelsDto()
     val isGym        = session?.isGym ?: false
-    val memberLabel  = if (isGym) "Members" else "Students"
+    val memberLabel  = labels.memberPlural
 
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
+
+    LaunchedEffect(Unit) { vm.loadMembers() }
 
     Scaffold(
         containerColor = Background,

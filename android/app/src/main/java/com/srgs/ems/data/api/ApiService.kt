@@ -31,6 +31,9 @@ interface ApiService {
     @PUT("members/{id}")
     suspend fun updateMember(@Path("id") id: String, @Body request: CreateMemberRequest): Response<Unit>
 
+    @PATCH("members/{id}/fee-details")
+    suspend fun updateMemberFeeDetails(@Path("id") id: String, @Body request: UpdateMemberFeeDetailsRequest): Response<Unit>
+
     @DELETE("members/{id}")
     suspend fun deleteMember(@Path("id") id: String): Response<Unit>
 
@@ -173,12 +176,18 @@ interface ApiService {
     @POST("fee-groups")
     suspend fun createFeeGroup(@Body request: CreateFeeGroupRequest): Response<FeeGroupDto>
 
+    @PUT("fee-groups/{id}")
+    suspend fun updateFeeGroup(@Path("id") id: String, @Body request: CreateFeeGroupRequest): Response<FeeGroupDto>
+
     // ── Fee Structures ───────────────────────────────────────────────────────────
     @GET("fee-structures")
     suspend fun getFeeStructures(): Response<List<FeeStructureDto>>
 
     @POST("fee-structures")
     suspend fun createFeeStructure(@Body request: CreateFeeStructureRequest): Response<FeeStructureDto>
+
+    @PUT("fee-structures/{id}")
+    suspend fun updateFeeStructure(@Path("id") id: String, @Body request: CreateFeeStructureRequest): Response<FeeStructureDto>
 
     @DELETE("fee-structures/{id}")
     suspend fun deleteFeeStructure(@Path("id") id: String): Response<Unit>
@@ -254,6 +263,19 @@ data class LoginApiResponse(
     val message: String? = null
 )
 
+data class EntityLabelsDto(
+    val memberSingle: String = "Member",
+    val memberPlural: String = "Members",
+    val groupSingle: String = "Plan",
+    val groupPlural: String = "Plans",
+    val planSingle: String = "Billing Plan",
+    val planPlural: String = "Billing Plans",
+    val collectionLabel: String = "Total Collections",
+    val memberIcon: String = "👥",
+    val groupIcon: String = "💳",
+    val isBusinessMode: Boolean = true
+)
+
 data class UserDto(
     @SerializedName("_id") val _id: String = "",
     val name: String          = "",
@@ -262,7 +284,8 @@ data class UserDto(
     val entityId: String?     = null,
     val entityType: String?   = null,
     val entityName: String?   = null,
-    val entityLogoUrl: String? = null
+    val entityLogoUrl: String? = null,
+    val labels: EntityLabelsDto? = null
 )
 
 data class EntityDto(
@@ -341,6 +364,7 @@ data class MemberDetailDto(
     val status: String            = "active",
     val feeGroupId: String?       = null,
     val groupName: String?        = null,
+    val feeStructureId: String?   = null,
     val addonFeeIds: List<String>? = null,
     val addonNames: List<String>?  = null,
     val totalFee: Double           = 0.0,
@@ -369,6 +393,7 @@ data class CreateMemberRequest(
     val fatherOccupation: String? = null,
     val motherOccupation: String? = null,
     val feeGroupId: String?       = null,
+    val feeStructureId: String?   = null,
     val addonFeeIds: List<String>? = null,
     val profilePicUrl: String?    = null,
     val academicYearId: String?   = null,
@@ -387,6 +412,12 @@ data class CreateMemberResponse(
     val receiptNo: String? = null
 )
 
+data class UpdateMemberFeeDetailsRequest(
+    val feeGroupId: String?        = null,
+    val feeStructureId: String?    = null,
+    val addonFeeIds: List<String>? = null
+)
+
 data class ResumeRequest(val initialPayment: Any? = null)
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -396,12 +427,17 @@ data class ResumeRequest(val initialPayment: Any? = null)
 data class FeeGroupDto(
     @SerializedName("_id") val _id: String = "",
     val name: String         = "",
-    val description: String? = null
+    val description: String? = null,
+    val capacity: Int        = 1,
+    val occupiedCount: Int   = 0,
+    val vacantCount: Int     = 1,
+    val isFull: Boolean      = false
 )
 
 data class CreateFeeGroupRequest(
     val name: String,
-    val description: String? = null
+    val description: String? = null,
+    val capacity: Int        = 1
 )
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -684,7 +720,8 @@ data class StaffRoleSettingDto(
 data class EntitySettingsDto(
     @SerializedName("_id") val _id: String = "",
     val entityId: String = "",
-    val staffRoles: List<StaffRoleSettingDto> = emptyList()
+    val staffRoles: List<StaffRoleSettingDto> = emptyList(),
+    val labels: EntityLabelsDto? = null
 )
 
 data class ToggleLoginResponseDto(

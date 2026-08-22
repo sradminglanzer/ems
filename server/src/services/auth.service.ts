@@ -111,7 +111,7 @@ class AuthService extends BaseService<User> {
             return {
                 message: MESSAGES.SUCCESS.MPIN_SETUP_SUCCESS,
                 token,
-                user: this.formatUserResponse(user as User, activeYear, entityName, entityType, entityLogoUrl)
+                user: await this.formatUserResponse(user as User, activeYear, entityName, entityType, entityLogoUrl)
             };
         }
 
@@ -136,7 +136,7 @@ class AuthService extends BaseService<User> {
         return {
             message: MESSAGES.SUCCESS.LOGIN_SUCCESS,
             token,
-            user: this.formatUserResponse(user as User, activeYear, entityName, entityType, entityLogoUrl)
+            user: await this.formatUserResponse(user as User, activeYear, entityName, entityType, entityLogoUrl)
         };
     }
 
@@ -144,7 +144,14 @@ class AuthService extends BaseService<User> {
         return jwt.sign({ userId: user._id, role: user.role, entityId: user.entityId }, JWT_SECRET, { expiresIn: '7d' });
     }
 
-    private formatUserResponse(user: User, activeYear?: any, entityName?: string, entityType?: string, entityLogoUrl?: string) {
+    private async formatUserResponse(user: User, activeYear?: any, entityName?: string, entityType?: string, entityLogoUrl?: string) {
+        let labels = null;
+        try {
+            const entitySettingsService = (await import('./entity-settings.service')).default;
+            const settings = await entitySettingsService.getByEntity(user.entityId.toString());
+            labels = settings.labels;
+        } catch (_e) { null }
+
         return {
             id: user._id,
             entityId: user.entityId,
@@ -155,7 +162,8 @@ class AuthService extends BaseService<User> {
             role: user.role,
             contactNumber: user.contactNumber,
             activeAcademicYearId: activeYear?._id,
-            activeAcademicYearName: activeYear?.name
+            activeAcademicYearName: activeYear?.name,
+            labels
         };
     }
 }

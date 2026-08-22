@@ -473,7 +473,10 @@ private fun CreateExamSheet(vm: ExamsViewModel, onDismiss: () -> Unit) {
         LazyColumn(
             contentPadding      = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
-            modifier            = Modifier.fillMaxWidth().padding(bottom = 32.dp)
+            modifier            = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(bottom = 24.dp)
         ) {
             item {
                 Text("Create New Exam", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)

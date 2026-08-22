@@ -37,6 +37,13 @@ class MemberDetailRepository(context: Context) {
         } catch (_: Exception) { emptyList() }
     }
 
+    suspend fun getFeeGroups(): List<FeeGroupDto> {
+        return try {
+            val r = api.getFeeGroups()
+            if (r.isSuccessful) r.body() ?: emptyList() else emptyList()
+        } catch (_: Exception) { emptyList() }
+    }
+
     suspend fun getFeeStructures(): List<FeeStructureDto> {
         return try {
             val r = api.getFeeStructures()
@@ -44,14 +51,20 @@ class MemberDetailRepository(context: Context) {
         } catch (_: Exception) { emptyList() }
     }
 
-    suspend fun collectFee(memberId: String, items: List<CollectFeeItem>, activeAddonFeeIds: List<String> = emptyList()): CollectResult {
+    suspend fun collectFee(
+        memberId: String,
+        items: List<CollectFeeItem>,
+        activeAddonFeeIds: List<String> = emptyList(),
+        newFeeGroupId: String? = null,
+        newFeeStructureId: String? = null
+    ): CollectResult {
         return try {
-            if (activeAddonFeeIds.isNotEmpty()) {
+            if (activeAddonFeeIds.isNotEmpty() || !newFeeGroupId.isNullOrEmpty() || !newFeeStructureId.isNullOrEmpty()) {
                 try {
-                    api.updateMember(memberId, CreateMemberRequest(
-                        firstName = "",
-                        lastName  = "",
-                        addonFeeIds = activeAddonFeeIds
+                    api.updateMemberFeeDetails(memberId, UpdateMemberFeeDetailsRequest(
+                        feeGroupId     = newFeeGroupId,
+                        feeStructureId = newFeeStructureId,
+                        addonFeeIds    = activeAddonFeeIds.ifEmpty { null }
                     ))
                 } catch (_: Exception) {}
             }

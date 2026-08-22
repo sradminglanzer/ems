@@ -22,6 +22,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.srgs.ems.data.SessionManager
 import com.srgs.ems.data.api.DashboardStatsDto
 import com.srgs.ems.data.api.ExpiringMemberDto
+import com.srgs.ems.data.models.UserSession
 import com.srgs.ems.data.repository.DashboardRepository
 import com.srgs.ems.ui.components.EmsTopBar
 import com.srgs.ems.ui.theme.*
@@ -110,7 +111,7 @@ fun DashboardScreen(
                 item {
                     StatChips(
                         s = s,
-                        isGym = session?.isGym ?: false,
+                        session = session,
                         onMembersClick = onNavigateToMembers,
                         onPlansClick = onNavigateToPlans
                     )
@@ -218,13 +219,15 @@ private fun DashboardHero(name: String, entityName: String, initials: String, ro
 @Composable
 private fun StatChips(
     s: DashboardStatsDto,
-    isGym: Boolean,
+    session: UserSession?,
     onMembersClick: () -> Unit,
     onPlansClick: () -> Unit
 ) {
+    val labels = session?.labels ?: com.srgs.ems.data.api.EntityLabelsDto()
+    val isGym = session?.isGym ?: false
     val chips = listOf(
-        Triple("👥", if (isGym) "Members" else "Students", s.totalMembers.toString()),
-        Triple(if (isGym) "💳" else "📚", if (isGym) "Plans" else "Classes",
+        Triple(labels.memberIcon, labels.memberPlural, s.totalMembers.toString()),
+        Triple(labels.groupIcon, labels.groupPlural,
             if (isGym) s.totalFeeStructures.toString() else s.totalFeeGroups.toString())
     )
     val actions = listOf(onMembersClick, onPlansClick)

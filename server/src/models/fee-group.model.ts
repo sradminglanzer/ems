@@ -10,7 +10,8 @@ export class FeeGroup {
     entityId: ObjectId;
     name: string;
     description?: string;
-     yearlyRosters: YearlyRoster[];
+    capacity: number = 1;
+    yearlyRosters: YearlyRoster[];
     members: ObjectId[] = []; // For non-academic tenants like Gyms
     createdAt?: Date;
     updatedAt?: Date;
@@ -20,6 +21,7 @@ export class FeeGroup {
         this.entityId = new ObjectId(data.entityId);
         this.name = data.name;
         this.description = data.description;
+        this.capacity = data.capacity != null ? Math.max(1, Number(data.capacity)) : 1;
 
         // Handle migration from old 'members' array or newly constructed 'yearlyRosters'
         this.yearlyRosters = [];

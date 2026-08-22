@@ -14,6 +14,7 @@ export class Member {
     motherOccupation?: string;
     address?: string;
     feeGroupId?: ObjectId;
+    feeStructureId?: ObjectId;
     addonFeeIds?: ObjectId[];
     profilePicUrl?: string;
     joiningDate?: Date;
@@ -39,6 +40,7 @@ export class Member {
         this.address = data.address;
         
         if (data.feeGroupId) this.feeGroupId = typeof data.feeGroupId === 'string' ? new ObjectId(data.feeGroupId) : data.feeGroupId;
+        if (data.feeStructureId) this.feeStructureId = typeof data.feeStructureId === 'string' ? new ObjectId(data.feeStructureId) : data.feeStructureId;
         if (Array.isArray(data.addonFeeIds)) {
             this.addonFeeIds = data.addonFeeIds.map((id: any) => new ObjectId(id));
         }

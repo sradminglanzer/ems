@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.srgs.ems.data.SessionManager
+import com.srgs.ems.data.api.FeeGroupDto
 import com.srgs.ems.data.api.FeePaymentDto
 import com.srgs.ems.data.api.FeeStructureDto
 import com.srgs.ems.data.api.MemberDetailDto
@@ -94,25 +95,31 @@ fun MemberDetailScreen(
         }
     }
 
+    val feeGroups     by vm.feeGroups.collectAsState()
+
     if (showCollectSheet) {
         ModalBottomSheet(
             onDismissRequest = { showCollectSheet = false },
             containerColor = Surface
         ) {
             CollectFeeSheet(
-                cartItems     = vm.cartItems,
-                notes         = vm.notes,
-                paymentMethod = vm.paymentMethod,
-                paymentDate   = vm.paymentDate,
-                isSaving      = isSaving,
-                onToggle      = { vm.toggleCartItem(it) },
-                onSelectPlan  = { vm.selectPrimaryPlan(it) },
-                onAmount      = { id, amt -> vm.updateCartAmount(id, amt) },
-                onNextDate    = { id, d   -> vm.updateNextDate(id, d) },
-                onNotes       = { vm.updateNotes(it) },
-                onPayMethod   = { vm.updatePaymentMethod(it) },
-                onPaymentDate = { vm.updatePaymentDate(it) },
-                onCollect     = { vm.collectFee() }
+                cartItems          = vm.cartItems,
+                feeGroups          = feeGroups,
+                feeStructures      = feeStructures,
+                selectedFeeGroupId = vm.selectedFeeGroupId,
+                notes              = vm.notes,
+                paymentMethod      = vm.paymentMethod,
+                paymentDate        = vm.paymentDate,
+                isSaving           = isSaving,
+                onToggle           = { vm.toggleCartItem(it) },
+                onSelectPlan       = { vm.selectPrimaryPlan(it) },
+                onSelectRoom       = { vm.selectRoom(it) },
+                onAmount           = { id, amt -> vm.updateCartAmount(id, amt) },
+                onNextDate         = { id, d   -> vm.updateNextDate(id, d) },
+                onNotes            = { vm.updateNotes(it) },
+                onPayMethod        = { vm.updatePaymentMethod(it) },
+                onPaymentDate      = { vm.updatePaymentDate(it) },
+                onCollect          = { vm.collectFee() }
             )
         }
     }
@@ -411,19 +418,23 @@ private fun SCard(content: @Composable ColumnScope.() -> Unit) {
     ) { Column(Modifier.padding(16.dp), content = content) }
 }
 
-// \u2500\u2500 Collect Fee bottom sheet \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ── Collect Fee bottom sheet ──────────────────────────────────────────────────
 private enum class CollectMode { Quick, PlanPicker }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CollectFeeSheet(
     cartItems: List<CartItemState>,
+    feeGroups: List<FeeGroupDto>,
+    feeStructures: List<FeeStructureDto>,
+    selectedFeeGroupId: String?,
     notes: String,
     paymentMethod: String,
     paymentDate: String,
     isSaving: Boolean,
     onToggle: (String) -> Unit,
     onSelectPlan: (String) -> Unit,
+    onSelectRoom: (String) -> Unit,
     onAmount: (String, String) -> Unit,
     onNextDate: (String, String) -> Unit,
     onNotes: (String) -> Unit,
@@ -433,7 +444,10 @@ private fun CollectFeeSheet(
 ) {
     var mode         by remember { mutableStateOf(CollectMode.Quick) }
     var showAddons   by remember { mutableStateOf(false) }
+    val session      = SessionManager.session
+    val isPg         = session?.isBusinessMode == true && session?.isGym != true
 
+    val currentRoom  = feeGroups.firstOrNull { it._id == selectedFeeGroupId }
     val primaryPlan  = cartItems.firstOrNull { it.checked && !it.isAddon }
     val primaryItems = cartItems.filter { !it.isAddon }
     val addonItems   = cartItems.filter { it.isAddon }
@@ -443,7 +457,7 @@ private fun CollectFeeSheet(
 
     Column(Modifier.fillMaxWidth().fillMaxHeight(0.92f)) {
 
-        // \u2500\u2500 Animated content area (Quick / Plan Picker) \u2500\u2500
+        // ── Animated content area (Quick / Plan Picker / Room Picker) ──
         Box(Modifier.weight(1f)) {
             // Quick collect view
             androidx.compose.animation.AnimatedVisibility(
@@ -461,7 +475,7 @@ private fun CollectFeeSheet(
                         Spacer(Modifier.height(4.dp))
                         HorizontalDivider(color = Border)
                     }
-                    // Current plan card
+                    // Current room / plan card
                     item {
                         if (primaryPlan == null) {
                             Surface(
@@ -469,12 +483,12 @@ private fun CollectFeeSheet(
                                 color = Background, border = BorderStroke(1.dp, Border)
                             ) {
                                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    Text("No plan selected", fontSize = 14.sp, color = TextSecondary)
+                                    Text(if (isPg) "No room selected" else "No plan selected", fontSize = 14.sp, color = TextSecondary)
                                     OutlinedButton(
                                         onClick = { mode = CollectMode.PlanPicker },
                                         shape  = RoundedCornerShape(8.dp),
                                         border = BorderStroke(1.dp, Primary)
-                                    ) { Text("Select Plan", color = Primary, fontSize = 13.sp) }
+                                    ) { Text(if (isPg) "Select Room" else "Select Plan", color = Primary, fontSize = 13.sp) }
                                 }
                             }
                         } else {
@@ -486,21 +500,46 @@ private fun CollectFeeSheet(
                                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                     Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.Top) {
                                         Column(Modifier.weight(1f)) {
-                                            Text(primaryPlan.name, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                                            Spacer(Modifier.height(4.dp))
-                                            Surface(shape = RoundedCornerShape(4.dp), color = Primary.copy(alpha = 0.1f)) {
-                                                Text(
-                                                    primaryPlan.frequency.replaceFirstChar { it.uppercase() },
-                                                    Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                                    fontSize = 10.sp, fontWeight = FontWeight.Medium, color = Primary
-                                                )
+                                            if (isPg && currentRoom != null) {
+                                                Text("🛏️ ${currentRoom.name}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                                                if (!currentRoom.description.isNullOrBlank()) {
+                                                    Spacer(Modifier.height(2.dp))
+                                                    Text(currentRoom.description, fontSize = 11.sp, color = TextSecondary)
+                                                }
+                                                Spacer(Modifier.height(4.dp))
+                                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                    Surface(shape = RoundedCornerShape(4.dp), color = Primary.copy(alpha = 0.1f)) {
+                                                        Text(
+                                                            primaryPlan.name,
+                                                            Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                            fontSize = 10.sp, fontWeight = FontWeight.Medium, color = Primary
+                                                        )
+                                                    }
+                                                    Surface(shape = RoundedCornerShape(4.dp), color = Border.copy(alpha = 0.6f)) {
+                                                        Text(
+                                                            primaryPlan.frequency.replaceFirstChar { it.uppercase() },
+                                                            Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                            fontSize = 10.sp, fontWeight = FontWeight.Medium, color = TextSecondary
+                                                        )
+                                                    }
+                                                }
+                                            } else {
+                                                Text(primaryPlan.name, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                                                Spacer(Modifier.height(4.dp))
+                                                Surface(shape = RoundedCornerShape(4.dp), color = Primary.copy(alpha = 0.1f)) {
+                                                    Text(
+                                                        primaryPlan.frequency.replaceFirstChar { it.uppercase() },
+                                                        Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                        fontSize = 10.sp, fontWeight = FontWeight.Medium, color = Primary
+                                                    )
+                                                }
                                             }
                                         }
                                         TextButton(
                                             onClick = { mode = CollectMode.PlanPicker },
                                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                                         ) {
-                                            Text("Change Plan \u2192", fontSize = 12.sp, color = Primary, fontWeight = FontWeight.Medium)
+                                            Text(if (isPg) "Change Room →" else "Change Plan →", fontSize = 12.sp, color = Primary, fontWeight = FontWeight.Medium)
                                         }
                                     }
                                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -510,7 +549,7 @@ private fun CollectFeeSheet(
                                             onValueChange = { v -> if (v.all { c -> c.isDigit() || c == '.' }) onAmount(primaryPlan.feeStructureId, v) },
                                             modifier = Modifier.width(130.dp),
                                             singleLine = true,
-                                            prefix = { Text("\u20b9", fontSize = 13.sp) },
+                                            prefix = { Text("₹", fontSize = 13.sp) },
                                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                             shape = RoundedCornerShape(8.dp),
                                             colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Border, focusedBorderColor = Primary)
@@ -537,7 +576,7 @@ private fun CollectFeeSheet(
                                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
                                     Arrangement.SpaceBetween, Alignment.CenterVertically) {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text("\uD83E\uDDE9", fontSize = 16.sp)
+                                        Text("🧩", fontSize = 16.sp)
                                         Text("Add-on Services", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
                                         if (addonSel > 0) {
                                             Box(Modifier.size(20.dp).clip(RoundedCornerShape(10.dp)).background(Primary), Alignment.Center) {
@@ -545,7 +584,7 @@ private fun CollectFeeSheet(
                                             }
                                         }
                                     }
-                                    Text(if (showAddons) "\u25b2" else "\u25bc", fontSize = 11.sp, color = TextMuted)
+                                    Text(if (showAddons) "▲" else "▼", fontSize = 11.sp, color = TextMuted)
                                 }
                             }
                         }
@@ -559,27 +598,41 @@ private fun CollectFeeSheet(
                 }
             }
 
-            // Plan picker view (slides in from right)
+            // Room / Plan picker view (slides in from right)
             androidx.compose.animation.AnimatedVisibility(
                 visible = mode == CollectMode.PlanPicker,
                 enter   = androidx.compose.animation.slideInHorizontally { it },
                 exit    = androidx.compose.animation.slideOutHorizontally { it }
             ) {
-                PlanPickerContent(
-                    primaryItems  = primaryItems,
-                    currentPlanId = primaryPlan?.feeStructureId,
-                    onBack        = { mode = CollectMode.Quick },
-                    onSelect      = { planId -> onSelectPlan(planId); mode = CollectMode.Quick }
-                )
+                if (isPg) {
+                    RoomPickerContent(
+                        groups             = feeGroups,
+                        structures         = feeStructures,
+                        currentRoomId      = selectedFeeGroupId,
+                        onBack             = { mode = CollectMode.Quick },
+                        onSelect           = { roomId -> onSelectRoom(roomId); mode = CollectMode.Quick }
+                    )
+                } else {
+                    PlanPickerContent(
+                        primaryItems  = primaryItems,
+                        currentPlanId = primaryPlan?.feeStructureId,
+                        onBack        = { mode = CollectMode.Quick },
+                        onSelect      = { planId -> onSelectPlan(planId); mode = CollectMode.Quick }
+                    )
+                }
             }
         }
 
-        // \u2500\u2500 Fixed bottom: payment controls + collect button \u2500\u2500
+        // ── Fixed bottom: payment controls + collect button ──
         androidx.compose.animation.AnimatedVisibility(visible = mode == CollectMode.Quick) {
             Column {
                 HorizontalDivider(color = Border)
                 Column(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 12.dp, bottom = 28.dp),
+                    Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 16.dp)
+                        .padding(top = 12.dp, bottom = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     // Payment date
@@ -637,7 +690,107 @@ private fun CollectFeeSheet(
     }
 }
 
-// \u2500\u2500 Plan picker \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ── Room picker (PG Mode) ─────────────────────────────────────────────────────
+@Composable
+private fun RoomPickerContent(
+    groups: List<FeeGroupDto>,
+    structures: List<FeeStructureDto>,
+    currentRoomId: String?,
+    onBack: () -> Unit,
+    onSelect: (String) -> Unit
+) {
+    LazyColumn(
+        Modifier.fillMaxSize().navigationBarsPadding(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) {
+                    Text("\u2190", fontSize = 20.sp, color = Primary, fontWeight = FontWeight.Bold)
+                }
+                Text("Select Room", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            }
+            HorizontalDivider(color = Border)
+            Spacer(Modifier.height(4.dp))
+        }
+
+        if (groups.isEmpty()) {
+            item {
+                Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) {
+                    Text("No rooms configured", color = TextMuted, fontSize = 13.sp)
+                }
+            }
+        } else {
+            items(groups) { room ->
+                val isSel = room._id == currentRoomId
+                val roomFull = room.isFull && !isSel
+
+                // Find linked structure tariff
+                val linkedPlan = structures.firstOrNull { !it.isAddon && it.feeGroupId == room._id }
+                    ?: structures.firstOrNull { !it.isAddon && it.name.contains("${room.capacity}", ignoreCase = true) }
+                    ?: structures.firstOrNull { !it.isAddon }
+
+                Surface(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable(enabled = !roomFull) { onSelect(room._id) },
+                    RoundedCornerShape(10.dp),
+                    color  = if (isSel) Primary.copy(alpha = 0.06f) else Surface,
+                    border = BorderStroke(if (isSel) 1.5.dp else 1.dp, if (isSel) Primary.copy(alpha = 0.5f) else Border)
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                        Arrangement.SpaceBetween, Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    room.name,
+                                    fontSize = 15.sp,
+                                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (roomFull) TextMuted else TextPrimary
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = if (room.isFull) Danger.copy(alpha = 0.12f) else Success.copy(alpha = 0.12f)
+                                ) {
+                                    Text(
+                                        text = if (room.isFull) "🔴 Full (${room.occupiedCount}/${room.capacity})" else "🟩 ${room.vacantCount} Vacant",
+                                        fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                                        color = if (room.isFull) Danger else Success,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            if (!room.description.isNullOrBlank()) {
+                                Spacer(Modifier.height(2.dp))
+                                Text(room.description, fontSize = 11.sp, color = TextSecondary)
+                            }
+                        }
+
+                        if (linkedPlan != null) {
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text("₹${linkedPlan.amount.toInt()}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = if (isSel) Primary else TextPrimary)
+                                Text(linkedPlan.frequency.replaceFirstChar { it.uppercase() }, fontSize = 10.sp, color = TextMuted)
+                            }
+                        }
+
+                        if (isSel) {
+                            Spacer(Modifier.width(8.dp))
+                            Box(Modifier.size(20.dp).clip(RoundedCornerShape(10.dp)).background(Primary), Alignment.Center) {
+                                Text("✓", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── Plan picker ──────────────────────────────────────────────────────────────
 @Composable
 private fun PlanPickerContent(
     primaryItems: List<CartItemState>,
@@ -648,7 +801,7 @@ private fun PlanPickerContent(
     val groups = primaryItems.groupBy { it.groupName ?: "Membership Plans" }
 
     LazyColumn(
-        Modifier.fillMaxSize(),
+        Modifier.fillMaxSize().navigationBarsPadding(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -657,7 +810,7 @@ private fun PlanPickerContent(
                 IconButton(onClick = onBack) {
                     Text("\u2190", fontSize = 20.sp, color = Primary, fontWeight = FontWeight.Bold)
                 }
-                Text("Select Plan", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text("Select Room / Tariff Plan", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
             }
             HorizontalDivider(color = Border)
             Spacer(Modifier.height(4.dp))

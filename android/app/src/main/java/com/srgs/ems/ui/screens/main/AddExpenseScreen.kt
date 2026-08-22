@@ -274,7 +274,7 @@ fun AddExpenseScreen(
                         Text("Delete Expense", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Danger)
                     }
                 }
-                Spacer(Modifier.height(32.dp))
+                Spacer(Modifier.navigationBarsPadding().height(24.dp))
             }
         }
     }

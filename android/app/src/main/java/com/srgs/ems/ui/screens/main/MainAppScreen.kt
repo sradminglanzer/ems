@@ -164,6 +164,7 @@ fun MainAppScreen(onSignOut: () -> Unit) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .navigationBarsPadding()
                             .clickable {
                                 scope.launch {
                                     drawerState.close()
@@ -272,27 +273,28 @@ private fun DrawerHeader(session: UserSession?) {
 
 // ─── Build grouped drawer sections ─────────────────────────────────────────────
 private fun buildDrawerSections(session: UserSession?): List<DrawerSection> {
-    val isGym     = session?.isGym     ?: false
-    val isTeacher = session?.isTeacher ?: false
-    val isAdmin   = session?.isAdmin   ?: false
+    val labels = session?.labels ?: com.srgs.ems.data.api.EntityLabelsDto()
+    val isBusiness = session?.isBusinessMode ?: true
+    val isTeacher  = session?.isTeacher ?: false
+    val isAdmin    = session?.isAdmin   ?: false
 
     return listOf(
         DrawerSection("OVERVIEW", listOf(
-            DrawerItem(MainRoute.Dashboard,  "Dashboard",        "🏠"),
-            DrawerItem(MainRoute.Attendance, "Daily Attendance", "📋", visible = !isGym),
-            DrawerItem(MainRoute.Members,    if (isGym) "Members" else "Students", "👥"),
+            DrawerItem(MainRoute.Dashboard,  "Dashboard",            "🏠"),
+            DrawerItem(MainRoute.Attendance, "Daily Attendance",     "📋", visible = !isBusiness),
+            DrawerItem(MainRoute.Members,    labels.memberPlural,    labels.memberIcon),
         )),
         DrawerSection("FINANCE", listOf(
-            DrawerItem(MainRoute.Expenses,      "Expenses",           "💰", visible = !isTeacher),
-            DrawerItem(MainRoute.FeeStructures, if (isGym) "Billing Plans" else "Fee Structures", "💳", visible = !isTeacher),
-            DrawerItem(MainRoute.Reports,       "Business Reports",   "📊"),
+            DrawerItem(MainRoute.Expenses,      "Expenses",          "💰", visible = !isTeacher),
+            DrawerItem(MainRoute.FeeStructures, labels.planPlural,   "💳", visible = !isTeacher),
+            DrawerItem(MainRoute.Reports,       "Business Reports",  "📊"),
         )),
         DrawerSection("MANAGEMENT", listOf(
-            DrawerItem(MainRoute.Staff,         "Staff Management",   "👤", visible = !isTeacher),
-            DrawerItem(MainRoute.FeeGroups,     "Classes",            "📚", visible = !isGym),
-            DrawerItem(MainRoute.Exams,         "Exams & Results",    "📝", visible = !isGym),
-            DrawerItem(MainRoute.AcademicYears, "Academic Years",     "📅", visible = !isGym && isAdmin),
-            DrawerItem(MainRoute.Settings,      "Settings",           "⚙️",  visible = isAdmin),
+            DrawerItem(MainRoute.Staff,         "Staff Management",  "👤", visible = !isTeacher),
+            DrawerItem(MainRoute.FeeGroups,     labels.groupPlural,  labels.groupIcon, visible = !(session?.isGym ?: false)),
+            DrawerItem(MainRoute.Exams,         "Exams & Results",   "📝", visible = !isBusiness),
+            DrawerItem(MainRoute.AcademicYears, "Academic Years",    "📅", visible = !isBusiness && isAdmin),
+            DrawerItem(MainRoute.Settings,      "Settings",          "⚙️",  visible = isAdmin),
         )),
     )
 }

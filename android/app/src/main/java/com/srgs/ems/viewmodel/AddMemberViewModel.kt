@@ -152,8 +152,15 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
                 primaryStructures.value = allStructs.filter { !it.isAddon }
                 addonStructures.value   = allStructs.filter { it.isAddon }
 
-                // Auto-select first primary plan if none selected
-                if (selectedPlanId.value == null && primaryStructures.value.isNotEmpty()) {
+                // Auto-select plan for selected room if available
+                val currentRoomId = feeGroupId.value
+                if (!currentRoomId.isNullOrEmpty()) {
+                    val matchedPlan = primaryStructures.value.firstOrNull { it.feeGroupId == currentRoomId }
+                        ?: primaryStructures.value.firstOrNull()
+                    if (matchedPlan != null) {
+                        selectedPlanId.value = matchedPlan._id
+                    }
+                } else if (selectedPlanId.value == null && primaryStructures.value.isNotEmpty()) {
                     selectedPlanId.value = primaryStructures.value.first()._id
                 }
                 if (!isEditing) {
@@ -181,14 +188,30 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
             feeGroupId.value       = m.feeGroupId
             
             val mAddons = m.addonFeeIds ?: emptyList()
-            val primaryMatch = primaryStructures.value.firstOrNull { it._id in mAddons }
-            if (primaryMatch != null) {
-                selectedPlanId.value = primaryMatch._id
-                addonFeeIds.value = mAddons - primaryMatch._id
-            } else {
-                addonFeeIds.value = mAddons
-            }
+            val primaryId = m.feeStructureId ?: primaryStructures.value.firstOrNull { it._id in mAddons }?._id
+            selectedPlanId.value = primaryId
+            addonFeeIds.value = if (primaryId != null) mAddons - primaryId else mAddons
         }
+    }
+
+    fun selectRoom(roomId: String) {
+        _userOverrodeNextDate = false
+        feeGroupId.value = roomId
+
+        val roomDoc = feeGroups.value.firstOrNull { it._id == roomId }
+        val roomCap = roomDoc?.capacity ?: 1
+
+        // 1. Direct match on feeGroupId
+        // 2. Match plan name containing bed capacity (e.g. "2 Sharing" or "2")
+        // 3. Fallback to first primary structure
+        val matchedPlan = primaryStructures.value.firstOrNull { it.feeGroupId == roomId }
+            ?: primaryStructures.value.firstOrNull { it.name.contains("$roomCap", ignoreCase = true) }
+            ?: primaryStructures.value.firstOrNull()
+
+        if (matchedPlan != null) {
+            selectedPlanId.value = matchedPlan._id
+        }
+        updatePosAmount(selectedPlanId.value, addonFeeIds.value)
     }
 
     fun selectPrimaryPlan(id: String?) {
@@ -211,12 +234,27 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
         val addonsAmt   = addonStructures.value.filter { it._id in addons }.sumOf { it.amount }
         val totalAmt    = primaryAmt + addonsAmt
         posAmount.value = if (totalAmt > 0) totalAmt.toInt().toString() else ""
+
+        if (!_userOverrodeNextDate) {
+            val nextDate = autoComputeNextDate(
+                AutoComputeParams(
+                    payDate      = posPaymentDateStr.value,
+                    planId       = planId,
+                    addons       = addons,
+                    primaries    = primaryStructures.value,
+                    addonStructs = addonStructures.value
+                )
+            )
+            if (nextDate != null) {
+                posNextDateStr.value = nextDate
+            }
+        }
     }
 
     fun submit(session: UserSession?) {
-        val fn    = firstName.value.trim()
-        val ln    = lastName.value.trim()
-        val isGym = session?.isGym ?: false
+        val fn         = firstName.value.trim()
+        val ln         = lastName.value.trim()
+        val isBusiness = session?.isBusinessMode ?: true
 
         if (fn.isEmpty() || ln.isEmpty()) {
             viewModelScope.launch { saveResult.emit(SaveResult.Error("First Name and Last Name are required")) }
@@ -224,15 +262,13 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
         }
 
         val kid = knownId.value.trim().ifEmpty {
-            if (isGym) "GYM-${System.currentTimeMillis().toString().takeLast(6)}" else ""
+            if (isBusiness) "TEN-${System.currentTimeMillis().toString().takeLast(6)}" else ""
         }
 
-        if (!isGym && kid.isEmpty()) {
+        if (!isBusiness && kid.isEmpty()) {
             viewModelScope.launch { saveResult.emit(SaveResult.Error("Roll / Student ID is required")) }
             return
         }
-
-        val combinedFeeIds = (listOfNotNull(selectedPlanId.value) + addonFeeIds.value).distinct()
 
         viewModelScope.launch {
             isSubmitting.value = true
@@ -249,8 +285,9 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
                 fatherOccupation = fatherOccupation.value.trim().ifEmpty { null },
                 motherOccupation = motherOccupation.value.trim().ifEmpty { null },
                 feeGroupId       = feeGroupId.value,
-                addonFeeIds      = combinedFeeIds.ifEmpty { null },
-                initialPayment   = if (isGym && !isEditing) {
+                feeStructureId   = selectedPlanId.value,
+                addonFeeIds      = addonFeeIds.value.ifEmpty { null },
+                initialPayment   = if (isBusiness && !isEditing) {
                     val amt = posAmount.value.toDoubleOrNull() ?: 0.0
                     if (amt > 0) InitialPaymentDto(
                         amount             = amt,
