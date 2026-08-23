@@ -85,13 +85,20 @@ export const getMembers = async (req: AuthRequest, res: Response, next: NextFunc
             const memberPayments = feePayments.filter(p => p.memberId.toString() === mId);
             const totalPaid = memberPayments.reduce((sum, p) => sum + p.amount, 0);
 
+            // get active latest nextPaymentDate
+            const paymentsWithNextDate = memberPayments
+                .filter(p => p.nextPaymentDate)
+                .sort((a, b) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime());
+            const nextPaymentDate = paymentsWithNextDate[0]?.nextPaymentDate || null;
+
             return {
                 ...m,
                 groupName,
                 addonNames,
                 totalFee,
                 totalPaid,
-                pendingAmount: totalFee - totalPaid
+                pendingAmount: totalFee - totalPaid,
+                nextPaymentDate
             };
         });
 
@@ -484,6 +491,54 @@ export const resumeMember = async (req: AuthRequest, res: Response, next: NextFu
         }
 
         res.status(HTTP_STATUS.OK).json({ success: true, message: 'Member resumed', receiptNo: generatedReceiptNo });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const checkoutMember = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const entityId = req.user!.entityId.toString();
+        const id = req.params.id as string;
+        const member = await memberService.getOne({ _id: new ObjectId(id), entityId: new ObjectId(entityId) });
+        if (!member) {
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: 'Member not found' });
+        }
+
+        const {
+            checkoutDate,
+            depositAmount,
+            pendingDues,
+            deductions,
+            deductionReason,
+            netRefunded,
+            refundMethod,
+            notes
+        } = req.body;
+
+        const checkoutDetails = {
+            checkoutDate: checkoutDate ? new Date(checkoutDate) : new Date(),
+            depositAmount: Number(depositAmount) || 0,
+            pendingDues: Number(pendingDues) || 0,
+            deductions: Number(deductions) || 0,
+            deductionReason: deductionReason || '',
+            netRefunded: Number(netRefunded) || 0,
+            refundMethod: refundMethod || 'cash',
+            notes: notes || ''
+        };
+
+        await memberService.update(
+            { _id: new ObjectId(id), entityId: new ObjectId(entityId) },
+            {
+                $set: {
+                    status: 'checked_out',
+                    checkoutDetails,
+                    updatedAt: new Date()
+                }
+            }
+        );
+
+        res.status(HTTP_STATUS.OK).json({ success: true, message: 'Member checked out successfully', checkoutDetails });
     } catch (error) {
         next(error);
     }

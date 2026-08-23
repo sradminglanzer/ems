@@ -43,6 +43,9 @@ interface ApiService {
     @PUT("members/{id}/resume")
     suspend fun resumeMember(@Path("id") id: String, @Body body: ResumeRequest = ResumeRequest()): Response<Unit>
 
+    @PUT("members/{id}/checkout")
+    suspend fun checkoutMember(@Path("id") id: String, @Body body: CheckoutMemberRequest): Response<Unit>
+
 
     // ── Fee Payments ──────────────────────────────────────────────────────────
     @GET("fee-payments")
@@ -53,6 +56,15 @@ interface ApiService {
 
     @POST("fee-payments")
     suspend fun collectFee(@Body request: CollectFeeRequest): Response<List<FeePaymentResponseDto>>
+
+    @PATCH("fee-payments/{id}/next-date")
+    suspend fun updatePaymentNextDate(
+        @Path("id") id: String,
+        @Body request: UpdateNextPaymentDateRequest
+    ): Response<Unit>
+
+    @DELETE("fee-payments/{id}")
+    suspend fun deleteFeePayment(@Path("id") id: String): Response<Unit>
 
     // ── Attendance ────────────────────────────────────────────────────────────
     @GET("attendance")
@@ -371,12 +383,35 @@ data class MemberDetailDto(
     val pendingAmount: Double?     = null,
     val nextPaymentDate: String?   = null,
     val holdStartDate: String?     = null,
-    val holdHistory: List<HoldHistoryDto>? = null
+    val holdHistory: List<HoldHistoryDto>? = null,
+    val checkoutDetails: CheckoutDetailsDto? = null
 )
 
 data class HoldHistoryDto(
     val holdDate: String   = "",
     val resumeDate: String = ""
+)
+
+data class CheckoutDetailsDto(
+    val checkoutDate: String     = "",
+    val depositAmount: Double    = 0.0,
+    val pendingDues: Double      = 0.0,
+    val deductions: Double       = 0.0,
+    val deductionReason: String? = null,
+    val netRefunded: Double      = 0.0,
+    val refundMethod: String     = "cash",
+    val notes: String?           = null
+)
+
+data class CheckoutMemberRequest(
+    val checkoutDate: String?    = null,
+    val depositAmount: Double    = 0.0,
+    val pendingDues: Double      = 0.0,
+    val deductions: Double       = 0.0,
+    val deductionReason: String? = null,
+    val netRefunded: Double      = 0.0,
+    val refundMethod: String     = "cash",
+    val notes: String?           = null
 )
 
 // ── Create / Update member ───────────────────────────────────────────────────
@@ -483,6 +518,10 @@ data class FeePaymentDto(
     val nextPaymentDate: String? = null,
     val receiptNo: String?       = null,
     val notes: String?           = null
+)
+
+data class UpdateNextPaymentDateRequest(
+    val nextPaymentDate: String
 )
 
 data class CollectFeeRequest(

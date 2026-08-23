@@ -106,4 +106,20 @@ class MemberDetailRepository(context: Context) {
     suspend fun deleteMember(id: String): Boolean {
         return try { api.deleteMember(id).isSuccessful } catch (_: Exception) { false }
     }
+
+    suspend fun updateNextPaymentDate(paymentId: String, nextDateStr: String): Boolean {
+        return try {
+            api.updatePaymentNextDate(paymentId, UpdateNextPaymentDateRequest(nextDateStr)).isSuccessful
+        } catch (_: Exception) { false }
+    }
+
+    suspend fun deletePayment(paymentId: String): Boolean {
+        return try {
+            api.deleteFeePayment(paymentId).isSuccessful
+        } catch (_: Exception) { false }
+    }
+
+    suspend fun checkoutMember(id: String, request: CheckoutMemberRequest): Boolean {
+        return try { api.checkoutMember(id, request).isSuccessful } catch (_: Exception) { false }
+    }
 }

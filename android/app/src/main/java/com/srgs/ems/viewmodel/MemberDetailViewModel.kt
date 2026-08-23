@@ -272,6 +272,39 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
+    val checkoutResult = MutableSharedFlow<Boolean>()
+
+    fun checkoutMember(request: com.srgs.ems.data.api.CheckoutMemberRequest) {
+        viewModelScope.launch {
+            _isSaving.value = true
+            val ok = repository.checkoutMember(memberId, request)
+            if (ok) {
+                _memberStatus.value = "checked_out"
+                loadData()
+            }
+            _isSaving.value = false
+            checkoutResult.emit(ok)
+        }
+    }
+
+    val paymentActionResult = MutableSharedFlow<Pair<Boolean, String>>()
+
+    fun updateNextPaymentDate(paymentId: String, nextDateStr: String) {
+        viewModelScope.launch {
+            val ok = repository.updateNextPaymentDate(paymentId, nextDateStr)
+            if (ok) loadData()
+            paymentActionResult.emit(ok to if (ok) "Renewal date updated" else "Failed to update renewal date")
+        }
+    }
+
+    fun deletePayment(paymentId: String) {
+        viewModelScope.launch {
+            val ok = repository.deletePayment(paymentId)
+            if (ok) loadData()
+            paymentActionResult.emit(ok to if (ok) "Payment deleted" else "Failed to delete payment")
+        }
+    }
+
     // ── Date calculation ──────────────────────────────────────────────────────
     private fun calcNextDate(frequency: String, lastDateStr: String?): String {
         val cal = Calendar.getInstance()

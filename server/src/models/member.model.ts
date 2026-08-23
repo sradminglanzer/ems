@@ -18,9 +18,19 @@ export class Member {
     addonFeeIds?: ObjectId[];
     profilePicUrl?: string;
     joiningDate?: Date;
-    status?: 'active' | 'on_hold';
+    status?: 'active' | 'on_hold' | 'checked_out';
     holdStartDate?: Date;
     holdHistory?: { holdDate: Date; resumeDate: Date }[];
+    checkoutDetails?: {
+        checkoutDate: Date;
+        depositAmount: number;
+        pendingDues: number;
+        deductions: number;
+        deductionReason?: string;
+        netRefunded: number;
+        refundMethod: string;
+        notes?: string;
+    };
     createdAt?: Date;
     updatedAt?: Date;
 
@@ -53,6 +63,18 @@ export class Member {
                 holdDate: new Date(h.holdDate),
                 resumeDate: new Date(h.resumeDate)
             }));
+        }
+        if (data.checkoutDetails) {
+            this.checkoutDetails = {
+                checkoutDate: new Date(data.checkoutDetails.checkoutDate || new Date()),
+                depositAmount: Number(data.checkoutDetails.depositAmount) || 0,
+                pendingDues: Number(data.checkoutDetails.pendingDues) || 0,
+                deductions: Number(data.checkoutDetails.deductions) || 0,
+                deductionReason: data.checkoutDetails.deductionReason,
+                netRefunded: Number(data.checkoutDetails.netRefunded) || 0,
+                refundMethod: data.checkoutDetails.refundMethod || 'cash',
+                notes: data.checkoutDetails.notes
+            };
         }
         this.createdAt = data.createdAt || new Date();
         this.updatedAt = data.updatedAt || new Date();

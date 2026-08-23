@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getMembers, getMemberById, createMember, updateMember, updateMemberFeeDetails, deleteMember, holdMember, resumeMember } from '../controllers/member.controller';
+import { getMembers, getMemberById, createMember, updateMember, updateMemberFeeDetails, deleteMember, holdMember, resumeMember, checkoutMember } from '../controllers/member.controller';
 import { authenticateToken, requireRole } from '../middleware/auth.middleware';
 
 const router = Router();
@@ -12,6 +12,7 @@ router.put('/:id', requireRole(['owner', 'admin', 'staff', 'teacher']), updateMe
 router.patch('/:id/fee-details', requireRole(['owner', 'admin', 'staff', 'teacher']), updateMemberFeeDetails);
 router.put('/:id/hold', requireRole(['owner', 'admin', 'staff']), holdMember);
 router.put('/:id/resume', requireRole(['owner', 'admin', 'staff']), resumeMember);
+router.put('/:id/checkout', requireRole(['owner', 'admin', 'staff']), checkoutMember);
 router.delete('/:id', requireRole(['owner', 'admin', 'staff']), deleteMember);
 
 export default router;
