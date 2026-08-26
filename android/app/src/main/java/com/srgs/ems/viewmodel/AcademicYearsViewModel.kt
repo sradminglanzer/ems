@@ -105,5 +105,17 @@ class AcademicYearsViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 
+    fun deleteYear(id: String) {
+        viewModelScope.launch {
+            when (val r = repository.deleteYear(id)) {
+                is SaveResult.Success -> {
+                    snackbarEvent.emit("✅ Academic year deleted!")
+                    load()
+                }
+                is SaveResult.Error -> snackbarEvent.emit("❌ ${r.message}")
+            }
+        }
+    }
+
     fun formatDate(date: Date): String = fmt.format(date)
 }

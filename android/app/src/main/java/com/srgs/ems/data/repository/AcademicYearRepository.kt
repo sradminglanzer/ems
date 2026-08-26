@@ -34,4 +34,21 @@ class AcademicYearRepository(context: Context) {
             else SaveResult.Error("Failed to update academic year")
         } catch (e: Exception) { SaveResult.Error(e.message ?: "Unknown error") }
     }
+
+    suspend fun deleteYear(id: String): SaveResult {
+        return try {
+            val res = api.deleteAcademicYear(id)
+            if (res.isSuccessful) SaveResult.Success
+            else {
+                val errorMsg = try {
+                    val errorStr = res.errorBody()?.string() ?: ""
+                    val json = org.json.JSONObject(errorStr)
+                    json.optString("message", "Failed to delete academic year")
+                } catch (_: Exception) {
+                    "Failed to delete academic year"
+                }
+                SaveResult.Error(errorMsg)
+            }
+        } catch (e: Exception) { SaveResult.Error(e.message ?: "Unknown error") }
+    }
 }

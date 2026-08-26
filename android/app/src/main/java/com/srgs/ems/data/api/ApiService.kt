@@ -214,6 +214,9 @@ interface ApiService {
     @PUT("academic-years/{id}")
     suspend fun setAcademicYearActive(@Path("id") id: String, @Body request: Map<String, Boolean>): Response<AcademicYearDto>
 
+    @DELETE("academic-years/{id}")
+    suspend fun deleteAcademicYear(@Path("id") id: String): Response<Unit>
+
     // ── Settings ───────────────────────────────────────────────────────────────
     @PUT("fee-payments/sequence")
     suspend fun updateInvoiceSequence(@Body request: UpdateSequenceRequest): Response<Unit>
