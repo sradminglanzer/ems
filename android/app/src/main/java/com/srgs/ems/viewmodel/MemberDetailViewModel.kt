@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.srgs.ems.data.api.FeeGroupDto
 import com.srgs.ems.data.api.FeePaymentDto
 import com.srgs.ems.data.api.FeeStructureDto
 import com.srgs.ems.data.api.MemberDetailDto
@@ -39,6 +40,7 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
     private val _member          = MutableStateFlow<MemberDetailDto?>(null)
     private val _payments        = MutableStateFlow<List<FeePaymentDto>>(emptyList())
     private val _feeStructures   = MutableStateFlow<List<FeeStructureDto>>(emptyList())
+    private val _feeGroups       = MutableStateFlow<List<FeeGroupDto>>(emptyList())
     private val _isLoading       = MutableStateFlow(true)
     private val _memberStatus    = MutableStateFlow("active")
     private val _isSaving        = MutableStateFlow(false)
@@ -46,6 +48,7 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
     val member:        StateFlow<MemberDetailDto?>    = _member.asStateFlow()
     val payments:      StateFlow<List<FeePaymentDto>> = _payments.asStateFlow()
     val feeStructures: StateFlow<List<FeeStructureDto>> = _feeStructures.asStateFlow()
+    val feeGroups:     StateFlow<List<FeeGroupDto>>   = _feeGroups.asStateFlow()
     val isLoading:     StateFlow<Boolean>             = _isLoading.asStateFlow()
     val memberStatus:  StateFlow<String>              = _memberStatus.asStateFlow()
     val isSaving:      StateFlow<Boolean>             = _isSaving.asStateFlow()
@@ -56,6 +59,9 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
 
     /** Compose-observable cart — triggers recomposition on toggle/edit */
     var cartItems by mutableStateOf<List<CartItemState>>(emptyList())
+        private set
+
+    var selectedFeeGroupId by mutableStateOf<String?>("")
         private set
 
     private var memberId: String = ""
@@ -75,10 +81,12 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
                 val memberJob     = async { repository.getMember(memberId) }
                 val paymentsJob   = async { repository.getPayments(memberId) }
                 val structuresJob = async { repository.getFeeStructures() }
+                val groupsJob     = async { repository.getFeeGroups() }
                 _member.value       = memberJob.await()
                 _memberStatus.value = _member.value?.status ?: "active"
                 _payments.value     = paymentsJob.await()
                 _feeStructures.value = structuresJob.await()
+                _feeGroups.value     = groupsJob.await()
             }
             _isLoading.value = false
         }
@@ -88,9 +96,15 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
     fun initCart() {
         val m          = _member.value ?: return
         val structures = _feeStructures.value
-        val assignedIds = ((m.addonFeeIds ?: emptyList()) +
-            structures.filter { it.feeGroupId != null && it.feeGroupId == m.feeGroupId }.map { it._id }
-        ).toSet()
+
+        val primaryId   = m.feeStructureId
+        val roomPlanIds = if (!m.feeGroupId.isNullOrEmpty()) {
+            structures.filter { it.feeGroupId == m.feeGroupId }.map { it._id }
+        } else emptyList()
+
+        val assignedIds = (listOfNotNull(primaryId) + (m.addonFeeIds ?: emptyList()) + roomPlanIds).toSet()
+
+        var hasCheckedPrimary = false
 
         cartItems = structures.map { s ->
             val lastPayment = _payments.value
@@ -101,18 +115,36 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
                 s.groupDetails != null -> s.groupDetails.name
                 else                   -> null
             }
+            val isChecked = assignedIds.contains(s._id)
+            if (isChecked && !s.isAddon) {
+                hasCheckedPrimary = true
+            }
             CartItemState(
                 feeStructureId = s._id,
                 name           = s.name,
                 defaultAmount  = s.amount,
                 amount         = s.amount.toInt().toString(),
-                checked        = assignedIds.contains(s._id),
+                checked        = isChecked,
                 nextDateStr    = calcNextDate(s.frequency, lastPayment?.paymentDate),
                 frequency      = s.frequency,
                 isAddon        = s.isAddon,
                 groupName      = grpName
             )
         }
+
+        // If no primary plan was checked, auto-check first primary plan so Collect Fee is never empty
+        if (!hasCheckedPrimary) {
+            val firstPrimary = cartItems.firstOrNull { !it.isAddon }
+            if (firstPrimary != null) {
+                cartItems = cartItems.map {
+                    if (it.feeStructureId == firstPrimary.feeStructureId) it.copy(checked = true) else it
+                }
+            }
+        }
+
+        selectedFeeGroupId = m.feeGroupId
+            ?: _feeGroups.value.firstOrNull { it.name.equals(m.groupName, ignoreCase = true) }?._id
+            ?: structures.firstOrNull { it._id == cartItems.firstOrNull { c -> c.checked && !c.isAddon }?.feeStructureId }?.feeGroupId
         notes         = ""
         paymentMethod = "cash"
         paymentDate   = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
@@ -154,6 +186,22 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
     fun updatePaymentMethod(m: String) { paymentMethod = m }
     fun updatePaymentDate(d: String) { paymentDate = d }
 
+    /** Select a room (PG/Hostel mode) and auto-resolve its primary rent plan. */
+    fun selectRoom(roomId: String) {
+        selectedFeeGroupId = roomId
+        val structures = _feeStructures.value
+        val roomDoc = _feeGroups.value.firstOrNull { it._id == roomId }
+        val roomCap = roomDoc?.capacity ?: 1
+
+        val matchedPlan = structures.firstOrNull { !it.isAddon && it.feeGroupId == roomId }
+            ?: structures.firstOrNull { !it.isAddon && it.name.contains("$roomCap", ignoreCase = true) }
+            ?: structures.firstOrNull { !it.isAddon }
+
+        if (matchedPlan != null) {
+            selectPrimaryPlan(matchedPlan._id)
+        }
+    }
+
     /** Unconditionally select a primary plan (used from plan picker). */
     fun selectPrimaryPlan(planId: String) {
         cartItems = cartItems.map { item ->
@@ -172,6 +220,7 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
         if (items.isEmpty()) return
 
         val checkedStructureIds = cartItems.filter { it.checked }.map { it.feeStructureId }
+        val checkedPrimary = cartItems.firstOrNull { it.checked && !it.isAddon }
 
         viewModelScope.launch {
             _isSaving.value = true
@@ -179,14 +228,20 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
                 val struct = _feeStructures.value.find { it._id == item.feeStructureId }
                 CollectFeeItem(
                     feeStructureId = item.feeStructureId,
-                    feeGroupId     = struct?.feeGroupId,
+                    feeGroupId     = struct?.feeGroupId ?: selectedFeeGroupId,
                     amount         = item.amount.toDoubleOrNull() ?: item.defaultAmount,
                     nextDateStr    = item.nextDateStr.ifEmpty { null },
                     notes          = note.ifEmpty { null },
                     paymentMethod  = pm
                 )
             }
-            val result = repository.collectFee(memberId, collectItems, checkedStructureIds)
+            val result = repository.collectFee(
+                memberId          = memberId,
+                items             = collectItems,
+                activeAddonFeeIds = checkedStructureIds,
+                newFeeGroupId     = selectedFeeGroupId,
+                newFeeStructureId = checkedPrimary?.feeStructureId
+            )
             collectResult.emit(result)
             if (result.success) loadData()
             _isSaving.value = false
@@ -214,6 +269,39 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
         viewModelScope.launch {
             val ok = repository.deleteMember(memberId)
             deleteResult.emit(ok)
+        }
+    }
+
+    val checkoutResult = MutableSharedFlow<Boolean>()
+
+    fun checkoutMember(request: com.srgs.ems.data.api.CheckoutMemberRequest) {
+        viewModelScope.launch {
+            _isSaving.value = true
+            val ok = repository.checkoutMember(memberId, request)
+            if (ok) {
+                _memberStatus.value = "checked_out"
+                loadData()
+            }
+            _isSaving.value = false
+            checkoutResult.emit(ok)
+        }
+    }
+
+    val paymentActionResult = MutableSharedFlow<Pair<Boolean, String>>()
+
+    fun updateNextPaymentDate(paymentId: String, nextDateStr: String) {
+        viewModelScope.launch {
+            val ok = repository.updateNextPaymentDate(paymentId, nextDateStr)
+            if (ok) loadData()
+            paymentActionResult.emit(ok to if (ok) "Renewal date updated" else "Failed to update renewal date")
+        }
+    }
+
+    fun deletePayment(paymentId: String) {
+        viewModelScope.launch {
+            val ok = repository.deletePayment(paymentId)
+            if (ok) loadData()
+            paymentActionResult.emit(ok to if (ok) "Payment deleted" else "Failed to delete payment")
         }
     }
 

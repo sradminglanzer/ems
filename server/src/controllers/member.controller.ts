@@ -12,6 +12,7 @@ import feeGroupService from '../services/fee-group.service';
 import feeStructureService from '../services/fee-structure.service';
 import feePaymentService from '../services/fee-payment.service';
 import userService from '../services/user.service';
+import { getDB } from '../config/db';
 
 export const getMembers = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
@@ -48,15 +49,17 @@ export const getMembers = async (req: AuthRequest, res: Response, next: NextFunc
         const memberStats = members.map(m => {
             const mId = m._id!.toString();
 
-            // find group based on the requested academic year
+            // find group based on direct feeGroupId or roster
             let group;
-            if (academicYearIdStr) {
+            if (m.feeGroupId) {
+                group = feeGroups.find(g => g._id!.toString() === m.feeGroupId!.toString());
+            }
+            if (!group && academicYearIdStr) {
                 group = feeGroups.find(g => {
                     const roster = g.yearlyRosters?.find((r: any) => r.academicYearId.toString() === academicYearIdStr);
                     return roster && roster.members && roster.members.some((id: any) => id.toString() === mId);
                 });
-            } else {
-                // Fallback if no year passed: check generic members array then rosters 
+            } else if (!group) {
                 group = feeGroups.find(g => {
                     return (g.members && g.members.some((id: any) => id.toString() === mId)) ||
                         (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)));
@@ -82,13 +85,20 @@ export const getMembers = async (req: AuthRequest, res: Response, next: NextFunc
             const memberPayments = feePayments.filter(p => p.memberId.toString() === mId);
             const totalPaid = memberPayments.reduce((sum, p) => sum + p.amount, 0);
 
+            // get active latest nextPaymentDate
+            const paymentsWithNextDate = memberPayments
+                .filter(p => p.nextPaymentDate)
+                .sort((a, b) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime());
+            const nextPaymentDate = paymentsWithNextDate[0]?.nextPaymentDate || null;
+
             return {
                 ...m,
                 groupName,
                 addonNames,
                 totalFee,
                 totalPaid,
-                pendingAmount: totalFee - totalPaid
+                pendingAmount: totalFee - totalPaid,
+                nextPaymentDate
             };
         });
 
@@ -171,10 +181,28 @@ export const getMemberById = async (req: AuthRequest, res: Response, next: NextF
 
 export const createMember = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
+        const entityIdObj = new ObjectId(req.user!.entityId as string);
         const member = new Member({ ...req.body, entityId: req.user!.entityId });
 
         if (!member.valid) {
             throw new AppError('Invalid member data. First Name, Last Name and Known ID are required.', HTTP_STATUS.BAD_REQUEST);
+        }
+
+        // Room capacity check for PG/Hostel
+        if (req.body.feeGroupId) {
+            const groupId = new ObjectId(req.body.feeGroupId as string);
+            const [group, entityDoc, roomActiveMembers] = await Promise.all([
+                feeGroupService.getOne({ _id: groupId, entityId: entityIdObj }),
+                getDB().collection('entities').findOne({ _id: entityIdObj }),
+                memberService.get({ entityId: entityIdObj, feeGroupId: groupId, status: 'active' } as any)
+            ]);
+
+            if (group && (entityDoc?.type === 'pg' || entityDoc?.type === 'hostel')) {
+                const capacity = group.capacity || 1;
+                if (roomActiveMembers.length >= capacity) {
+                    throw new AppError(`Room ${group.name} is fully occupied (${capacity}/${capacity} beds taken)`, HTTP_STATUS.BAD_REQUEST);
+                }
+            }
         }
 
         const result = await memberService.insert(member);
@@ -186,7 +214,7 @@ export const createMember = async (req: AuthRequest, res: Response, next: NextFu
                 const memberIdObj = new ObjectId(result.insertedId.toString());
 
                 // Fetch group
-                const group = await feeGroupService.getOne({ _id: groupId, entityId: new ObjectId(req.user!.entityId) });
+                const group = await feeGroupService.getOne({ _id: groupId, entityId: entityIdObj });
 
                 if (group) {
                     if (req.body.academicYearId) {
@@ -304,10 +332,20 @@ export const updateMember = async (req: AuthRequest, res: Response, next: NextFu
 
         // Validation for partial update
         let updateData: any = { $set: {} };
-        const allowedFields = ['firstName', 'middleName', 'lastName', 'knownId', 'dob', 'contact', 'altContact', 'fatherOccupation', 'motherOccupation', 'address', 'addonFeeIds', 'profilePicUrl'];
+        const allowedFields = [
+            'firstName', 'middleName', 'lastName', 'knownId', 'dob', 
+            'contact', 'altContact', 'fatherOccupation', 'motherOccupation', 
+            'address', 'feeGroupId', 'feeStructureId', 'addonFeeIds', 'profilePicUrl'
+        ];
         allowedFields.forEach(field => {
             if (req.body[field] !== undefined) {
-                updateData.$set[field] = req.body[field];
+                if (field === 'feeGroupId' || field === 'feeStructureId') {
+                    updateData.$set[field] = req.body[field] ? new ObjectId(req.body[field] as string) : null;
+                } else if (field === 'addonFeeIds' && Array.isArray(req.body[field])) {
+                    updateData.$set[field] = req.body[field].map((id: any) => new ObjectId(id));
+                } else {
+                    updateData.$set[field] = req.body[field];
+                }
             }
         });
 
@@ -319,6 +357,36 @@ export const updateMember = async (req: AuthRequest, res: Response, next: NextFu
             { _id: new ObjectId(id as string), entityId: new ObjectId(req.user!.entityId) },
             updateData
         );
+
+        res.status(HTTP_STATUS.OK).json({ success: true });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateMemberFeeDetails = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const id = req.params.id;
+        const { feeGroupId, feeStructureId, addonFeeIds } = req.body;
+
+        let updateData: any = { $set: {} };
+
+        if (feeGroupId !== undefined) {
+            updateData.$set.feeGroupId = feeGroupId ? new ObjectId(feeGroupId as string) : null;
+        }
+        if (feeStructureId !== undefined) {
+            updateData.$set.feeStructureId = feeStructureId ? new ObjectId(feeStructureId as string) : null;
+        }
+        if (addonFeeIds !== undefined && Array.isArray(addonFeeIds)) {
+            updateData.$set.addonFeeIds = addonFeeIds.map((aid: any) => new ObjectId(aid));
+        }
+
+        if (Object.keys(updateData.$set).length > 0) {
+            await memberService.update(
+                { _id: new ObjectId(id as string), entityId: new ObjectId(req.user!.entityId) },
+                updateData
+            );
+        }
 
         res.status(HTTP_STATUS.OK).json({ success: true });
     } catch (error) {
@@ -423,6 +491,54 @@ export const resumeMember = async (req: AuthRequest, res: Response, next: NextFu
         }
 
         res.status(HTTP_STATUS.OK).json({ success: true, message: 'Member resumed', receiptNo: generatedReceiptNo });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const checkoutMember = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const entityId = req.user!.entityId.toString();
+        const id = req.params.id as string;
+        const member = await memberService.getOne({ _id: new ObjectId(id), entityId: new ObjectId(entityId) });
+        if (!member) {
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: 'Member not found' });
+        }
+
+        const {
+            checkoutDate,
+            depositAmount,
+            pendingDues,
+            deductions,
+            deductionReason,
+            netRefunded,
+            refundMethod,
+            notes
+        } = req.body;
+
+        const checkoutDetails = {
+            checkoutDate: checkoutDate ? new Date(checkoutDate) : new Date(),
+            depositAmount: Number(depositAmount) || 0,
+            pendingDues: Number(pendingDues) || 0,
+            deductions: Number(deductions) || 0,
+            deductionReason: deductionReason || '',
+            netRefunded: Number(netRefunded) || 0,
+            refundMethod: refundMethod || 'cash',
+            notes: notes || ''
+        };
+
+        await memberService.update(
+            { _id: new ObjectId(id), entityId: new ObjectId(entityId) },
+            {
+                $set: {
+                    status: 'checked_out',
+                    checkoutDetails,
+                    updatedAt: new Date()
+                }
+            }
+        );
+
+        res.status(HTTP_STATUS.OK).json({ success: true, message: 'Member checked out successfully', checkoutDetails });
     } catch (error) {
         next(error);
     }

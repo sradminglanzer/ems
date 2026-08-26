@@ -39,9 +39,10 @@ class FeeStructuresViewModel(application: Application) : AndroidViewModel(applic
     val selectedType = MutableStateFlow(FeeStructureType.FeeStructure.value)
     val isSubmitting = MutableStateFlow(false)
 
-    val snackbarEvent = MutableSharedFlow<String>()
-
+    val editingStructure = MutableStateFlow<FeeStructureDto?>(null)
     var deleteTarget = MutableStateFlow<FeeStructureDto?>(null)
+
+    val snackbarEvent = MutableSharedFlow<String>()
 
     init { load() }
 
@@ -58,7 +59,25 @@ class FeeStructuresViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 
-    fun create(isGymMode: Boolean) {
+    fun startCreate() {
+        editingStructure.value = null
+        name.value = ""
+        amount.value = ""
+        frequency.value = "monthly"
+        selectedType.value = FeeStructureType.FeeStructure.value
+        if (groups.value.isNotEmpty()) selectedGroupId.value = groups.value.first()._id
+    }
+
+    fun startEdit(s: FeeStructureDto) {
+        editingStructure.value = s
+        name.value = s.name
+        amount.value = s.amount.toString()
+        frequency.value = s.frequency
+        selectedGroupId.value = s.feeGroupId ?: (groups.value.firstOrNull()?._id ?: "")
+        selectedType.value = if (s.isAddon) FeeStructureType.FeeStructureAddon.value else FeeStructureType.FeeStructure.value
+    }
+
+    fun save(isGymMode: Boolean) {
         val n = name.value.trim()
         val a = amount.value.trim().toDoubleOrNull()
         val typeVal = selectedType.value
@@ -74,13 +93,21 @@ class FeeStructuresViewModel(application: Application) : AndroidViewModel(applic
         }
 
         val groupId = if (isAddon || isGymMode) null else selectedGroupId.value.ifEmpty { null }
+        val target = editingStructure.value
 
         viewModelScope.launch {
             isSubmitting.value = true
-            when (val r = structRepo.createStructure(n, a, frequency.value, groupId, typeVal)) {
+            val r = if (target == null) {
+                structRepo.createStructure(n, a, frequency.value, groupId, typeVal)
+            } else {
+                structRepo.updateStructure(target._id, n, a, frequency.value, groupId, typeVal)
+            }
+
+            when (r) {
                 is SaveResult.Success -> {
-                    snackbarEvent.emit("✅ Fee structure created!")
+                    snackbarEvent.emit(if (target == null) "✅ Plan created!" else "✅ Plan updated!")
                     name.value = ""; amount.value = ""; selectedType.value = FeeStructureType.FeeStructure.value
+                    editingStructure.value = null
                     load()
                 }
                 is SaveResult.Error -> snackbarEvent.emit("❌ ${r.message}")
@@ -92,7 +119,7 @@ class FeeStructuresViewModel(application: Application) : AndroidViewModel(applic
     fun delete(id: String) {
         viewModelScope.launch {
             when (val r = structRepo.deleteStructure(id)) {
-                is SaveResult.Success -> { snackbarEvent.emit("Structure deleted"); load() }
+                is SaveResult.Success -> { snackbarEvent.emit("Plan deleted"); load() }
                 is SaveResult.Error -> snackbarEvent.emit("❌ ${r.message}")
             }
         }

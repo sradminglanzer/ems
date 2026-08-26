@@ -4,6 +4,8 @@ import android.app.DatePickerDialog
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -390,7 +392,13 @@ private fun ProcessSalarySheet(
         containerColor = Surface,
         tonalElevation = 0.dp
     ) {
-        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
+        Column(
+            Modifier
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp)
+        ) {
             Text("Disburse Salary", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
             Text("Process monthly salary for ${item.staffName}", fontSize = 13.sp, color = TextSecondary)
             Spacer(Modifier.height(20.dp))
@@ -745,7 +753,12 @@ private fun StaffFormSheet(
         containerColor = Surface,
         tonalElevation = 0.dp
     ) {
-        LazyColumn(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
+        LazyColumn(
+            Modifier
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp)
+        ) {
             item {
                 Text(if (isEditing) "Edit Staff Profile" else "Add New Staff", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
                 Text(if (isEditing) "Update employee details & HR records" else "Create a new team member record", fontSize = 13.sp, color = TextSecondary)

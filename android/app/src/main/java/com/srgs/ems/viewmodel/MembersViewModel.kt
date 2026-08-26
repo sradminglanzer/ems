@@ -23,13 +23,38 @@ class MembersViewModel(application: Application) : AndroidViewModel(application)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
     val searchQuery  = MutableStateFlow("")
-    val statusFilter = MutableStateFlow("all")  // "all" | "active" | "on_hold"
+    val statusFilter = MutableStateFlow("all")  // "all" | "due_soon" | "overdue" | "active" | "on_hold" | "checked_out"
 
     val filteredMembers: StateFlow<List<MemberDto>> = combine(
         _allMembers, searchQuery.debounce(150), statusFilter
     ) { members, query, filter ->
+        val todayCal = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+        val today = todayCal.time
+        val fiveDaysLater = java.util.Calendar.getInstance().apply {
+            time = today
+            add(java.util.Calendar.DAY_OF_YEAR, 5)
+            set(java.util.Calendar.HOUR_OF_DAY, 23)
+            set(java.util.Calendar.MINUTE, 59)
+            set(java.util.Calendar.SECOND, 59)
+        }.time
+
         members
-            .filter { m -> filter == "all" || m.status == filter }
+            .filter { m ->
+                val nextDate = parseDate(m.nextPaymentDate)
+                val isActiveOrDue = m.status != "on_hold" && m.status != "checked_out"
+                when (filter) {
+                    "overdue"     -> isActiveOrDue && nextDate != null && nextDate.before(today)
+                    "due_soon"    -> isActiveOrDue && nextDate != null && !nextDate.before(today) && !nextDate.after(fiveDaysLater)
+                    "all"         -> true
+                    "checked_out" -> m.status == "checked_out"
+                    else          -> m.status == filter
+                }
+            }
             .filter { m ->
                 if (query.isBlank()) true
                 else {
@@ -42,6 +67,14 @@ class MembersViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), emptyList())
+
+    private fun parseDate(s: String?): java.util.Date? {
+        if (s.isNullOrEmpty()) return null
+        for (fmt in listOf("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", "yyyy-MM-dd'T'HH:mm:ss'Z'", "yyyy-MM-dd")) {
+            try { return java.text.SimpleDateFormat(fmt, java.util.Locale.US).parse(s) } catch (_: Exception) {}
+        }
+        return null
+    }
 
     init { loadMembers() }
 

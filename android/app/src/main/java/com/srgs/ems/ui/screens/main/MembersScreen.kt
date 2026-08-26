@@ -41,10 +41,13 @@ fun MembersScreen(
     val searchQuery  by vm.searchQuery.collectAsState()
     val statusFilter by vm.statusFilter.collectAsState()
     val session       = SessionManager.session
+    val labels       = session?.labels ?: com.srgs.ems.data.api.EntityLabelsDto()
     val isGym        = session?.isGym ?: false
-    val memberLabel  = if (isGym) "Members" else "Students"
+    val memberLabel  = labels.memberPlural
 
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
+
+    LaunchedEffect(Unit) { vm.loadMembers() }
 
     Scaffold(
         containerColor = Background,
@@ -99,7 +102,14 @@ fun MembersScreen(
                         .padding(horizontal = 16.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    listOf("all" to "All", "active" to "● Active", "on_hold" to "⏸ On Hold").forEach { (key, label) ->
+                    listOf(
+                        "all"         to "All",
+                        "due_soon"    to "⚠️ Due Soon",
+                        "overdue"     to "🔴 Overdue",
+                        "active"      to "● Active",
+                        "on_hold"     to "⏸ On Hold",
+                        "checked_out" to "🚪 Vacated"
+                    ).forEach { (key, label) ->
                         AnimatedPill(label, key == statusFilter) { vm.statusFilter.value = key }
                     }
                 }
@@ -112,6 +122,7 @@ fun MembersScreen(
                     CircularProgressIndicator(color = Primary, strokeWidth = 3.dp)
                 }
             } else {
+                val context = androidx.compose.ui.platform.LocalContext.current
                 LazyColumn(
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 80.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -133,12 +144,71 @@ fun MembersScreen(
                         }
                     } else {
                         items(members, key = { it._id }) { m ->
-                            ModernMemberCard(m, isGym, onClick = { onMemberClick(m._id) })
+                            ModernMemberCard(
+                                m = m,
+                                isGym = isGym,
+                                onClick = { onMemberClick(m._id) },
+                                onRemind = { sendRentReminderWhatsApp(context, session, m) }
+                            )
                         }
                     }
                 }
             }
         }
+    }
+}
+
+private fun sendRentReminderWhatsApp(
+    context: android.content.Context,
+    session: com.srgs.ems.data.models.UserSession?,
+    member: MemberDto
+) {
+    val entityName = session?.name ?: "PG / Hostel"
+    val roomOrPlan = if (session?.isBusinessMode == true && session?.isGym != true) {
+        "Room: ${member.groupName ?: "Assigned Room"}"
+    } else {
+        "Plan: ${member.addonNames?.firstOrNull() ?: "Membership"}"
+    }
+
+    val dateFormatted = member.nextPaymentDate?.let { dStr ->
+        for (fmt in listOf("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", "yyyy-MM-dd'T'HH:mm:ss'Z'", "yyyy-MM-dd")) {
+            try {
+                val d = java.text.SimpleDateFormat(fmt, java.util.Locale.US).parse(dStr)
+                if (d != null) return@let java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.ENGLISH).format(d)
+            } catch (_: Exception) {}
+        }
+        dStr.take(10)
+    } ?: "soon"
+
+    val sb = StringBuilder()
+    sb.append("👋 Hi *${member.firstName}*,\n\n")
+    sb.append("Friendly reminder from *${entityName.trim()}* that your rent/fee for *${roomOrPlan}* is due on *${dateFormatted}*.\n\n")
+    sb.append("Please clear the dues at your earliest convenience.\n")
+    sb.append("Thank you! 🙏")
+
+    val message = sb.toString()
+    val phone = member.contact?.filter { it.isDigit() } ?: ""
+    val formattedPhone = if (phone.length == 10) "91$phone" else phone
+
+    val url = if (formattedPhone.isNotEmpty()) {
+        "https://api.whatsapp.com/send?phone=$formattedPhone&text=${java.net.URLEncoder.encode(message, "UTF-8")}"
+    } else {
+        "https://api.whatsapp.com/send?text=${java.net.URLEncoder.encode(message, "UTF-8")}"
+    }
+
+    try {
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+            data = android.net.Uri.parse(url)
+        }
+        context.startActivity(intent)
+    } catch (_: Exception) {
+        try {
+            val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(android.content.Intent.EXTRA_TEXT, message)
+            }
+            context.startActivity(android.content.Intent.createChooser(shareIntent, "Send Reminder"))
+        } catch (_: Exception) {}
     }
 }
 
@@ -156,18 +226,59 @@ private fun AnimatedPill(label: String, active: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ModernMemberCard(m: MemberDto, isGym: Boolean, onClick: () -> Unit) {
-    val isOnHold = m.status == "on_hold"
-    val brush    = remember(isOnHold) {
-        if (isOnHold) Brush.linearGradient(listOf(Color(0xFFF97316), Color(0xFFF59E0B)))
-        else          Brush.linearGradient(listOf(GradientStart, GradientEnd))
+private fun ModernMemberCard(
+    m: MemberDto,
+    isGym: Boolean,
+    onClick: () -> Unit,
+    onRemind: () -> Unit = {}
+) {
+    val isOnHold     = m.status == "on_hold"
+    val isCheckedOut = m.status == "checked_out"
+    val brush        = remember(isOnHold, isCheckedOut) {
+        if (isCheckedOut) Brush.linearGradient(listOf(Color(0xFF6B7280), Color(0xFF4B5563)))
+        else if (isOnHold) Brush.linearGradient(listOf(Color(0xFFF97316), Color(0xFFF59E0B)))
+        else              Brush.linearGradient(listOf(GradientStart, GradientEnd))
     }
+
+    val (isOverdue, isDueSoon, formattedDate) = remember(m.nextPaymentDate, isCheckedOut) {
+        if (isCheckedOut || m.nextPaymentDate.isNullOrEmpty()) {
+            Triple(false, false, null)
+        } else {
+            var date: java.util.Date? = null
+            for (fmt in listOf("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", "yyyy-MM-dd'T'HH:mm:ss'Z'", "yyyy-MM-dd")) {
+                try { date = java.text.SimpleDateFormat(fmt, java.util.Locale.US).parse(m.nextPaymentDate); break } catch (_: Exception) {}
+            }
+            if (date == null) {
+                Triple(false, false, null)
+            } else {
+                val todayCal = java.util.Calendar.getInstance().apply {
+                    set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+                }
+                val today = todayCal.time
+                val fiveDaysLater = java.util.Calendar.getInstance().apply {
+                    time = today; add(java.util.Calendar.DAY_OF_YEAR, 5); set(java.util.Calendar.HOUR_OF_DAY, 23); set(java.util.Calendar.MINUTE, 59)
+                }.time
+
+                val overdue = date.before(today)
+                val dueSoon = !overdue && !date.after(fiveDaysLater)
+                val displayStr = java.text.SimpleDateFormat("dd MMM", java.util.Locale.ENGLISH).format(date)
+                Triple(overdue, dueSoon, displayStr)
+            }
+        }
+    }
+
     Box(
         Modifier.fillMaxWidth().shadow(3.dp, RoundedCornerShape(16.dp), clip = false)
             .clip(RoundedCornerShape(16.dp)).background(Surface).clickable(onClick = onClick)
     ) {
-        Box(Modifier.width(4.dp).height(54.dp).align(Alignment.CenterStart).background(if (isOnHold) Warning else Primary))
-        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 14.dp, top = 14.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier.width(4.dp).height(54.dp).align(Alignment.CenterStart)
+                .background(if (isCheckedOut) Color(0xFF6B7280) else if (isOnHold) Warning else if (isOverdue) Danger else if (isDueSoon) Color(0xFFF59E0B) else Primary)
+        )
+        Row(
+            Modifier.fillMaxWidth().padding(start = 16.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Box(Modifier.size(46.dp).clip(CircleShape).background(brush), Alignment.Center) {
                 Text(
                     "${m.firstName.firstOrNull()?.uppercaseChar() ?: ""}${m.lastName.firstOrNull()?.uppercaseChar() ?: ""}",
@@ -178,23 +289,61 @@ private fun ModernMemberCard(m: MemberDto, isGym: Boolean, onClick: () -> Unit) 
             Column(Modifier.weight(1f)) {
                 Text("${m.firstName} ${m.lastName}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(Modifier.height(4.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.horizontalScroll(rememberScrollState())
+                ) {
                     val groupText = if (isGym) m.addonNames?.joinToString(", ")?.ifEmpty { "No Plan" } ?: "No Plan"
                                     else m.groupName ?: "Unassigned"
                     Surface(shape = RoundedCornerShape(6.dp), color = if (groupText == "No Plan" || groupText == "Unassigned") SurfaceLight else Primary.copy(.08f)) {
                         Text(groupText, Modifier.padding(horizontal = 7.dp, vertical = 3.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold,
                             color = if (groupText == "No Plan" || groupText == "Unassigned") TextMuted else Primary)
                     }
-                    m.knownId?.let { Text("#$it", fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.SemiBold) }
-                    if (isOnHold) {
+
+                    if (isCheckedOut) {
+                        Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFF3F4F6)) {
+                            Text("🚪 Vacated", Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4B5563))
+                        }
+                    } else if (isOnHold) {
                         Surface(shape = RoundedCornerShape(6.dp), color = WarningLight) {
                             Text("⏸ Hold", Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
                                 fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Warning)
                         }
+                    } else if (isOverdue && formattedDate != null) {
+                        Surface(shape = RoundedCornerShape(6.dp), color = DangerLight) {
+                            Text("🔴 Overdue ($formattedDate)", Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Danger)
+                        }
+                    } else if (isDueSoon && formattedDate != null) {
+                        Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFFEF3C7)) {
+                            Text("⚠️ Due $formattedDate", Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFD97706))
+                        }
                     }
+                    m.knownId?.let { Text("#$it", fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.SemiBold) }
                 }
             }
-            Text("›", fontSize = 24.sp, color = Border)
+
+            // Quick reminder button for overdue / due soon members
+            if (!isOnHold && !isCheckedOut && (isOverdue || isDueSoon)) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFF25D366).copy(alpha = 0.12f),
+                    border = BorderStroke(1.dp, Color(0xFF25D366).copy(alpha = 0.4f)),
+                    modifier = Modifier.clickable(onClick = onRemind)
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("💬 Remind", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF128C7E))
+                    }
+                }
+            } else {
+                Text("›", fontSize = 24.sp, color = Border)
+            }
         }
     }
 }

@@ -31,6 +31,9 @@ interface ApiService {
     @PUT("members/{id}")
     suspend fun updateMember(@Path("id") id: String, @Body request: CreateMemberRequest): Response<Unit>
 
+    @PATCH("members/{id}/fee-details")
+    suspend fun updateMemberFeeDetails(@Path("id") id: String, @Body request: UpdateMemberFeeDetailsRequest): Response<Unit>
+
     @DELETE("members/{id}")
     suspend fun deleteMember(@Path("id") id: String): Response<Unit>
 
@@ -39,6 +42,9 @@ interface ApiService {
 
     @PUT("members/{id}/resume")
     suspend fun resumeMember(@Path("id") id: String, @Body body: ResumeRequest = ResumeRequest()): Response<Unit>
+
+    @PUT("members/{id}/checkout")
+    suspend fun checkoutMember(@Path("id") id: String, @Body body: CheckoutMemberRequest): Response<Unit>
 
 
     // ── Fee Payments ──────────────────────────────────────────────────────────
@@ -50,6 +56,15 @@ interface ApiService {
 
     @POST("fee-payments")
     suspend fun collectFee(@Body request: CollectFeeRequest): Response<List<FeePaymentResponseDto>>
+
+    @PATCH("fee-payments/{id}/next-date")
+    suspend fun updatePaymentNextDate(
+        @Path("id") id: String,
+        @Body request: UpdateNextPaymentDateRequest
+    ): Response<Unit>
+
+    @DELETE("fee-payments/{id}")
+    suspend fun deleteFeePayment(@Path("id") id: String): Response<Unit>
 
     // ── Attendance ────────────────────────────────────────────────────────────
     @GET("attendance")
@@ -173,12 +188,18 @@ interface ApiService {
     @POST("fee-groups")
     suspend fun createFeeGroup(@Body request: CreateFeeGroupRequest): Response<FeeGroupDto>
 
+    @PUT("fee-groups/{id}")
+    suspend fun updateFeeGroup(@Path("id") id: String, @Body request: CreateFeeGroupRequest): Response<FeeGroupDto>
+
     // ── Fee Structures ───────────────────────────────────────────────────────────
     @GET("fee-structures")
     suspend fun getFeeStructures(): Response<List<FeeStructureDto>>
 
     @POST("fee-structures")
     suspend fun createFeeStructure(@Body request: CreateFeeStructureRequest): Response<FeeStructureDto>
+
+    @PUT("fee-structures/{id}")
+    suspend fun updateFeeStructure(@Path("id") id: String, @Body request: CreateFeeStructureRequest): Response<FeeStructureDto>
 
     @DELETE("fee-structures/{id}")
     suspend fun deleteFeeStructure(@Path("id") id: String): Response<Unit>
@@ -254,6 +275,19 @@ data class LoginApiResponse(
     val message: String? = null
 )
 
+data class EntityLabelsDto(
+    val memberSingle: String = "Member",
+    val memberPlural: String = "Members",
+    val groupSingle: String = "Plan",
+    val groupPlural: String = "Plans",
+    val planSingle: String = "Billing Plan",
+    val planPlural: String = "Billing Plans",
+    val collectionLabel: String = "Total Collections",
+    val memberIcon: String = "👥",
+    val groupIcon: String = "💳",
+    val isBusinessMode: Boolean = true
+)
+
 data class UserDto(
     @SerializedName("_id") val _id: String = "",
     val name: String          = "",
@@ -262,7 +296,8 @@ data class UserDto(
     val entityId: String?     = null,
     val entityType: String?   = null,
     val entityName: String?   = null,
-    val entityLogoUrl: String? = null
+    val entityLogoUrl: String? = null,
+    val labels: EntityLabelsDto? = null
 )
 
 data class EntityDto(
@@ -341,18 +376,42 @@ data class MemberDetailDto(
     val status: String            = "active",
     val feeGroupId: String?       = null,
     val groupName: String?        = null,
+    val feeStructureId: String?   = null,
     val addonFeeIds: List<String>? = null,
     val addonNames: List<String>?  = null,
     val totalFee: Double           = 0.0,
     val pendingAmount: Double?     = null,
     val nextPaymentDate: String?   = null,
     val holdStartDate: String?     = null,
-    val holdHistory: List<HoldHistoryDto>? = null
+    val holdHistory: List<HoldHistoryDto>? = null,
+    val checkoutDetails: CheckoutDetailsDto? = null
 )
 
 data class HoldHistoryDto(
     val holdDate: String   = "",
     val resumeDate: String = ""
+)
+
+data class CheckoutDetailsDto(
+    val checkoutDate: String     = "",
+    val depositAmount: Double    = 0.0,
+    val pendingDues: Double      = 0.0,
+    val deductions: Double       = 0.0,
+    val deductionReason: String? = null,
+    val netRefunded: Double      = 0.0,
+    val refundMethod: String     = "cash",
+    val notes: String?           = null
+)
+
+data class CheckoutMemberRequest(
+    val checkoutDate: String?    = null,
+    val depositAmount: Double    = 0.0,
+    val pendingDues: Double      = 0.0,
+    val deductions: Double       = 0.0,
+    val deductionReason: String? = null,
+    val netRefunded: Double      = 0.0,
+    val refundMethod: String     = "cash",
+    val notes: String?           = null
 )
 
 // ── Create / Update member ───────────────────────────────────────────────────
@@ -369,6 +428,7 @@ data class CreateMemberRequest(
     val fatherOccupation: String? = null,
     val motherOccupation: String? = null,
     val feeGroupId: String?       = null,
+    val feeStructureId: String?   = null,
     val addonFeeIds: List<String>? = null,
     val profilePicUrl: String?    = null,
     val academicYearId: String?   = null,
@@ -387,6 +447,12 @@ data class CreateMemberResponse(
     val receiptNo: String? = null
 )
 
+data class UpdateMemberFeeDetailsRequest(
+    val feeGroupId: String?        = null,
+    val feeStructureId: String?    = null,
+    val addonFeeIds: List<String>? = null
+)
+
 data class ResumeRequest(val initialPayment: Any? = null)
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -396,12 +462,17 @@ data class ResumeRequest(val initialPayment: Any? = null)
 data class FeeGroupDto(
     @SerializedName("_id") val _id: String = "",
     val name: String         = "",
-    val description: String? = null
+    val description: String? = null,
+    val capacity: Int        = 1,
+    val occupiedCount: Int   = 0,
+    val vacantCount: Int     = 1,
+    val isFull: Boolean      = false
 )
 
 data class CreateFeeGroupRequest(
     val name: String,
-    val description: String? = null
+    val description: String? = null,
+    val capacity: Int        = 1
 )
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -447,6 +518,10 @@ data class FeePaymentDto(
     val nextPaymentDate: String? = null,
     val receiptNo: String?       = null,
     val notes: String?           = null
+)
+
+data class UpdateNextPaymentDateRequest(
+    val nextPaymentDate: String
 )
 
 data class CollectFeeRequest(
@@ -684,7 +759,8 @@ data class StaffRoleSettingDto(
 data class EntitySettingsDto(
     @SerializedName("_id") val _id: String = "",
     val entityId: String = "",
-    val staffRoles: List<StaffRoleSettingDto> = emptyList()
+    val staffRoles: List<StaffRoleSettingDto> = emptyList(),
+    val labels: EntityLabelsDto? = null
 )
 
 data class ToggleLoginResponseDto(

@@ -4,6 +4,8 @@ import android.app.DatePickerDialog
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -222,7 +224,13 @@ private fun CreateAcademicYearSheet(vm: AcademicYearsViewModel, onDismiss: () ->
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Surface, tonalElevation = 0.dp) {
-        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
+        Column(
+            Modifier
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp)
+        ) {
             Text("New Academic Year", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
             Text("Add a new session or term", fontSize = 13.sp, color = TextSecondary)
             Spacer(Modifier.height(24.dp))

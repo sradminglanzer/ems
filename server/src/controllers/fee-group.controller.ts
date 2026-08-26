@@ -11,8 +11,34 @@ import { ObjectId } from 'mongodb';
 
 export const getFeeGroups = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-        const groups = await feeGroupService.getByEntity(req.user!.entityId);
-        res.status(HTTP_STATUS.OK).json(groups);
+        const entityIdObj = new ObjectId(req.user!.entityId as string);
+        const [groups, activeMembers] = await Promise.all([
+            feeGroupService.getByEntity(req.user!.entityId),
+            memberService.get({ entityId: entityIdObj, status: 'active' } as any)
+        ]);
+
+        const occupancyMap = new Map<string, number>();
+        activeMembers.forEach((m: any) => {
+            if (m.feeGroupId) {
+                const key = m.feeGroupId.toString();
+                occupancyMap.set(key, (occupancyMap.get(key) || 0) + 1);
+            }
+        });
+
+        const enrichedGroups = groups.map((g: any) => {
+            const capacity = g.capacity || 1;
+            const occupiedCount = occupancyMap.get(g._id.toString()) || 0;
+            const vacantCount = Math.max(0, capacity - occupiedCount);
+            return {
+                ...g,
+                capacity,
+                occupiedCount,
+                vacantCount,
+                isFull: occupiedCount >= capacity
+            };
+        });
+
+        res.status(HTTP_STATUS.OK).json(enrichedGroups);
     } catch (error) {
         next(error);
     }
@@ -87,6 +113,7 @@ export const updateFeeGroup = async (req: AuthRequest, res: Response, next: Next
         let updateData: any = { $set: {} };
         if (req.body.name) updateData.$set.name = req.body.name;
         if (req.body.description !== undefined) updateData.$set.description = req.body.description;
+        if (req.body.capacity != null) updateData.$set.capacity = Math.max(1, Number(req.body.capacity));
 
         // Extract updateData keys properly to pass directly if only name/description updated
         if (Object.keys(updateData.$set).length === 0) {

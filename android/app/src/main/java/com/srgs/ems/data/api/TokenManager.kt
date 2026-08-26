@@ -63,12 +63,13 @@ class TokenManager private constructor(private val context: Context) {
 
 // ── Extension: UserDto → UserSession ─────────────────────────────────────────
 fun UserDto.toUserSession() = UserSession(
-    id           = _id,
-    name         = name,
-    phone        = phone,
-    role         = role,
-    entityId     = entityId,
-    entityType   = entityType,
-    entityName   = entityName,
-    entityLogoUrl = entityLogoUrl
+    id            = _id,
+    name          = name,
+    phone         = phone,
+    role          = role,
+    entityId      = entityId,
+    entityType    = entityType,
+    entityName    = entityName,
+    entityLogoUrl = entityLogoUrl,
+    labels        = labels ?: EntityLabelsDto()
 )

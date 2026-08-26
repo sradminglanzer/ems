@@ -27,6 +27,18 @@ class FeeStructureRepository(context: Context) {
         } catch (e: Exception) { SaveResult.Error(e.message ?: "Unknown error") }
     }
 
+    suspend fun updateStructure(
+        id: String, name: String, amount: Double, frequency: String, feeGroupId: String?, type: String = "FeeStructure"
+    ): SaveResult {
+        return try {
+            val res = api.updateFeeStructure(
+                id, CreateFeeStructureRequest(name, amount, frequency, feeGroupId, type)
+            )
+            if (res.isSuccessful) SaveResult.Success
+            else SaveResult.Error(res.errorBody()?.string() ?: "Failed to update structure")
+        } catch (e: Exception) { SaveResult.Error(e.message ?: "Unknown error") }
+    }
+
     suspend fun deleteStructure(id: String): SaveResult {
         return try {
             val res = api.deleteFeeStructure(id)

@@ -38,6 +38,7 @@ fun AddMemberScreen(
 
     val session = SessionManager.session
     val isGym = session?.isGym ?: false
+    val isBusiness = session?.isBusinessMode ?: true
 
     val isSubmitting  by vm.isSubmitting.collectAsState()
     val isLoadingData by vm.isLoadingData.collectAsState()
@@ -85,7 +86,7 @@ fun AddMemberScreen(
             TopAppBar(
                 title = {
                     Text(
-                        if (vm.isEditing) "Edit Member" else "Add Member",
+                        if (vm.isEditing) "Edit ${session?.labels?.memberSingle ?: "Member"}" else "Add ${session?.labels?.memberSingle ?: "Member"}",
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
@@ -129,9 +130,7 @@ fun AddMemberScreen(
                             TField("First Name *",  fName,      { vm.firstName.value  = it })
                             TField("Middle Name",   mName,      { vm.middleName.value  = it })
                             TField("Last Name *",   lName,      { vm.lastName.value    = it })
-                            if (!isGym) {
-                                TField("Roll / Student ID *", kId, { vm.knownId.value = it })
-                            }
+                            TField(if (isBusiness) "${session?.labels?.memberSingle ?: "Tenant"} ID (Optional)" else "Roll / Student ID *", kId, { vm.knownId.value = it })
                             EmsDateField(
                                 label         = "Date of Birth",
                                 value         = dob,
@@ -139,15 +138,15 @@ fun AddMemberScreen(
                                 modifier      = Modifier.padding(bottom = 12.dp)
                             )
                             EmsDateField(
-                                label         = "Joining Date (optional)",
+                                label         = "Move-In / Joining Date",
                                 value         = joiningDate,
                                 onValueChange = { vm.joiningDate.value = it },
                                 modifier      = Modifier.padding(bottom = 12.dp)
                             )
                             TField("Contact Number",             contact,    { vm.contact.value    = it })
-                            TField("Alternate Contact",          altContact, { vm.altContact.value = it })
+                            TField("Parent / Emergency Contact", altContact, { vm.altContact.value = it })
                             TField("Address",                    address,    { vm.address.value    = it })
-                            if (!isGym) {
+                            if (!isBusiness) {
                                 TField("Father's Occupation", fOcc, { vm.fatherOccupation.value = it })
                                 TField("Mother's Occupation", mOcc, { vm.motherOccupation.value = it })
                             }
@@ -155,7 +154,85 @@ fun AddMemberScreen(
                     }
                 }
 
-                // ── Gym: Plan & Add-on selection ──────────────────────────────
+                // ── 1. Room / Class assignment (Shows FIRST for PG/Hostel/School) ──────────
+                if (!isGym) {
+                    item {
+                        Card(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            RoundedCornerShape(14.dp),
+                            CardDefaults.cardColors(Surface),
+                            CardDefaults.cardElevation(2.dp)
+                        ) {
+                            Column(Modifier.padding(16.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(session?.labels?.groupIcon ?: "📚", fontSize = 18.sp)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Select ${session?.labels?.groupSingle ?: "Class"}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                                }
+                                Spacer(Modifier.height(12.dp))
+                                if (groups.isEmpty()) {
+                                    Text("No ${session?.labels?.groupPlural ?: "Classes"} available", color = TextSecondary, fontSize = 13.sp)
+                                } else {
+                                    Column(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .border(1.dp, Border, RoundedCornerShape(8.dp))
+                                            .clip(RoundedCornerShape(8.dp))
+                                    ) {
+                                        groups.forEachIndexed { idx, g ->
+                                            val sel = selGroupId == g._id
+                                            val isPg = session?.isBusinessMode ?: true
+                                            val roomDisabled = isPg && g.isFull
+
+                                            Row(
+                                                Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable(enabled = !roomDisabled) { vm.selectRoom(g._id) }
+                                                    .padding(12.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                RadioButton(
+                                                    selected = sel,
+                                                    onClick  = { if (!roomDisabled) vm.selectRoom(g._id) },
+                                                    enabled  = !roomDisabled,
+                                                    colors   = RadioButtonDefaults.colors(selectedColor = Primary)
+                                                )
+                                                Column(Modifier.padding(start = 8.dp).weight(1f)) {
+                                                    Text(
+                                                        g.name,
+                                                        fontSize   = 15.sp,
+                                                        fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
+                                                        color      = if (roomDisabled) TextMuted else TextPrimary
+                                                    )
+                                                    if (!g.description.isNullOrBlank()) {
+                                                        Text(g.description, fontSize = 12.sp, color = TextSecondary)
+                                                    }
+                                                }
+                                                if (isPg) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(20.dp),
+                                                        color = if (g.isFull) Danger.copy(alpha = 0.12f) else Success.copy(alpha = 0.12f)
+                                                    ) {
+                                                        Text(
+                                                            text = if (g.isFull) "🔴 Full (${g.occupiedCount}/${g.capacity})" else "🟩 ${g.vacantCount} Vacant",
+                                                            fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                                            color = if (g.isFull) Danger else Success,
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            if (idx < groups.lastIndex) HorizontalDivider(color = Border)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(16.dp))
+                    }
+                }
+
+                // ── 2. Primary Plan selection (Gym Mode only) ───────────────────
                 if (isGym) {
                     item {
                         Card(
@@ -165,7 +242,6 @@ fun AddMemberScreen(
                             CardDefaults.cardElevation(2.dp)
                         ) {
                             Column(Modifier.padding(16.dp)) {
-                                // 1. Primary Membership Plan
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Box(
                                         Modifier
@@ -176,8 +252,8 @@ fun AddMemberScreen(
                                     ) { Text("💳", fontSize = 18.sp) }
                                     Spacer(Modifier.width(10.dp))
                                     Column {
-                                        Text("Membership Plan", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                                        Text("Select one plan", fontSize = 12.sp, color = TextSecondary)
+                                        Text(session?.labels?.planSingle ?: "Membership Plan", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                                        Text("Select primary membership plan", fontSize = 12.sp, color = TextSecondary)
                                     }
                                 }
                                 Spacer(Modifier.height(14.dp))
@@ -187,7 +263,7 @@ fun AddMemberScreen(
                                             .padding(16.dp),
                                         Alignment.Center
                                     ) {
-                                        Text("No membership plans configured", color = TextMuted, fontSize = 13.sp)
+                                        Text("No plans configured", color = TextMuted, fontSize = 13.sp)
                                     }
                                 } else {
                                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -204,118 +280,14 @@ fun AddMemberScreen(
                                         }
                                     }
                                 }
-
-                                // 2. Add-on Services
-                                if (addonStructs.isNotEmpty()) {
-                                    Spacer(Modifier.height(20.dp))
-                                    HorizontalDivider(color = Border.copy(alpha = 0.5f))
-                                    Spacer(Modifier.height(20.dp))
-
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Box(
-                                            Modifier
-                                                .size(36.dp)
-                                                .clip(RoundedCornerShape(10.dp))
-                                                .background(AccentPurple.copy(alpha = 0.12f)),
-                                            Alignment.Center
-                                        ) { Text("🧩", fontSize = 18.sp) }
-                                        Spacer(Modifier.width(10.dp))
-                                        Column {
-                                            Text("Add-on Services", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                                            Text("Optional extras — select any", fontSize = 12.sp, color = TextSecondary)
-                                        }
-                                    }
-                                    Spacer(Modifier.height(14.dp))
-                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        addonStructs.forEach { g ->
-                                            val isChecked = selAddons.contains(g._id)
-                                            PlanCard(
-                                                name      = g.name,
-                                                amount    = g.amount,
-                                                frequency = g.frequency,
-                                                selected  = isChecked,
-                                                isAddon   = true,
-                                                onClick   = { vm.toggleAddon(g._id) }
-                                            )
-                                        }
-                                    }
-                                }
                             }
                         }
+                        Spacer(Modifier.height(16.dp))
                     }
+                }
 
-                    // Gym: Initial Payment (create only)
-                    if (!vm.isEditing) {
-                        item {
-                            Spacer(Modifier.height(16.dp))
-                            Card(
-                                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                                RoundedCornerShape(14.dp),
-                                CardDefaults.cardColors(Surface),
-                                CardDefaults.cardElevation(2.dp)
-                            ) {
-                                Column(Modifier.padding(16.dp)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("💰", fontSize = 18.sp)
-                                        Spacer(Modifier.width(8.dp))
-                                        Text("Initial Payment", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                                    }
-                                    Spacer(Modifier.height(16.dp))
-                                    NumericTField("Amount Collected (₹)", posAmount, { vm.posAmount.value = it })
-                                    Row(
-                                        Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        EmsDateField(
-                                            label         = "Payment Date",
-                                            value         = posPaymentDate,
-                                            onValueChange = { vm.onPaymentDateChanged(it) },
-                                            modifier      = Modifier.weight(1f)
-                                        )
-                                        EmsDateField(
-                                            label         = "Next Renewal Date",
-                                            value         = posNextDateStr,
-                                            onValueChange = { vm.onNextDateManuallyChanged(it) },
-                                            modifier      = Modifier.weight(1f)
-                                        )
-                                    }
-                                    Text(
-                                        "Payment Method",
-                                        fontSize = 12.sp, color = TextSecondary,
-                                        modifier = Modifier.padding(bottom = 6.dp)
-                                    )
-                                    Row(
-                                        Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        listOf("cash", "online", "card", "upi").forEach { m ->
-                                            val sel = posPaymentMethod == m
-                                            Surface(
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .clickable { vm.posPaymentMethod.value = m },
-                                                shape  = RoundedCornerShape(8.dp),
-                                                color  = if (sel) Primary else Background,
-                                                border = if (!sel) BorderStroke(1.dp, Border) else null
-                                            ) {
-                                                Text(
-                                                    m.uppercase(),
-                                                    Modifier.padding(vertical = 10.dp),
-                                                    fontSize   = 12.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color      = if (sel) Color.White else TextSecondary,
-                                                    textAlign  = androidx.compose.ui.text.style.TextAlign.Center
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    // School / Coaching: Class assignment
+                // ── 3. Add-on Services / Security Deposits (All Modes) ─────────────
+                if (isBusiness && addonStructs.isNotEmpty()) {
                     item {
                         Card(
                             Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -325,47 +297,101 @@ fun AddMemberScreen(
                         ) {
                             Column(Modifier.padding(16.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("📚", fontSize = 18.sp)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Class Assignment", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                                }
-                                Spacer(Modifier.height(12.dp))
-                                if (groups.isEmpty()) {
-                                    Text("No classes available", color = TextSecondary, fontSize = 13.sp)
-                                } else {
-                                    Text(
-                                        "Select Class",
-                                        fontSize = 12.sp, color = TextSecondary,
-                                        modifier = Modifier.padding(bottom = 4.dp)
-                                    )
-                                    Column(
+                                    Box(
                                         Modifier
-                                            .fillMaxWidth()
-                                            .border(1.dp, Border, RoundedCornerShape(8.dp))
-                                            .clip(RoundedCornerShape(8.dp))
-                                    ) {
-                                        groups.forEachIndexed { idx, g ->
-                                            val sel = selGroupId == g._id
-                                            Row(
-                                                Modifier
-                                                    .fillMaxWidth()
-                                                    .clickable { vm.feeGroupId.value = g._id }
-                                                    .padding(12.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                RadioButton(
-                                                    selected = sel,
-                                                    onClick  = { vm.feeGroupId.value = g._id },
-                                                    colors   = RadioButtonDefaults.colors(selectedColor = Primary)
-                                                )
-                                                Text(
-                                                    g.name,
-                                                    Modifier.padding(start = 8.dp),
-                                                    fontSize   = 15.sp,
-                                                    fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal
-                                                )
-                                            }
-                                            if (idx < groups.lastIndex) HorizontalDivider(color = Border)
+                                            .size(36.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(AccentPurple.copy(alpha = 0.12f)),
+                                        Alignment.Center
+                                    ) { Text("🧩", fontSize = 18.sp) }
+                                    Spacer(Modifier.width(10.dp))
+                                    Column {
+                                        Text("Add-on Services / Security Deposit", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                                        Text("Optional extras — select any", fontSize = 12.sp, color = TextSecondary)
+                                    }
+                                }
+                                Spacer(Modifier.height(14.dp))
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    addonStructs.forEach { g ->
+                                        val isChecked = selAddons.contains(g._id)
+                                        PlanCard(
+                                            name      = g.name,
+                                            amount    = g.amount,
+                                            frequency = g.frequency,
+                                            selected  = isChecked,
+                                            isAddon   = true,
+                                            onClick   = { vm.toggleAddon(g._id) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(16.dp))
+                    }
+                }
+
+                // ── 4. Initial POS Payment (Shows AFTER Room & Add-ons) ─────────
+                if (isBusiness && !vm.isEditing) {
+                    item {
+                        Card(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            RoundedCornerShape(14.dp),
+                            CardDefaults.cardColors(Surface),
+                            CardDefaults.cardElevation(2.dp)
+                        ) {
+                            Column(Modifier.padding(16.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("💰", fontSize = 18.sp)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Initial Payment", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                                }
+                                Spacer(Modifier.height(16.dp))
+                                NumericTField("Amount Collected (₹)", posAmount, { vm.posAmount.value = it })
+                                Row(
+                                    Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    EmsDateField(
+                                        label         = "Payment Date",
+                                        value         = posPaymentDate,
+                                        onValueChange = { vm.onPaymentDateChanged(it) },
+                                        modifier      = Modifier.weight(1f)
+                                    )
+                                    EmsDateField(
+                                        label         = "Next Renewal Date",
+                                        value         = posNextDateStr,
+                                        onValueChange = { vm.onNextDateManuallyChanged(it) },
+                                        modifier      = Modifier.weight(1f)
+                                    )
+                                }
+                                Text(
+                                    "Payment Method",
+                                    fontSize = 12.sp, color = TextSecondary,
+                                    modifier = Modifier.padding(bottom = 6.dp)
+                                )
+                                Row(
+                                    Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    listOf("cash", "online", "card", "upi").forEach { m ->
+                                        val sel = posPaymentMethod == m
+                                        Surface(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable { vm.posPaymentMethod.value = m },
+                                            shape  = RoundedCornerShape(8.dp),
+                                            color  = if (sel) Primary else Background,
+                                            border = if (!sel) BorderStroke(1.dp, Border) else null
+                                        ) {
+                                            Text(
+                                                m.uppercase(),
+                                                Modifier.padding(vertical = 10.dp),
+                                                fontSize   = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color      = if (sel) Color.White else TextSecondary,
+                                                textAlign  = androidx.compose.ui.text.style.TextAlign.Center
+                                            )
                                         }
                                     }
                                 }
@@ -398,7 +424,7 @@ fun AddMemberScreen(
                             )
                         }
                     }
-                    Spacer(Modifier.height(32.dp))
+                    Spacer(Modifier.navigationBarsPadding().height(24.dp))
                 }
             }
         }

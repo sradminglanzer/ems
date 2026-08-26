@@ -108,3 +108,41 @@ export const setSequence = async (req: AuthRequest, res: Response, next: NextFun
         next(error);
     }
 };
+
+export const updatePaymentNextDate = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const id = req.params.id;
+        const { nextPaymentDate } = req.body;
+
+        if (!nextPaymentDate) {
+            throw new AppError('Next payment date is required', HTTP_STATUS.BAD_REQUEST);
+        }
+
+        const dateObj = new Date(nextPaymentDate);
+        if (isNaN(dateObj.getTime())) {
+            throw new AppError('Invalid date format', HTTP_STATUS.BAD_REQUEST);
+        }
+
+        await feePaymentService.update(
+            { _id: new ObjectId(id as string), entityId: new ObjectId(req.user!.entityId.toString()) },
+            { $set: { nextPaymentDate: dateObj } }
+        );
+
+        res.status(HTTP_STATUS.OK).json({ success: true, nextPaymentDate: dateObj });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const deleteFeePayment = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const id = req.params.id;
+        await feePaymentService.delete({
+            _id: new ObjectId(id as string),
+            entityId: new ObjectId(req.user!.entityId.toString())
+        });
+        res.status(HTTP_STATUS.OK).json({ success: true });
+    } catch (error) {
+        next(error);
+    }
+};
