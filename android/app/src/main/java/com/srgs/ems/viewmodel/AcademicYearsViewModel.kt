@@ -56,18 +56,14 @@ class AcademicYearsViewModel(application: Application) : AndroidViewModel(applic
             _isLoading.value = true
             val result = repository.getYears()
             _years.value = result
-            // Auto-select active year if nothing is selected yet
-            if (AcademicYearManager.selectedYearId == null && result.isNotEmpty()) {
-                val active = result.firstOrNull { it.isActive } ?: result.first()
-                AcademicYearManager.setYear(active._id)
-                _selectedYearId.value = active._id
-            }
+            AcademicYearManager.setAvailableYears(result, getApplication())
+            _selectedYearId.value = AcademicYearManager.selectedYearId
             _isLoading.value = false
         }
     }
 
     fun selectView(id: String) {
-        AcademicYearManager.setYear(id)
+        AcademicYearManager.setYearById(id, getApplication())
         _selectedYearId.value = id
     }
 

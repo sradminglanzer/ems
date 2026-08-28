@@ -3,6 +3,7 @@ package com.srgs.ems.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.srgs.ems.data.AcademicYearManager
 import com.srgs.ems.data.api.DashboardStatsDto
 import com.srgs.ems.data.repository.DashboardRepository
 import kotlinx.coroutines.async
@@ -25,13 +26,20 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-    init { loadStats() }
+    init {
+        viewModelScope.launch {
+            AcademicYearManager.selectedYear.collect {
+                loadStats()
+            }
+        }
+    }
 
     fun loadStats() {
         viewModelScope.launch {
             _isLoading.value = true
             coroutineScope {
-                val statsJob    = async { repository.getStats() }
+                val yearId = com.srgs.ems.data.AcademicYearManager.selectedYearId
+                val statsJob    = async { repository.getStats(yearId) }
                 val expensesJob = async { repository.getMonthExpenses() }
                 _stats.value        = statsJob.await()
                 _expenseStats.value = expensesJob.await()

@@ -20,7 +20,9 @@ interface ApiService {
 
     // ── Members ───────────────────────────────────────────────────────────────
     @GET("members")
-    suspend fun getMembers(): Response<List<MemberDto>>
+    suspend fun getMembers(
+        @Query("academicYearId") academicYearId: String? = null
+    ): Response<List<MemberDto>>
 
     @GET("members/{id}")
     suspend fun getMemberDetail(@Path("id") id: String): Response<MemberDetailDto>
@@ -193,7 +195,9 @@ interface ApiService {
 
     // ── Fee Structures ───────────────────────────────────────────────────────────
     @GET("fee-structures")
-    suspend fun getFeeStructures(): Response<List<FeeStructureDto>>
+    suspend fun getFeeStructures(
+        @Query("academicYearId") academicYearId: String? = null
+    ): Response<List<FeeStructureDto>>
 
     @POST("fee-structures")
     suspend fun createFeeStructure(@Body request: CreateFeeStructureRequest): Response<FeeStructureDto>
@@ -288,7 +292,8 @@ data class EntityLabelsDto(
     val collectionLabel: String = "Total Collections",
     val memberIcon: String = "👥",
     val groupIcon: String = "💳",
-    val isBusinessMode: Boolean = true
+    val isBusinessMode: Boolean = true,
+    val hasAcademicYears: Boolean = false
 )
 
 data class UserDto(
@@ -492,18 +497,23 @@ data class FeeStructureDto(
     val name: String = "",
     val amount: Double = 0.0,
     val frequency: String = "monthly",
+    val academicYearId: String? = null,
     val feeGroupId: String? = null,
+    val feeGroupIds: List<String>? = null,
     val type: String = "FeeStructure", // "FeeStructure" | "FeeStructureAddon"
-    val groupDetails: GroupDetailsDto? = null
+    val groupDetails: GroupDetailsDto? = null,
+    val groupNames: List<String>? = null
 ) {
-    val isAddon: Boolean get() = type == "FeeStructureAddon" || (feeGroupId == null && type.isBlank())
+    val isAddon: Boolean get() = type == "FeeStructureAddon" || (feeGroupId == null && (feeGroupIds == null || feeGroupIds.isEmpty()))
 }
 
 data class CreateFeeStructureRequest(
     val name: String,
     val amount: Double,
     val frequency: String,
+    val academicYearId: String? = null,
     val feeGroupId: String? = null,
+    val feeGroupIds: List<String>? = null,
     val type: String = "FeeStructure"
 )
 

@@ -15,9 +15,9 @@ class DashboardRepository(context: Context) {
         val topCategories: List<Pair<String, Double>>
     )
 
-    suspend fun getStats(): DashboardStatsDto? {
+    suspend fun getStats(academicYearId: String? = null): DashboardStatsDto? {
         return try {
-            val r = api.getDashboardStats()
+            val r = api.getDashboardStats(academicYearId)
             if (r.isSuccessful) r.body() else null
         } catch (_: Exception) { null }
     }

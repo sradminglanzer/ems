@@ -17,6 +17,7 @@ export interface EntityLabelsSetting {
     memberIcon: string;
     groupIcon: string;
     isBusinessMode: boolean;
+    hasAcademicYears: boolean;
 }
 
 export const DEFAULT_PG_LABELS: EntityLabelsSetting = {
@@ -29,7 +30,8 @@ export const DEFAULT_PG_LABELS: EntityLabelsSetting = {
     collectionLabel: 'Rent Collections',
     memberIcon: '🪪',
     groupIcon: '🛏️',
-    isBusinessMode: true
+    isBusinessMode: true,
+    hasAcademicYears: false
 };
 
 export const DEFAULT_GYM_LABELS: EntityLabelsSetting = {
@@ -42,7 +44,8 @@ export const DEFAULT_GYM_LABELS: EntityLabelsSetting = {
     collectionLabel: 'Total Collections',
     memberIcon: '👥',
     groupIcon: '💳',
-    isBusinessMode: true
+    isBusinessMode: true,
+    hasAcademicYears: false
 };
 
 export const DEFAULT_SCHOOL_LABELS: EntityLabelsSetting = {
@@ -55,7 +58,8 @@ export const DEFAULT_SCHOOL_LABELS: EntityLabelsSetting = {
     collectionLabel: 'Fee Collections',
     memberIcon: '🎒',
     groupIcon: '📚',
-    isBusinessMode: false
+    isBusinessMode: false,
+    hasAcademicYears: true
 };
 
 export const DEFAULT_GYM_STAFF_ROLES: StaffRoleSetting[] = [

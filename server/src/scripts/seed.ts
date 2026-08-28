@@ -42,7 +42,8 @@ async function seed() {
                     collectionLabel: "Rent Collections",
                     memberIcon: "🪪",
                     groupIcon: "🛏️",
-                    isBusinessMode: true
+                    isBusinessMode: true,
+                    hasAcademicYears: false
                 },
                 staffRoles: [
                     { label: "Admin", code: "admin", enable_login: true },
@@ -63,7 +64,8 @@ async function seed() {
                     collectionLabel: "Total Collections",
                     memberIcon: "👥",
                     groupIcon: "💳",
-                    isBusinessMode: true
+                    isBusinessMode: true,
+                    hasAcademicYears: false
                 },
                 staffRoles: [
                     { label: "Admin", code: "admin", enable_login: true },
@@ -84,7 +86,8 @@ async function seed() {
                     collectionLabel: "Fee Collections",
                     memberIcon: "🎒",
                     groupIcon: "📚",
-                    isBusinessMode: false
+                    isBusinessMode: false,
+                    hasAcademicYears: true
                 },
                 staffRoles: [
                     { label: "Admin", code: "admin", enable_login: true },

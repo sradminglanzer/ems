@@ -79,6 +79,14 @@ fun MainAppScreen(onSignOut: () -> Unit) {
     val sections = buildDrawerSections(session)
     val allItems = sections.flatMap { it.items }
 
+    LaunchedEffect(session) {
+        if (session?.hasAcademicYears == true) {
+            val repo = com.srgs.ems.data.repository.AcademicYearRepository(context)
+            val years = repo.getYears()
+            com.srgs.ems.data.AcademicYearManager.setAvailableYears(years, context)
+        }
+    }
+
     CompositionLocalProvider(LocalDrawerState provides drawerState) {
         ModalNavigationDrawer(
             drawerState   = drawerState,

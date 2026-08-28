@@ -8,25 +8,57 @@ class FeeStructureService extends BaseService<FeeStructure> {
     }
 
     async getByFeeGroup(feeGroupId: string) {
-        return await this.get({ feeGroupId: new ObjectId(feeGroupId) });
+        const id = new ObjectId(feeGroupId);
+        return await this.get({
+            $or: [
+                { feeGroupId: id },
+                { feeGroupIds: id }
+            ]
+        } as any);
     }
 
-    async getByEntity(entityId: string) {
-        // Advanced: aggregate to include fee_group details
+    async getByEntity(entityId: string, academicYearId?: string) {
+        const matchStage: any = { entityId: new ObjectId(entityId) };
+        if (academicYearId) {
+            matchStage.$or = [
+                { academicYearId: new ObjectId(academicYearId) },
+                { academicYearId: null },
+                { academicYearId: { $exists: false } }
+            ];
+        }
+
+        // Aggregate to include fee_group details for single or multi-class fee heads
         const pipeline = [
-            { $match: { entityId: new ObjectId(entityId) } },
+            { $match: matchStage },
             {
                 $lookup: {
                     from: 'fee_groups',
-                    localField: 'feeGroupId',
-                    foreignField: '_id',
-                    as: 'groupDetails'
+                    let: { singleId: '$feeGroupId', multiIds: '$feeGroupIds' },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $or: [
+                                        { $eq: ['$_id', '$$singleId'] },
+                                        { $in: ['$_id', { $ifNull: ['$$multiIds', []] }] }
+                                    ]
+                                }
+                            }
+                        }
+                    ],
+                    as: 'groupsList'
                 }
             },
             {
-                $unwind: {
-                    path: '$groupDetails',
-                    preserveNullAndEmptyArrays: true
+                $addFields: {
+                    groupDetails: { $arrayElemAt: ['$groupsList', 0] },
+                    groupNames: {
+                        $map: {
+                            input: '$groupsList',
+                            as: 'g',
+                            in: '$$g.name'
+                        }
+                    }
                 }
             }
         ];

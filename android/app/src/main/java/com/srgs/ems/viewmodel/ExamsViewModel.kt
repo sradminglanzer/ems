@@ -42,7 +42,13 @@ class ExamsViewModel(application: Application) : AndroidViewModel(application) {
     // ── Events ────────────────────────────────────────────────────────────────
     val snackbarEvent = MutableSharedFlow<String>()
 
-    init { fetchExams() }
+    init {
+        viewModelScope.launch {
+            AcademicYearManager.selectedYear.collect {
+                fetchExams()
+            }
+        }
+    }
 
     fun fetchExams() {
         viewModelScope.launch {

@@ -1,8 +1,13 @@
 package com.srgs.ems.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -14,6 +19,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.srgs.ems.data.AcademicYearManager
+import com.srgs.ems.data.SessionManager
 import com.srgs.ems.ui.LocalDrawerState
 import com.srgs.ems.ui.theme.*
 import kotlinx.coroutines.launch
@@ -21,28 +28,29 @@ import kotlinx.coroutines.launch
 /**
  * Reusable app top bar used by all main screens.
  * Uses enterAlwaysScrollBehavior — hides on scroll down, reappears on scroll up.
- *
- * Performance notes:
- *  - Gradient Brush is hoisted into `remember` so it is created once, not on every frame.
- *  - TopAppBar colors use Color.Transparent so we avoid a double repaint.
+ * Includes universal Academic Year switcher for school tenants.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EmsTopBar(
     title: String,
     scrollBehavior: TopAppBarScrollBehavior,
+    showYearSwitcher: Boolean = true,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     val drawerState = LocalDrawerState.current
-    val scope       = rememberCoroutineScope()
+    val scope = rememberCoroutineScope()
+    val session = SessionManager.session
+    val hasAcademicYears = session?.hasAcademicYears ?: false
+    val selectedYear by AcademicYearManager.selectedYear.collectAsState()
+    var showYearSheet by remember { mutableStateOf(false) }
 
-    // Hoist gradient out of recomposition — created once per composition slot,
-    // never recreated on scroll frames.
+    // Hoist gradient out of recomposition
     val gradient = remember {
         Brush.linearGradient(
             listOf(GradientStart, GradientEnd),
             start = Offset(0f, 0f),
-            end   = Offset(Float.POSITIVE_INFINITY, 0f)
+            end = Offset(Float.POSITIVE_INFINITY, 0f)
         )
     }
 
@@ -53,8 +61,8 @@ fun EmsTopBar(
                 Text(
                     title,
                     fontWeight = FontWeight.ExtraBold,
-                    color      = Color.White,
-                    fontSize   = 18.sp
+                    color = Color.White,
+                    fontSize = 18.sp
                 )
             },
             navigationIcon = {
@@ -62,25 +70,65 @@ fun EmsTopBar(
                     Text("☰", fontSize = 22.sp, color = Color.White)
                 }
             },
-            actions        = actions,
+            actions = {
+                if (hasAcademicYears && showYearSwitcher) {
+                    val yearLabel = selectedYear?.name ?: "Select Year"
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.White.copy(alpha = 0.18f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { showYearSheet = true }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.DateRange,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(Modifier.width(5.dp))
+                            Text(
+                                text = yearLabel,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                text = "▾",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White.copy(alpha = 0.8f)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(6.dp))
+                }
+                actions()
+            },
             scrollBehavior = scrollBehavior,
-            colors         = TopAppBarDefaults.topAppBarColors(
-                containerColor             = Color.Transparent,
-                scrolledContainerColor     = Color.Transparent,
-                titleContentColor          = Color.White,
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent,
+                titleContentColor = Color.White,
                 navigationIconContentColor = Color.White,
-                actionIconContentColor     = Color.White
+                actionIconContentColor = Color.White
             )
         )
+    }
+
+    if (showYearSheet) {
+        AcademicYearPickerSheet(onDismiss = { showYearSheet = false })
     }
 }
 
 /**
  * A hero banner that sits as the first item in a LazyColumn.
- * Shows icon + title + subtitle — scrolls with content so the
- * screen feels expansive.
- *
- * Gradient is hoisted into `remember` to avoid recreation on recomposition.
  */
 @Composable
 fun ScreenHeroBanner(
@@ -93,7 +141,7 @@ fun ScreenHeroBanner(
         Brush.linearGradient(
             listOf(GradientStart, GradientEnd),
             start = Offset(0f, 0f),
-            end   = Offset(Float.POSITIVE_INFINITY, 0f)
+            end = Offset(Float.POSITIVE_INFINITY, 0f)
         )
     }
 
@@ -118,14 +166,14 @@ fun ScreenHeroBanner(
             Column {
                 Text(
                     title,
-                    fontSize   = 22.sp,
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    color      = Color.White
+                    color = Color.White
                 )
                 Text(
                     subtitle,
-                    fontSize   = 13.sp,
-                    color      = Color.White.copy(.75f),
+                    fontSize = 13.sp,
+                    color = Color.White.copy(.75f),
                     fontWeight = FontWeight.Medium
                 )
             }

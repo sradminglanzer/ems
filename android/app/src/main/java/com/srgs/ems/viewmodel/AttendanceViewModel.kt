@@ -34,9 +34,13 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
 
     init {
         loadFeeGroups()
-        // Re-fetch attendance whenever group or date changes
+        // Re-fetch attendance whenever group, date, or academic year changes
         viewModelScope.launch {
-            combine(selectedGroupId, selectedDate) { g, d -> g to d }
+            combine(
+                selectedGroupId,
+                selectedDate,
+                com.srgs.ems.data.AcademicYearManager.selectedYear
+            ) { g, d, _ -> g to d }
                 .collect { (group, date) -> if (group != null) fetchAttendance(group, date) }
         }
     }
@@ -55,7 +59,8 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
     private fun fetchAttendance(classId: String, date: String) {
         viewModelScope.launch {
             isLoadingAttendance.value = true
-            val sheet = repository.getAttendance(classId, date)
+            val yearId = com.srgs.ems.data.AcademicYearManager.selectedYearId
+            val sheet = repository.getAttendance(classId, date, yearId)
             records = sheet?.records ?: emptyList()
             isNew.value = sheet?.isNew ?: true
             isLoadingAttendance.value = false

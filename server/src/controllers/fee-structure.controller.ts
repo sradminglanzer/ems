@@ -8,7 +8,8 @@ import { ObjectId } from 'mongodb';
 
 export const getFeeStructures = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-        const structures = await feeStructureService.getByEntity(req.user!.entityId);
+        const academicYearId = req.query.academicYearId as string;
+        const structures = await feeStructureService.getByEntity(req.user!.entityId, academicYearId);
         res.status(HTTP_STATUS.OK).json(structures);
     } catch (error) {
         next(error);

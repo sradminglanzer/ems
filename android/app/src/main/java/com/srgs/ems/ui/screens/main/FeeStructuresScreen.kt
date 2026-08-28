@@ -11,6 +11,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,14 +33,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.srgs.ems.data.SessionManager
+import com.srgs.ems.data.api.FeeGroupDto
 import com.srgs.ems.data.api.FeeStructureDto
 import com.srgs.ems.ui.components.EmsTopBar
 import com.srgs.ems.ui.theme.*
-import com.srgs.ems.viewmodel.FeeStructuresViewModel
 import com.srgs.ems.viewmodel.FeeStructureType
+import com.srgs.ems.viewmodel.FeeStructuresViewModel
 import java.text.NumberFormat
 import java.util.Locale
-
 
 private val FREQUENCY_LABELS = mapOf(
     "daily" to "Daily", "weekly" to "Weekly", "monthly" to "Monthly",
@@ -39,9 +48,15 @@ private val FREQUENCY_LABELS = mapOf(
     "annual" to "Annual", "one-time" to "One-Time"
 )
 private val GYM_FREQS = listOf("daily", "weekly", "monthly", "quarterly", "half-yearly", "annual", "one-time")
-private val SCHOOL_FREQS = listOf("monthly", "annual", "one-time")
+private val SCHOOL_FREQS = listOf("monthly", "quarterly", "annual", "one-time")
 
 private val currencyFmt = NumberFormat.getNumberInstance(Locale("en", "IN"))
+
+enum class FeeFilterCategory(val label: String) {
+    ALL("All Plans"),
+    CLASS("Class Packages"),
+    ADDON("Optional Add-ons")
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,8 +73,15 @@ fun FeeStructuresScreen(
     val isLoading by vm.isLoading.collectAsState()
     val deleteTarget by vm.deleteTarget.collectAsState()
 
+    var selectedFilter by remember { mutableStateOf(FeeFilterCategory.ALL) }
     val snackbar = remember { SnackbarHostState() }
     var showSheet by remember { mutableStateOf(false) }
+
+    val selectedYear by com.srgs.ems.data.AcademicYearManager.selectedYear.collectAsState()
+
+    LaunchedEffect(selectedYear) {
+        vm.load()
+    }
 
     LaunchedEffect(Unit) {
         vm.snackbarEvent.collect { msg ->
@@ -68,6 +90,14 @@ fun FeeStructuresScreen(
         }
     }
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
+
+    val filteredStructures = remember(structures, selectedFilter) {
+        when (selectedFilter) {
+            FeeFilterCategory.ALL -> structures
+            FeeFilterCategory.CLASS -> structures.filter { !it.isAddon }
+            FeeFilterCategory.ADDON -> structures.filter { it.isAddon }
+        }
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
@@ -78,38 +108,96 @@ fun FeeStructuresScreen(
                 onClick = { vm.startCreate(); showSheet = true },
                 containerColor = Primary, contentColor = Color.White, shape = CircleShape
             ) {
-                Text("+", fontSize = 28.sp, modifier = Modifier.padding(bottom = 4.dp))
+                Icon(Icons.Filled.Add, contentDescription = "Add Plan", modifier = Modifier.size(26.dp))
             }
         },
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
     ) { padding ->
-        when {
-            isLoading -> Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) {
-                CircularProgressIndicator(color = Primary, strokeWidth = 3.dp)
-            }
-            structures.isEmpty() -> Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("💳", fontSize = 48.sp)
-                    Spacer(Modifier.height(12.dp))
-                    Text("No fee structures created yet.", color = TextSecondary)
-                }
-            }
-            else -> LazyColumn(
-                contentPadding = PaddingValues(top = padding.calculateTopPadding() + 8.dp, start = 16.dp, end = 16.dp, bottom = 80.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxSize()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = padding.calculateTopPadding())
+        ) {
+            // Segmented Filter Tabs
+            Surface(
+                color = Surface,
+                tonalElevation = 1.dp,
+                border = BorderStroke(0.dp, Border),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                item {
-                    Text("${structures.size} plan${if (structures.size != 1) "s" else ""} configured",
-                        fontSize = 13.sp, color = TextSecondary, modifier = Modifier.padding(vertical = 4.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FeeFilterCategory.values().forEach { category ->
+                        val isSelected = selectedFilter == category
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = if (isSelected) Primary else Background,
+                            border = BorderStroke(1.dp, if (isSelected) Primary else Border),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(20.dp))
+                                .clickable { selectedFilter = category }
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            ) {
+                                Text(
+                                    text = category.label,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) Color.White else TextSecondary
+                                )
+                            }
+                        }
+                    }
                 }
-                items(structures, key = { it._id }) { s ->
-                    FeeStructureCard(
-                        s = s,
-                        classLabel = classLabel,
-                        onClick = { vm.startEdit(s); showSheet = true },
-                        onDelete = { vm.deleteTarget.value = s }
-                    )
+            }
+
+            when {
+                isLoading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                    CircularProgressIndicator(color = Primary, strokeWidth = 3.dp)
+                }
+                filteredStructures.isEmpty() -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Primary.copy(alpha = 0.1f),
+                            modifier = Modifier.size(64.dp)
+                        ) {
+                            Box(Modifier.fillMaxSize(), Alignment.Center) {
+                                Icon(Icons.Filled.DateRange, contentDescription = null, tint = Primary, modifier = Modifier.size(32.dp))
+                            }
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        Text("No fee plans configured yet", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        Spacer(Modifier.height(4.dp))
+                        Text("Tap '+' to create a new fee structure", fontSize = 13.sp, color = TextSecondary)
+                    }
+                }
+                else -> LazyColumn(
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 90.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    item {
+                        Text(
+                            text = "${filteredStructures.size} plan${if (filteredStructures.size != 1) "s" else ""} configured",
+                            fontSize = 13.sp, color = TextSecondary, fontWeight = FontWeight.Medium
+                        )
+                    }
+                    items(filteredStructures, key = { it._id }) { s ->
+                        FeeStructureCard(
+                            s = s,
+                            classLabel = classLabel,
+                            onClick = { vm.startEdit(s); showSheet = true },
+                            onDelete = { vm.deleteTarget.value = s }
+                        )
+                    }
                 }
             }
         }
@@ -119,19 +207,35 @@ fun FeeStructuresScreen(
         CreateFeeStructureSheet(vm = vm, isGym = isGym, classLabel = classLabel, onDismiss = { showSheet = false })
     }
 
-    // Delete confirmation
+    // Delete confirmation dialog
     deleteTarget?.let { target ->
         AlertDialog(
             onDismissRequest = { vm.deleteTarget.value = null },
-            title = { Text("Delete Fee Structure", fontWeight = FontWeight.Bold) },
-            text = { Text("Are you sure you want to delete \"${target.name}\"? This action cannot be undone.") },
-            confirmButton = {
-                TextButton(
-                    onClick = { vm.delete(target._id); vm.deleteTarget.value = null },
-                    colors = ButtonDefaults.textButtonColors(contentColor = Danger)
-                ) { Text("Delete", fontWeight = FontWeight.Bold) }
+            icon = {
+                Surface(shape = CircleShape, color = Danger.copy(alpha = 0.12f), modifier = Modifier.size(48.dp)) {
+                    Box(Modifier.fillMaxSize(), Alignment.Center) {
+                        Icon(Icons.Filled.Delete, contentDescription = null, tint = Danger, modifier = Modifier.size(24.dp))
+                    }
+                }
             },
-            dismissButton = { TextButton(onClick = { vm.deleteTarget.value = null }) { Text("Cancel") } }
+            title = { Text("Delete Fee Plan", fontWeight = FontWeight.Bold, fontSize = 19.sp) },
+            text = { Text("Are you sure you want to delete \"${target.name}\"? This action cannot be undone.", fontSize = 14.sp, color = TextSecondary) },
+            confirmButton = {
+                Button(
+                    onClick = { vm.delete(target._id); vm.deleteTarget.value = null },
+                    colors = ButtonDefaults.buttonColors(containerColor = Danger),
+                    shape = RoundedCornerShape(10.dp)
+                ) { Text("Delete Plan", fontWeight = FontWeight.Bold, color = Color.White) }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { vm.deleteTarget.value = null },
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, Border)
+                ) { Text("Cancel", color = TextPrimary) }
+            },
+            containerColor = Surface,
+            shape = RoundedCornerShape(20.dp)
         )
     }
 }
@@ -144,97 +248,111 @@ private fun FeeStructureCard(
     onDelete: () -> Unit
 ) {
     val isAddon = s.isAddon
-    val groupLabel = when {
-        isAddon -> "Add-on Fee Structure"
-        s.feeGroupId != null -> "$classLabel: ${s.groupDetails?.name ?: "Unknown"}"
-        else -> "Standard Fee Structure"
+    val assignedClassesText = remember(s) {
+        when {
+            isAddon -> "Optional Add-on"
+            !s.groupNames.isNullOrEmpty() -> s.groupNames.joinToString(", ")
+            s.groupDetails != null -> s.groupDetails.name
+            else -> "All ${classLabel}s"
+        }
     }
 
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable { onClick() },
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        border = BorderStroke(1.dp, Border)
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = Surface,
+        border = BorderStroke(1.dp, Border),
+        tonalElevation = 1.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onClick() }
     ) {
-        Column(Modifier.padding(16.dp)) {
-            // Top Row: Icon + Title + Delete Action
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(Primary.copy(alpha = 0.1f)),
-                    Alignment.Center
-                ) {
-                    Text(if (isAddon) "🧩" else "💳", fontSize = 18.sp)
-                }
-                Spacer(Modifier.width(12.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Left Column: Fee Name + Metadata Row
+            Column(Modifier.weight(1f)) {
                 Text(
                     text = s.name,
-                    fontSize = 16.sp,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
-                    color = TextPrimary,
-                    modifier = Modifier.weight(1f)
+                    color = TextPrimary
                 )
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(34.dp).clip(CircleShape).background(DangerLight)
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text("🗑", fontSize = 14.sp)
-                }
-            }
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = Primary.copy(alpha = 0.08f),
+                        border = BorderStroke(0.5.dp, Primary.copy(alpha = 0.2f))
+                    ) {
+                        Text(
+                            text = (FREQUENCY_LABELS[s.frequency] ?: s.frequency).uppercase(),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Primary,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
 
-            Spacer(Modifier.height(14.dp))
-
-            // Middle Highlight Row: Amount + Frequency Tag
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "₹${currencyFmt.format(s.amount.toLong())}",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Primary
-                )
-
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = Primary.copy(alpha = 0.08f),
-                    border = BorderStroke(1.dp, Primary.copy(alpha = 0.2f))
-                ) {
                     Text(
-                        text = "📅 ${(FREQUENCY_LABELS[s.frequency] ?: s.frequency).uppercase()}",
+                        text = "•",
                         fontSize = 11.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Primary,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        color = TextMuted
                     )
-                }
-            }
 
-            Spacer(Modifier.height(12.dp))
-            HorizontalDivider(color = Border.copy(alpha = 0.6f))
-            Spacer(Modifier.height(10.dp))
-
-            // Bottom Target Scope
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("🛏️ ", fontSize = 12.sp)
                     Text(
-                        text = groupLabel,
+                        text = assignedClassesText,
                         fontSize = 12.sp,
                         color = TextSecondary,
                         fontWeight = FontWeight.Medium
                     )
                 }
-                Text("✏️ Edit", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Primary)
+            }
+
+            Spacer(Modifier.width(12.dp))
+
+            // Right Column: Price & Quick Action Icons
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = "₹${currencyFmt.format(s.amount.toLong())}",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TextPrimary
+                )
+                Spacer(Modifier.height(2.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    IconButton(
+                        onClick = onClick,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Edit,
+                            contentDescription = "Edit",
+                            tint = Primary,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Delete,
+                            contentDescription = "Delete",
+                            tint = Danger,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                }
             }
         }
     }
@@ -248,7 +366,7 @@ private fun CreateFeeStructureSheet(
     val name by vm.name.collectAsState()
     val amount by vm.amount.collectAsState()
     val frequency by vm.frequency.collectAsState()
-    val selectedGroupId by vm.selectedGroupId.collectAsState()
+    val selectedGroupIds by vm.selectedGroupIds.collectAsState()
     val selectedType by vm.selectedType.collectAsState()
     val groups by vm.groups.collectAsState()
     val isSubmitting by vm.isSubmitting.collectAsState()
@@ -256,35 +374,51 @@ private fun CreateFeeStructureSheet(
 
     val freqs = if (isGym) GYM_FREQS else SCHOOL_FREQS
 
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Surface, tonalElevation = 0.dp) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Surface,
+        tonalElevation = 6.dp,
+        dragHandle = {
+            Box(
+                modifier = Modifier.padding(vertical = 10.dp).width(40.dp).height(4.dp)
+                    .clip(CircleShape).background(Border)
+            )
+        }
+    ) {
         Column(
-            Modifier.verticalScroll(rememberScrollState())
+            Modifier
+                .verticalScroll(rememberScrollState())
                 .navigationBarsPadding()
-                .padding(horizontal = 20.dp).padding(bottom = 24.dp)
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 28.dp)
         ) {
             Text(if (editingStructure != null) "Edit Fee Plan" else "Create Fee Plan", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
-            Text(if (editingStructure != null) "Update pricing structure details" else "Add a new pricing structure", fontSize = 13.sp, color = TextSecondary)
-            Spacer(Modifier.height(24.dp))
+            Text(if (editingStructure != null) "Update pricing structure details" else "Add a new pricing structure for classes or add-ons", fontSize = 13.sp, color = TextSecondary)
+            Spacer(Modifier.height(20.dp))
 
-            // Name
-            Text("Fee Name *", fontSize = 13.sp, color = TextSecondary, modifier = Modifier.padding(bottom = 6.dp))
-            OutlinedTextField(value = name, onValueChange = { vm.name.value = it },
-                modifier = Modifier.fillMaxWidth(), placeholder = { Text("e.g. Monthly Rent - 2 Sharing / Security Deposit") },
-                singleLine = true, shape = RoundedCornerShape(10.dp),
-                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Border, focusedBorderColor = Primary))
+            // Fee Name Input
+            Text("Fee Name *", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.padding(bottom = 6.dp))
+            OutlinedTextField(
+                value = name, onValueChange = { vm.name.value = it },
+                modifier = Modifier.fillMaxWidth(), placeholder = { Text("e.g. Annual Tuition Fee / Bus Transport") },
+                singleLine = true, shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Border, focusedBorderColor = Primary)
+            )
             Spacer(Modifier.height(16.dp))
 
-            // Amount
-            Text("Amount (₹) *", fontSize = 13.sp, color = TextSecondary, modifier = Modifier.padding(bottom = 6.dp))
-            OutlinedTextField(value = amount, onValueChange = { vm.amount.value = it },
-                modifier = Modifier.fillMaxWidth(), placeholder = { Text("e.g. 5000") },
-                singleLine = true, shape = RoundedCornerShape(10.dp),
+            // Amount Input
+            Text("Amount (₹) *", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.padding(bottom = 6.dp))
+            OutlinedTextField(
+                value = amount, onValueChange = { vm.amount.value = it },
+                modifier = Modifier.fillMaxWidth(), placeholder = { Text("e.g. 45000") },
+                singleLine = true, shape = RoundedCornerShape(12.dp),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Border, focusedBorderColor = Primary))
-            Spacer(Modifier.height(16.dp))
+                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Border, focusedBorderColor = Primary)
+            )
+            Spacer(Modifier.height(18.dp))
 
             // Type selector (FeeStructure vs FeeStructureAddon)
-            Text("Fee Structure Type *", fontSize = 13.sp, color = TextSecondary, modifier = Modifier.padding(bottom = 8.dp))
+            Text("Fee Structure Type *", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.padding(bottom = 8.dp))
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -305,20 +439,23 @@ private fun CreateFeeStructureSheet(
                     }
                 }
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(18.dp))
 
-            // Target Room / Class Assignment Selector
-            if (!isGym && groups.isNotEmpty()) {
-                Text("Target ${classLabel} Assignment", fontSize = 13.sp, color = TextSecondary, modifier = Modifier.padding(bottom = 8.dp))
-                val roomOptions = listOf(Pair("", "🌐 All ${classLabel}s")) + groups.map { Pair(it._id, "🛏️ ${it.name}") }
-                FlowRow(items = roomOptions, selected = selectedGroupId, onSelect = { vm.selectedGroupId.value = it })
-                Spacer(Modifier.height(16.dp))
+            // Target Class Multi-Selection Chips
+            if (selectedType == FeeStructureType.FeeStructure.value && !isGym && groups.isNotEmpty()) {
+                Text("Target ${classLabel}s Assignment *", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.padding(bottom = 8.dp))
+                OptMultiSelectClassChips(
+                    groups = groups,
+                    selectedGroupIds = selectedGroupIds,
+                    onToggle = { vm.toggleClassSelection(it) }
+                )
+                Spacer(Modifier.height(18.dp))
             }
 
-            // Frequency
-            Text("Billing Frequency *", fontSize = 13.sp, color = TextSecondary, modifier = Modifier.padding(bottom = 8.dp))
-            FlowRow(items = freqs, selected = frequency, onSelect = { vm.frequency.value = it })
-            Spacer(Modifier.height(28.dp))
+            // Billing Frequency
+            Text("Billing Frequency *", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.padding(bottom = 8.dp))
+            FrequencySelectChips(freqs = freqs, selected = frequency, onSelect = { vm.frequency.value = it })
+            Spacer(Modifier.height(26.dp))
 
             Button(
                 onClick = { vm.save(isGym) },
@@ -327,41 +464,76 @@ private fun CreateFeeStructureSheet(
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Primary)
             ) {
-                if (isSubmitting) CircularProgressIndicator(Modifier.size(20.dp), Color.White, 2.dp)
-                else Text(if (editingStructure != null) "✓  Update Structure" else "✓  Create Structure", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                if (isSubmitting) CircularProgressIndicator(Modifier.size(22.dp), Color.White, 2.5.dp)
+                else {
+                    Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (editingStructure != null) "Update Fee Plan" else "Create Fee Plan", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
             }
         }
     }
 }
 
-/** A wrapping row of pill chips */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun FlowRow(items: List<Any>, selected: String, onSelect: (String) -> Unit) {
-    val pairs: List<Pair<String, String>> = items.mapNotNull { item ->
-        when (item) {
-            is FeeStructureDto -> Pair(item._id, item.name)
-            is com.srgs.ems.data.api.FeeGroupDto -> Pair(item._id, item.name)
-            is Pair<*, *> -> Pair(item.first.toString(), item.second.toString())
-            is String -> Pair(item, FREQUENCY_LABELS[item] ?: item)
-            else -> null
+private fun OptMultiSelectClassChips(
+    groups: List<FeeGroupDto>,
+    selectedGroupIds: List<String>,
+    onToggle: (String) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        groups.chunked(2).forEach { rowGroups ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                rowGroups.forEach { g ->
+                    val isSel = selectedGroupIds.contains(g._id)
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isSel) Primary.copy(alpha = 0.12f) else Background,
+                        border = BorderStroke(1.5.dp, if (isSel) Primary else Border),
+                        modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).clickable { onToggle(g._id) }
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (isSel) Icons.Filled.Check else Icons.Filled.Person,
+                                contentDescription = null,
+                                tint = if (isSel) Primary else TextMuted,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(g.name, fontSize = 13.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium, color = if (isSel) Primary else TextPrimary)
+                        }
+                    }
+                }
+                if (rowGroups.size == 1) {
+                    Spacer(Modifier.weight(1f))
+                }
+            }
         }
     }
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        pairs.forEach { (id, label) ->
-            val isSelected = selected == id
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = if (isSelected) Primary.copy(.12f) else Background,
-                border = BorderStroke(1.5.dp, if (isSelected) Primary else Border),
-                modifier = Modifier.padding(bottom = 8.dp).clip(RoundedCornerShape(20.dp)).clickable { onSelect(id) }
-            ) {
-                Text(label, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                    fontSize = 13.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                    color = if (isSelected) Primary else TextSecondary)
+}
+
+@Composable
+private fun FrequencySelectChips(freqs: List<String>, selected: String, onSelect: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        freqs.chunked(3).forEach { rowFreqs ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                rowFreqs.forEach { item ->
+                    val isSel = selected == item
+                    val label = FREQUENCY_LABELS[item] ?: item
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = if (isSel) Primary.copy(alpha = 0.12f) else Background,
+                        border = BorderStroke(1.5.dp, if (isSel) Primary else Border),
+                        modifier = Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).clickable { onSelect(item) }
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 8.dp)) {
+                            Text(label, fontSize = 12.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium, color = if (isSel) Primary else TextSecondary)
+                        }
+                    }
+                }
             }
         }
     }

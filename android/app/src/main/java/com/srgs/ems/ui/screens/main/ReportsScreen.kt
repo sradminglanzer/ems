@@ -53,7 +53,8 @@ fun ReportsScreen(
     onNavigateToMembers: () -> Unit = {},
     onNavigateToExpenses: () -> Unit = {}
 ) {
-    val academicYearId = AcademicYearManager.selectedYearId
+    val selectedYear by AcademicYearManager.selectedYear.collectAsState()
+    val academicYearId = selectedYear?._id
 
     val dateFilter       by vm.dateFilter.collectAsState()
     val activeTab        by vm.activeTab.collectAsState()
@@ -69,13 +70,13 @@ fun ReportsScreen(
     val isTabLoading     by vm.isTabLoading.collectAsState()
 
     // Fetch summary & active tab on date range / academic year change
-    LaunchedEffect(dateFilter, academicYearId) {
+    LaunchedEffect(dateFilter, selectedYear) {
         vm.fetchSummary(academicYearId)
         vm.fetchActiveTabData(academicYearId)
     }
 
     // Fetch active tab data when switching tabs, payment method, or search query
-    LaunchedEffect(activeTab, methodFilter, searchQuery) {
+    LaunchedEffect(activeTab, methodFilter, searchQuery, selectedYear) {
         vm.fetchActiveTabData(academicYearId)
     }
 

@@ -36,6 +36,7 @@ class FeeStructuresViewModel(application: Application) : AndroidViewModel(applic
     val amount = MutableStateFlow("")
     val frequency = MutableStateFlow("monthly")
     val selectedGroupId = MutableStateFlow("")
+    val selectedGroupIds = MutableStateFlow<List<String>>(emptyList())
     val selectedType = MutableStateFlow(FeeStructureType.FeeStructure.value)
     val isSubmitting = MutableStateFlow(false)
 
@@ -44,16 +45,24 @@ class FeeStructuresViewModel(application: Application) : AndroidViewModel(applic
 
     val snackbarEvent = MutableSharedFlow<String>()
 
-    init { load() }
+    init {
+        viewModelScope.launch {
+            com.srgs.ems.data.AcademicYearManager.selectedYear.collect {
+                load()
+            }
+        }
+    }
 
     fun load() {
         viewModelScope.launch {
             _isLoading.value = true
-            val (s, g) = Pair(structRepo.getStructures(), groupRepo.getGroups())
+            val yearId = com.srgs.ems.data.AcademicYearManager.selectedYearId
+            val (s, g) = Pair(structRepo.getStructures(yearId), groupRepo.getGroups())
             _structures.value = s
             _groups.value = g
             if (g.isNotEmpty() && selectedGroupId.value.isEmpty()) {
                 selectedGroupId.value = g.first()._id
+                selectedGroupIds.value = listOf(g.first()._id)
             }
             _isLoading.value = false
         }
@@ -65,7 +74,12 @@ class FeeStructuresViewModel(application: Application) : AndroidViewModel(applic
         amount.value = ""
         frequency.value = "monthly"
         selectedType.value = FeeStructureType.FeeStructure.value
-        if (groups.value.isNotEmpty()) selectedGroupId.value = groups.value.first()._id
+        if (groups.value.isNotEmpty()) {
+            selectedGroupId.value = groups.value.first()._id
+            selectedGroupIds.value = listOf(groups.value.first()._id)
+        } else {
+            selectedGroupIds.value = emptyList()
+        }
     }
 
     fun startEdit(s: FeeStructureDto) {
@@ -74,7 +88,19 @@ class FeeStructuresViewModel(application: Application) : AndroidViewModel(applic
         amount.value = s.amount.toString()
         frequency.value = s.frequency
         selectedGroupId.value = s.feeGroupId ?: (groups.value.firstOrNull()?._id ?: "")
+        selectedGroupIds.value = s.feeGroupIds ?: (s.feeGroupId?.let { listOf(it) } ?: emptyList())
         selectedType.value = if (s.isAddon) FeeStructureType.FeeStructureAddon.value else FeeStructureType.FeeStructure.value
+    }
+
+    fun toggleClassSelection(classId: String) {
+        val current = selectedGroupIds.value.toMutableList()
+        if (current.contains(classId)) {
+            current.remove(classId)
+        } else {
+            current.add(classId)
+        }
+        selectedGroupIds.value = current
+        selectedGroupId.value = current.firstOrNull() ?: ""
     }
 
     fun save(isGymMode: Boolean) {
@@ -87,20 +113,39 @@ class FeeStructuresViewModel(application: Application) : AndroidViewModel(applic
             viewModelScope.launch { snackbarEvent.emit("Name and a valid amount are required") }
             return
         }
-        if (!isAddon && !isGymMode && selectedGroupId.value.isEmpty() && groups.value.isNotEmpty()) {
-            viewModelScope.launch { snackbarEvent.emit("Please select a class/group") }
+        if (!isAddon && !isGymMode && selectedGroupIds.value.isEmpty() && groups.value.isNotEmpty()) {
+            viewModelScope.launch { snackbarEvent.emit("Please select at least one class/group") }
             return
         }
 
-        val groupId = if (isAddon || isGymMode) null else selectedGroupId.value.ifEmpty { null }
+        val yearId = if (isGymMode) null else com.srgs.ems.data.AcademicYearManager.selectedYearId
+        val groupIds = if (isAddon || isGymMode) null else selectedGroupIds.value.ifEmpty { null }
+        val groupId = if (isAddon || isGymMode) null else (selectedGroupIds.value.firstOrNull() ?: selectedGroupId.value.ifEmpty { null })
         val target = editingStructure.value
 
         viewModelScope.launch {
             isSubmitting.value = true
             val r = if (target == null) {
-                structRepo.createStructure(n, a, frequency.value, groupId, typeVal)
+                structRepo.createStructure(
+                    name = n,
+                    amount = a,
+                    frequency = frequency.value,
+                    academicYearId = yearId,
+                    feeGroupId = groupId,
+                    feeGroupIds = groupIds,
+                    type = typeVal
+                )
             } else {
-                structRepo.updateStructure(target._id, n, a, frequency.value, groupId, typeVal)
+                structRepo.updateStructure(
+                    id = target._id,
+                    name = n,
+                    amount = a,
+                    frequency = frequency.value,
+                    academicYearId = yearId ?: target.academicYearId,
+                    feeGroupId = groupId,
+                    feeGroupIds = groupIds,
+                    type = typeVal
+                )
             }
 
             when (r) {

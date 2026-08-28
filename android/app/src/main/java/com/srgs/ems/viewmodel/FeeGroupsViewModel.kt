@@ -38,7 +38,13 @@ class FeeGroupsViewModel(application: Application) : AndroidViewModel(applicatio
 
     val snackbarEvent = MutableSharedFlow<String>()
 
-    init { loadGroups() }
+    init {
+        viewModelScope.launch {
+            com.srgs.ems.data.AcademicYearManager.selectedYear.collect {
+                loadGroups()
+            }
+        }
+    }
 
     fun loadGroups() {
         viewModelScope.launch {
@@ -96,12 +102,13 @@ class FeeGroupsViewModel(application: Application) : AndroidViewModel(applicatio
                             val targetGroupId = target?._id ?: repository.getGroups().firstOrNull { it.name == n }?._id
                             if (targetGroupId != null) {
                                 structRepo.updateStructure(
-                                    targetStruct._id,
-                                    targetStruct.name,
-                                    targetStruct.amount,
-                                    targetStruct.frequency,
-                                    targetGroupId,
-                                    targetStruct.type
+                                    id = targetStruct._id,
+                                    name = targetStruct.name,
+                                    amount = targetStruct.amount,
+                                    frequency = targetStruct.frequency,
+                                    feeGroupId = targetGroupId,
+                                    feeGroupIds = listOf(targetGroupId),
+                                    type = targetStruct.type
                                 )
                             }
                         }

@@ -76,12 +76,19 @@ class MembersViewModel(application: Application) : AndroidViewModel(application)
         return null
     }
 
-    init { loadMembers() }
+    init {
+        viewModelScope.launch {
+            com.srgs.ems.data.AcademicYearManager.selectedYear.collect {
+                loadMembers()
+            }
+        }
+    }
 
     fun loadMembers(isRefresh: Boolean = false) {
         viewModelScope.launch {
             if (isRefresh) _isRefreshing.value = true else _isLoading.value = true
-            _allMembers.value   = repository.getMembers()
+            val yearId = com.srgs.ems.data.AcademicYearManager.selectedYearId
+            _allMembers.value   = repository.getMembers(yearId)
             _isLoading.value    = false
             _isRefreshing.value = false
         }

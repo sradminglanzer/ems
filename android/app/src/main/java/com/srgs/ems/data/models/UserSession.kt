@@ -16,6 +16,7 @@ data class UserSession(
     val isGym: Boolean      get() = entityType == "gym"
     val isPg: Boolean       get() = entityType == "pg" || entityType == "hostel"
     val isBusinessMode: Boolean get() = labels.isBusinessMode || isGym || isPg
+    val hasAcademicYears: Boolean get() = labels.hasAcademicYears || (!isBusinessMode && entityType == "school")
     val isAdmin: Boolean    get() = role == "admin" || role == "owner"
     val isTeacher: Boolean  get() = role == "teacher"
     val initials: String    get() = name.split(" ").take(2).mapNotNull { it.firstOrNull()?.uppercaseChar() }.joinToString("")
