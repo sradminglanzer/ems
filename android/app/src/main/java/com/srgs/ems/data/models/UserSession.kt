@@ -13,11 +13,12 @@ data class UserSession(
     val entityLogoUrl: String? = null,
     val labels: EntityLabelsDto = EntityLabelsDto()
 ) {
-    val isGym: Boolean      get() = entityType == "gym"
-    val isPg: Boolean       get() = entityType == "pg" || entityType == "hostel"
-    val isBusinessMode: Boolean get() = labels.isBusinessMode || isGym || isPg
-    val hasAcademicYears: Boolean get() = labels.hasAcademicYears || (!isBusinessMode && entityType == "school")
-    val isAdmin: Boolean    get() = role == "admin" || role == "owner"
+    val isGym: Boolean            get() = entityType == "gym"
+    val isPg: Boolean             get() = entityType == "pg" || entityType == "hostel"
+    val isSchool: Boolean         get() = entityType == "school" || entityType == "coaching" || (!isGym && !isPg && !labels.isBusinessMode)
+    val isBusinessMode: Boolean   get() = labels.isBusinessMode || isGym || isPg
+    val hasAcademicYears: Boolean get() = labels.hasAcademicYears || isSchool
+    val isAdmin: Boolean          get() = role == "admin" || role == "owner"
     val isTeacher: Boolean  get() = role == "teacher"
     val initials: String    get() = name.split(" ").take(2).mapNotNull { it.firstOrNull()?.uppercaseChar() }.joinToString("")
 }

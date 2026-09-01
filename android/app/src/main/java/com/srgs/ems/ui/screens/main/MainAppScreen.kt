@@ -50,6 +50,8 @@ object MainRoute {
     const val Exams         = "main_exams"
     const val AcademicYears = "main_academic_years"
     const val Settings      = "main_settings"
+    const val ClassDetail   = "main_class_detail/{classId}"
+    fun classDetail(classId: String) = "main_class_detail/$classId"
 }
 
 private data class DrawerItem(
@@ -384,7 +386,26 @@ private fun MainNavHost(navController: NavHostController, onSignOut: () -> Unit)
             )
         }
         composable(MainRoute.Staff)         { StaffScreen() }
-        composable(MainRoute.FeeGroups)     { FeeGroupsScreen() }
+        composable(MainRoute.FeeGroups)     {
+            FeeGroupsScreen(
+                onNavigateToClassDetail = { classId ->
+                    navController.navigate(MainRoute.classDetail(classId))
+                }
+            )
+        }
+        composable(
+            route = "main_class_detail/{classId}",
+            arguments = listOf(navArgument("classId") { type = NavType.StringType })
+        ) { back ->
+            val classId = back.arguments?.getString("classId") ?: ""
+            ClassDetailScreen(
+                classId = classId,
+                onBack = { navController.popBackStack() },
+                onNavigateToMemberDetail = { id -> navController.navigate("main_member_detail/$id") },
+                onNavigateToMemberAdd = { groupId -> navController.navigate("main_add_member?groupId=$groupId") },
+                onNavigateToAttendance = { navController.navigate(MainRoute.Attendance) }
+            )
+        }
         composable(MainRoute.FeeStructures) {
             FeeStructuresScreen(
                 onNavigateToMembers = { navController.navigate(MainRoute.Members) }

@@ -9,32 +9,68 @@ import { AppError } from '../utils/AppError';
 import { HTTP_STATUS } from '../utils/constants';
 import { ObjectId } from 'mongodb';
 
+import staffService from '../services/staff.service';
+
 export const getFeeGroups = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
         const entityIdObj = new ObjectId(req.user!.entityId as string);
-        const [groups, activeMembers] = await Promise.all([
+        const academicYearId = req.query.academicYearId as string;
+
+        const [groups, activeMembers, staffMembers] = await Promise.all([
             feeGroupService.getByEntity(req.user!.entityId),
-            memberService.get({ entityId: entityIdObj, status: 'active' } as any)
+            memberService.get({ entityId: entityIdObj, status: 'active' } as any),
+            staffService.getByEntity(req.user!.entityId)
         ]);
+
+        const staffMap = new Map<string, any>();
+        staffMembers.forEach((s: any) => {
+            if (s._id) {
+                staffMap.set(s._id.toString(), {
+                    _id: s._id.toString(),
+                    firstName: s.firstName,
+                    lastName: s.lastName,
+                    phone: s.phone,
+                    role: s.role
+                });
+            }
+        });
 
         const occupancyMap = new Map<string, number>();
         activeMembers.forEach((m: any) => {
             if (m.feeGroupId) {
-                const key = m.feeGroupId.toString();
-                occupancyMap.set(key, (occupancyMap.get(key) || 0) + 1);
+                if (academicYearId) {
+                    if (m.academicYearId && m.academicYearId.toString() === academicYearId) {
+                        const key = m.feeGroupId.toString();
+                        occupancyMap.set(key, (occupancyMap.get(key) || 0) + 1);
+                    }
+                } else {
+                    const key = m.feeGroupId.toString();
+                    occupancyMap.set(key, (occupancyMap.get(key) || 0) + 1);
+                }
             }
         });
 
         const enrichedGroups = groups.map((g: any) => {
             const capacity = g.capacity || 1;
-            const occupiedCount = occupancyMap.get(g._id.toString()) || 0;
+
+            let occupiedCount = occupancyMap.get(g._id.toString()) || 0;
+            if (academicYearId && g.yearlyRosters) {
+                const roster = (g.yearlyRosters as any[]).find((r: any) => r.academicYearId && r.academicYearId.toString() === academicYearId);
+                if (roster && Array.isArray(roster.members) && roster.members.length > 0) {
+                    occupiedCount = Math.max(occupiedCount, roster.members.length);
+                }
+            }
+
             const vacantCount = Math.max(0, capacity - occupiedCount);
+            const classTeacher = g.classTeacherId ? staffMap.get(g.classTeacherId.toString()) || null : null;
+
             return {
                 ...g,
                 capacity,
                 occupiedCount,
                 vacantCount,
-                isFull: occupiedCount >= capacity
+                isFull: occupiedCount >= capacity,
+                classTeacher
             };
         });
 
@@ -114,6 +150,9 @@ export const updateFeeGroup = async (req: AuthRequest, res: Response, next: Next
         if (req.body.name) updateData.$set.name = req.body.name;
         if (req.body.description !== undefined) updateData.$set.description = req.body.description;
         if (req.body.capacity != null) updateData.$set.capacity = Math.max(1, Number(req.body.capacity));
+        if (req.body.classTeacherId !== undefined) {
+            updateData.$set.classTeacherId = req.body.classTeacherId ? new ObjectId(req.body.classTeacherId) : null;
+        }
 
         // Extract updateData keys properly to pass directly if only name/description updated
         if (Object.keys(updateData.$set).length === 0) {

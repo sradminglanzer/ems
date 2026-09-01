@@ -185,13 +185,40 @@ interface ApiService {
 
     // ── Fee Groups ──────────────────────────────────────────────────────────────
     @GET("fee-groups")
-    suspend fun getFeeGroups(): Response<List<FeeGroupDto>>
+    suspend fun getFeeGroups(
+        @Query("academicYearId") academicYearId: String? = null
+    ): Response<List<FeeGroupDto>>
 
     @POST("fee-groups")
     suspend fun createFeeGroup(@Body request: CreateFeeGroupRequest): Response<FeeGroupDto>
 
     @PUT("fee-groups/{id}")
     suspend fun updateFeeGroup(@Path("id") id: String, @Body request: CreateFeeGroupRequest): Response<FeeGroupDto>
+
+    @DELETE("fee-groups/{id}")
+    suspend fun deleteFeeGroup(@Path("id") id: String): Response<Unit>
+
+    @GET("fee-groups/{id}/details")
+    suspend fun getFeeGroupDetails(
+        @Path("id") id: String,
+        @Query("academicYearId") academicYearId: String? = null
+    ): Response<FeeGroupDetailsResponseDto>
+
+    // ── Class Diary ───────────────────────────────────────────────────────────────
+    @GET("diary")
+    suspend fun getDiaryFeed(
+        @Query("classId") classId: String,
+        @Query("academicYearId") academicYearId: String? = null
+    ): Response<List<DiaryDto>>
+
+    @POST("diary")
+    suspend fun createDiaryEntry(@Body request: CreateDiaryRequest): Response<DiaryDto>
+
+    @PUT("diary/{id}/tracking")
+    suspend fun updateDiaryTracking(
+        @Path("id") id: String,
+        @Body request: UpdateTrackingRequest
+    ): Response<DiaryDto>
 
     // ── Fee Structures ───────────────────────────────────────────────────────────
     @GET("fee-structures")
@@ -355,13 +382,18 @@ data class MemberDto(
     val lastName: String          = "",
     val contact: String?          = null,
     val knownId: String?          = null,
+    val admissionNo: String?      = null,
+    val fatherName: String?       = null,
     val status: String            = "active",
     val groupName: String?        = null,
     val addonNames: List<String>? = null,
     val pendingAmount: Double?    = null,
     val profilePicUrl: String?    = null,
     val nextPaymentDate: String?  = null
-)
+) {
+    val fullName: String get() = "$firstName $lastName".trim().ifBlank { "Student" }
+    val phone: String get() = contact ?: ""
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  MEMBERS — full detail
@@ -467,11 +499,23 @@ data class ResumeRequest(val initialPayment: Any? = null)
 //  FEE GROUPS
 // ═══════════════════════════════════════════════════════════════════════════════
 
+data class ClassTeacherDto(
+    @SerializedName("_id") val _id: String = "",
+    val firstName: String = "",
+    val lastName: String = "",
+    val phone: String = "",
+    val role: String = "staff"
+) {
+    val fullName: String get() = "$firstName $lastName".trim().ifEmpty { "Teacher" }
+}
+
 data class FeeGroupDto(
     @SerializedName("_id") val _id: String = "",
     val name: String         = "",
     val description: String? = null,
     val capacity: Int        = 1,
+    val classTeacherId: String? = null,
+    val classTeacher: ClassTeacherDto? = null,
     val occupiedCount: Int   = 0,
     val vacantCount: Int     = 1,
     val isFull: Boolean      = false
@@ -480,7 +524,8 @@ data class FeeGroupDto(
 data class CreateFeeGroupRequest(
     val name: String,
     val description: String? = null,
-    val capacity: Int        = 1
+    val capacity: Int        = 1,
+    val classTeacherId: String? = null
 )
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -872,12 +917,14 @@ data class CreateAcademicYearRequest(
 data class SubjectDto(
     @SerializedName("_id") val _id: String = "",
     val name: String = "",
-    val code: String? = null
+    val code: String? = null,
+    val description: String? = null
 )
 
 data class CreateSubjectRequest(
     val name: String,
-    val code: String? = null
+    val code: String? = null,
+    val description: String? = null
 )
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -947,4 +994,66 @@ data class AddResultsRequest(
 data class MemberResultInput(
     val memberId: String,
     val subjectScores: List<SubjectScoreDto>
+)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  CLASS DETAILS & DIARY DTOs
+// ═══════════════════════════════════════════════════════════════════════════════
+
+data class FeeGroupDetailsResponseDto(
+    val group: FeeGroupDto,
+    val members: List<MemberDto> = emptyList(),
+    val feeStructures: List<FeeStructureDto> = emptyList(),
+    val academicYears: List<AcademicYearDto> = emptyList(),
+    val allGroups: List<FeeGroupDto> = emptyList()
+)
+
+data class DiaryAuthorDto(
+    @SerializedName("_id") val _id: String = "",
+    val name: String = "",
+    val phone: String = "",
+    val role: String = "teacher"
+)
+
+data class DiaryTrackingDto(
+    val memberId: Any? = null,
+    val status: String = "pending" // "pending" | "completed" | "not_done"
+)
+
+data class DiaryDto(
+    @SerializedName("_id") val _id: String = "",
+    val entityId: String = "",
+    val academicYearId: String? = null,
+    val classId: String = "",
+    val subjectId: SubjectDto? = null,
+    val type: String = "homework", // "homework" | "announcement" | "reminder" | "test"
+    val title: String = "",
+    val description: String = "",
+    val dueDate: String? = null,
+    val attachments: List<String> = emptyList(),
+    val createdBy: DiaryAuthorDto? = null,
+    val studentTracking: List<DiaryTrackingDto> = emptyList(),
+    val createdAt: String? = null
+) {
+    val subjectName: String get() = subjectId?.name?.ifBlank { "General" } ?: "General"
+}
+
+data class CreateDiaryRequest(
+    val classId: String,
+    val subjectId: String? = null,
+    val academicYearId: String? = null,
+    val type: String = "homework",
+    val title: String,
+    val description: String,
+    val dueDate: String? = null,
+    val attachments: List<String> = emptyList()
+)
+
+data class UpdateTrackingRequest(
+    val updates: List<StudentTrackingUpdate>
+)
+
+data class StudentTrackingUpdate(
+    val memberId: String,
+    val status: String // "pending" | "completed" | "not_done"
 )

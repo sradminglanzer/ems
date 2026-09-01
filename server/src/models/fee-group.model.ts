@@ -11,6 +11,7 @@ export class FeeGroup {
     name: string;
     description?: string;
     capacity: number = 1;
+    classTeacherId?: ObjectId; // Links to assigned staff member (Class Teacher)
     yearlyRosters: YearlyRoster[];
     members: ObjectId[] = []; // For non-academic tenants like Gyms
     createdAt?: Date;
@@ -22,6 +23,7 @@ export class FeeGroup {
         this.name = data.name;
         this.description = data.description;
         this.capacity = data.capacity != null ? Math.max(1, Number(data.capacity)) : 1;
+        if (data.classTeacherId) this.classTeacherId = new ObjectId(data.classTeacherId);
 
         // Handle migration from old 'members' array or newly constructed 'yearlyRosters'
         this.yearlyRosters = [];
