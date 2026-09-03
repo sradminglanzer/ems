@@ -5,6 +5,8 @@ export interface ExamSubject {
     date: string;
     startTime: string;
     endTime: string;
+    maxMarks?: number;
+    passMarks?: number;
 }
 
 export class Exam {

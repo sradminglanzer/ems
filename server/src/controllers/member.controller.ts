@@ -331,15 +331,26 @@ export const updateMember = async (req: AuthRequest, res: Response, next: NextFu
         if (req.body.entityId) delete req.body.entityId;
 
         // Validation for partial update
-        let updateData: any = { $set: {} };
         const allowedFields = [
-            'firstName', 'middleName', 'lastName', 'knownId', 'dob', 
-            'contact', 'altContact', 'fatherOccupation', 'motherOccupation', 
-            'address', 'feeGroupId', 'feeStructureId', 'addonFeeIds', 'profilePicUrl'
+            'firstName', 'middleName', 'lastName', 'knownId', 'admissionNo', 'rollNo',
+            'apaarId', 'aadhaarNo', 'dob', 'gender', 'placeOfBirth', 'nationality',
+            'motherTongue', 'religion', 'casteCategory', 'subCaste', 'bloodGroup',
+            'medicalNotes', 'identificationMarks', 'contact', 'altContact', 'email',
+            'fatherName', 'fatherAadhaar', 'fatherQualification', 'fatherOccupation',
+            'fatherIncome', 'fatherPhone', 'fatherEmail',
+            'motherName', 'motherAadhaar', 'motherQualification', 'motherOccupation',
+            'motherIncome', 'motherPhone', 'motherEmail',
+            'guardianName', 'guardianRelation', 'guardianPhone', 'guardianAddress',
+            'address', 'presentAddress', 'permanentAddress', 'city', 'district', 'state', 'pincode',
+            'emergencyContactName', 'emergencyContactPhone', 'emergencyContactRelation',
+            'previousSchoolName', 'previousBoard', 'previousClassPassed', 'tcNumber', 'tcDate', 'previousPercentage',
+            'concessionType', 'concessionValue', 'concessionReason',
+            'feeGroupId', 'feeStructureId', 'addonFeeIds', 'profilePicUrl', 'academicYearId', 'status', 'documents'
         ];
+        let updateData: any = { $set: {} };
         allowedFields.forEach(field => {
             if (req.body[field] !== undefined) {
-                if (field === 'feeGroupId' || field === 'feeStructureId') {
+                if (field === 'feeGroupId' || field === 'feeStructureId' || field === 'academicYearId') {
                     updateData.$set[field] = req.body[field] ? new ObjectId(req.body[field] as string) : null;
                 } else if (field === 'addonFeeIds' && Array.isArray(req.body[field])) {
                     updateData.$set[field] = req.body[field].map((id: any) => new ObjectId(id));

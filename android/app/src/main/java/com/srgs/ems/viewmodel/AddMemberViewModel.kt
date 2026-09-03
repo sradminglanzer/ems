@@ -3,10 +3,8 @@ package com.srgs.ems.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.srgs.ems.data.api.FeeGroupDto
-import com.srgs.ems.data.api.FeeStructureDto
-import com.srgs.ems.data.api.CreateMemberRequest
-import com.srgs.ems.data.api.InitialPaymentDto
+import com.srgs.ems.data.AcademicYearManager
+import com.srgs.ems.data.api.*
 import com.srgs.ems.data.models.UserSession
 import com.srgs.ems.data.repository.AddMemberRepository
 import com.srgs.ems.data.repository.SaveResult
@@ -22,44 +20,117 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
     private val repository = AddMemberRepository(application.applicationContext)
     private val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
 
-    // ── Form fields ────────────────────────────────────────────────────────────
-    val firstName         = MutableStateFlow("")
-    val middleName        = MutableStateFlow("")
-    val lastName          = MutableStateFlow("")
-    val knownId           = MutableStateFlow("")
-    val dob               = MutableStateFlow("")   // "YYYY-MM-DD"
-    val joiningDate       = MutableStateFlow("")   // "YYYY-MM-DD" (optional)
-    val contact           = MutableStateFlow("")
-    val altContact        = MutableStateFlow("")
-    val address           = MutableStateFlow("")
-    val fatherOccupation  = MutableStateFlow("")
-    val motherOccupation  = MutableStateFlow("")
+    // ── Student Identity & Demographics ────────────────────────────────────────
+    val firstName          = MutableStateFlow("")
+    val middleName         = MutableStateFlow("")
+    val lastName           = MutableStateFlow("")
+    val knownId            = MutableStateFlow("")
+    val admissionNo        = MutableStateFlow("")
+    val rollNo             = MutableStateFlow("")
+    val apaarId            = MutableStateFlow("")
+    val aadhaarNo          = MutableStateFlow("")
+    val dob                = MutableStateFlow("")   // "YYYY-MM-DD"
+    val gender             = MutableStateFlow("male") // "male" | "female" | "other"
+    val placeOfBirth       = MutableStateFlow("")
+    val nationality        = MutableStateFlow("Indian")
+    val motherTongue       = MutableStateFlow("")
+    val religion           = MutableStateFlow("Hindu")
+    val casteCategory      = MutableStateFlow("General") // "General" | "OBC" | "SC" | "ST" | "EWS"
+    val subCaste           = MutableStateFlow("")
+    val bloodGroup         = MutableStateFlow("O+")
+    val medicalNotes       = MutableStateFlow("")
+    val identificationMarks= MutableStateFlow("")
 
-    // ── Assignment ─────────────────────────────────────────────────────────────
-    val feeGroupId        = MutableStateFlow<String?>(null)
+    // ── Contacts ───────────────────────────────────────────────────────────────
+    val contact            = MutableStateFlow("")
+    val altContact         = MutableStateFlow("")
+    val email              = MutableStateFlow("")
+    val joiningDate        = MutableStateFlow("")
 
-    // Primary Membership Plans (!isAddon) — Single Selection
-    val primaryStructures = MutableStateFlow<List<FeeStructureDto>>(emptyList())
-    val selectedPlanId    = MutableStateFlow<String?>(null)
+    // ── Parents & Guardian Details ─────────────────────────────────────────────
+    val fatherName         = MutableStateFlow("")
+    val fatherAadhaar      = MutableStateFlow("")
+    val fatherQualification= MutableStateFlow("")
+    val fatherOccupation   = MutableStateFlow("")
+    val fatherIncome       = MutableStateFlow("")
+    val fatherPhone        = MutableStateFlow("")
+    val fatherEmail        = MutableStateFlow("")
 
-    // Add-on Fee Structures (isAddon) — Multiple Selection
-    val addonStructures   = MutableStateFlow<List<FeeStructureDto>>(emptyList())
-    val addonFeeIds       = MutableStateFlow<List<String>>(emptyList())
+    val motherName         = MutableStateFlow("")
+    val motherAadhaar      = MutableStateFlow("")
+    val motherQualification= MutableStateFlow("")
+    val motherOccupation   = MutableStateFlow("")
+    val motherIncome       = MutableStateFlow("")
+    val motherPhone        = MutableStateFlow("")
+    val motherEmail        = MutableStateFlow("")
 
-    // ── Initial payment (gym new member) ──────────────────────────────────────
-    val posAmount         = MutableStateFlow("")
-    val posPaymentMethod  = MutableStateFlow("cash")
-    val posPaymentDateStr = MutableStateFlow(fmt.format(Date()))
-    val posNextDateStr    = MutableStateFlow("")
+    val guardianName       = MutableStateFlow("")
+    val guardianRelation   = MutableStateFlow("")
+    val guardianPhone      = MutableStateFlow("")
+    val guardianAddress    = MutableStateFlow("")
+
+    // ── Addresses & Emergency ──────────────────────────────────────────────────
+    val presentAddress     = MutableStateFlow("")
+    val permanentAddress   = MutableStateFlow("")
+    val sameAddress        = MutableStateFlow(true)
+    val city               = MutableStateFlow("")
+    val district           = MutableStateFlow("")
+    val state              = MutableStateFlow("")
+    val pincode            = MutableStateFlow("")
+    val emergencyName      = MutableStateFlow("")
+    val emergencyPhone     = MutableStateFlow("")
+    val emergencyRelation  = MutableStateFlow("")
+
+    // ── Previous Academic History ──────────────────────────────────────────────
+    val previousSchoolName = MutableStateFlow("")
+    val previousBoard      = MutableStateFlow("")
+    val previousClassPassed= MutableStateFlow("")
+    val tcNumber           = MutableStateFlow("")
+    val tcDate             = MutableStateFlow("")
+    val previousPercentage = MutableStateFlow("")
+
+    // ── Fee Plans & Concessions ────────────────────────────────────────────────
+    val feeGroupId         = MutableStateFlow<String?>(null)
+    val isGroupLocked      = MutableStateFlow(false)
+    val primaryStructures  = MutableStateFlow<List<FeeStructureDto>>(emptyList())
+    val selectedPlanId     = MutableStateFlow<String?>(null)
+    val addonStructures    = MutableStateFlow<List<FeeStructureDto>>(emptyList())
+    val addonFeeIds        = MutableStateFlow<List<String>>(emptyList())
+
+    val concessionType     = MutableStateFlow("none") // "none" | "sibling" | "staff" | "merit" | "custom"
+    val concessionValue    = MutableStateFlow("")
+    val concessionReason   = MutableStateFlow("")
+
+    // ── Initial payment (for PG/Gym) ───────────────────────────────────────────
+    val posAmount          = MutableStateFlow("")
+    val posPaymentMethod   = MutableStateFlow("cash")
+    val posPaymentDateStr  = MutableStateFlow(fmt.format(Date()))
+    val posNextDateStr     = MutableStateFlow("")
+
+    // ── Documents & Certificates ──────────────────────────────────────────────
+    val documents          = MutableStateFlow<List<MemberDocumentDto>>(emptyList())
+
+    fun addDocument(title: String, url: String, docType: String) {
+        val current = documents.value.toMutableList()
+        current.add(MemberDocumentDto(title = title.trim(), url = url.trim(), docType = docType, uploadedAt = fmt.format(Date())))
+        documents.value = current
+    }
+
+    fun removeDocument(index: Int) {
+        val current = documents.value.toMutableList()
+        if (index in current.indices) {
+            current.removeAt(index)
+            documents.value = current
+        }
+    }
 
     // ── Loaded data ────────────────────────────────────────────────────────────
-    val feeGroups         = MutableStateFlow<List<FeeGroupDto>>(emptyList())
-    val isLoadingData     = MutableStateFlow(false)
-    val isSubmitting      = MutableStateFlow(false)
+    val feeGroups          = MutableStateFlow<List<FeeGroupDto>>(emptyList())
+    val isLoadingData      = MutableStateFlow(false)
+    val isSubmitting       = MutableStateFlow(false)
+    val saveResult         = MutableSharedFlow<SaveResult>()
 
-    val saveResult        = MutableSharedFlow<SaveResult>()
-
-    private var _initialized    = false
+    private var _initialized       = false
     private var memberIdToEdit: String? = null
     val isEditing get() = memberIdToEdit != null
 
@@ -101,14 +172,8 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
         posPaymentDateStr.value = value
     }
 
-    /**
-     * Determines billing frequency primarily from the selected primary plan,
-     * or falls back to selected add-ons / first available plan.
-     */
     private fun autoComputeNextDate(params: AutoComputeParams): String? {
         if (params.payDate.isBlank()) return null
-
-        // 1. Primary plan frequency
         val primaryPlan = params.primaries.firstOrNull { it._id == params.planId }
         val frequency = primaryPlan?.frequency
             ?: params.addonStructs.firstOrNull { it._id in params.addons }?.frequency
@@ -116,7 +181,6 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
             ?: return null
 
         val base = try { fmt.parse(params.payDate) ?: return null } catch (_: Exception) { return null }
-
         val cal = Calendar.getInstance().apply { time = base }
         when (frequency) {
             "daily"       -> cal.add(Calendar.DAY_OF_MONTH, 1)
@@ -135,7 +199,10 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
         if (_initialized) return
         _initialized = true
         memberIdToEdit = editMemberId
-        if (!feeGroupIdParam.isNullOrEmpty()) feeGroupId.value = feeGroupIdParam
+        if (!feeGroupIdParam.isNullOrEmpty()) {
+            feeGroupId.value = feeGroupIdParam
+            isGroupLocked.value = true
+        }
         loadFeeData(feeGroupIdParam)
         if (editMemberId != null) loadMember(editMemberId)
     }
@@ -144,27 +211,25 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             isLoadingData.value = true
             coroutineScope {
+                val yearId = AcademicYearManager.selectedYearId
                 val groupsJob  = async { repository.getFeeGroups() }
                 val structsJob = async { repository.getFeeStructures() }
                 val allStructs = structsJob.await()
                 feeGroups.value = groupsJob.await()
 
-                primaryStructures.value = allStructs.filter { !it.isAddon }
-                addonStructures.value   = allStructs.filter { it.isAddon }
+                val primaries = allStructs.filter { !it.isAddon }
+                val addons    = allStructs.filter { it.isAddon }
 
-                // Auto-select plan for selected room if available
-                val currentRoomId = feeGroupId.value
-                if (!currentRoomId.isNullOrEmpty()) {
-                    val matchedPlan = primaryStructures.value.firstOrNull { it.feeGroupId == currentRoomId }
-                        ?: primaryStructures.value.firstOrNull()
-                    if (matchedPlan != null) {
-                        selectedPlanId.value = matchedPlan._id
+                primaryStructures.value = primaries
+                addonStructures.value   = addons
+
+                if (selectedPlanId.value == null && primaries.isNotEmpty() && !isEditing) {
+                    if (!fixedGroupId.isNullOrEmpty()) {
+                        autoMatchRoomRent(fixedGroupId)
+                    } else {
+                        selectedPlanId.value = primaries.first()._id
+                        updatePosAmount(selectedPlanId.value, addonFeeIds.value)
                     }
-                } else if (selectedPlanId.value == null && primaryStructures.value.isNotEmpty()) {
-                    selectedPlanId.value = primaryStructures.value.first()._id
-                }
-                if (!isEditing) {
-                    updatePosAmount(selectedPlanId.value, addonFeeIds.value)
                 }
             }
             isLoadingData.value = false
@@ -174,37 +239,92 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
     private fun loadMember(id: String) {
         viewModelScope.launch {
             val m = repository.getMember(id) ?: return@launch
-            firstName.value        = m.firstName
-            middleName.value       = m.middleName ?: ""
-            lastName.value         = m.lastName
-            knownId.value          = m.knownId ?: ""
-            dob.value              = m.dob?.take(10) ?: ""
-            joiningDate.value      = m.joiningDate?.take(10) ?: ""
-            contact.value          = m.contact ?: ""
-            altContact.value       = m.altContact ?: ""
-            address.value          = m.address ?: ""
-            fatherOccupation.value = m.fatherOccupation ?: ""
-            motherOccupation.value = m.motherOccupation ?: ""
-            feeGroupId.value       = m.feeGroupId
-            
-            val mAddons = m.addonFeeIds ?: emptyList()
-            val primaryId = m.feeStructureId ?: primaryStructures.value.firstOrNull { it._id in mAddons }?._id
-            selectedPlanId.value = primaryId
-            addonFeeIds.value = if (primaryId != null) mAddons - primaryId else mAddons
+            firstName.value           = m.firstName
+            middleName.value          = m.middleName ?: ""
+            lastName.value            = m.lastName
+            knownId.value             = m.knownId ?: ""
+            admissionNo.value         = m.admissionNo ?: m.knownId ?: ""
+            rollNo.value              = m.rollNo ?: ""
+            apaarId.value             = m.apaarId ?: ""
+            aadhaarNo.value           = m.aadhaarNo ?: ""
+            dob.value                 = m.dob ?: ""
+            gender.value              = m.gender ?: "male"
+            placeOfBirth.value        = m.placeOfBirth ?: ""
+            nationality.value         = m.nationality ?: "Indian"
+            motherTongue.value        = m.motherTongue ?: ""
+            religion.value            = m.religion ?: "Hindu"
+            casteCategory.value       = m.casteCategory ?: "General"
+            subCaste.value            = m.subCaste ?: ""
+            bloodGroup.value          = m.bloodGroup ?: "O+"
+            medicalNotes.value        = m.medicalNotes ?: ""
+            identificationMarks.value = m.identificationMarks ?: ""
+
+            contact.value             = m.contact ?: ""
+            altContact.value          = m.altContact ?: ""
+            email.value               = m.email ?: ""
+            joiningDate.value         = m.joiningDate?.take(10) ?: ""
+
+            fatherName.value          = m.fatherName ?: ""
+            fatherAadhaar.value       = m.fatherAadhaar ?: ""
+            fatherQualification.value = m.fatherQualification ?: ""
+            fatherOccupation.value    = m.fatherOccupation ?: ""
+            fatherIncome.value        = m.fatherIncome ?: ""
+            fatherPhone.value         = m.fatherPhone ?: ""
+            fatherEmail.value         = m.fatherEmail ?: ""
+
+            motherName.value          = m.motherName ?: ""
+            motherAadhaar.value       = m.motherAadhaar ?: ""
+            motherQualification.value = m.motherQualification ?: ""
+            motherOccupation.value    = m.motherOccupation ?: ""
+            motherIncome.value        = m.motherIncome ?: ""
+            motherPhone.value         = m.motherPhone ?: ""
+            motherEmail.value         = m.motherEmail ?: ""
+
+            guardianName.value        = m.guardianName ?: ""
+            guardianRelation.value    = m.guardianRelation ?: ""
+            guardianPhone.value       = m.guardianPhone ?: ""
+            guardianAddress.value     = m.guardianAddress ?: ""
+
+            presentAddress.value      = m.presentAddress ?: m.address ?: ""
+            permanentAddress.value    = m.permanentAddress ?: ""
+            sameAddress.value         = (m.permanentAddress.isNullOrBlank() || m.permanentAddress == m.presentAddress)
+            city.value                = m.city ?: ""
+            district.value            = m.district ?: ""
+            state.value               = m.state ?: ""
+            pincode.value             = m.pincode ?: ""
+            emergencyName.value       = m.emergencyContactName ?: ""
+            emergencyPhone.value      = m.emergencyContactPhone ?: ""
+            emergencyRelation.value   = m.emergencyContactRelation ?: ""
+
+            previousSchoolName.value  = m.previousSchoolName ?: ""
+            previousBoard.value       = m.previousBoard ?: ""
+            previousClassPassed.value = m.previousClassPassed ?: ""
+            tcNumber.value            = m.tcNumber ?: ""
+            tcDate.value              = m.tcDate ?: ""
+            previousPercentage.value  = m.previousPercentage ?: ""
+
+            feeGroupId.value          = m.feeGroupId
+            selectedPlanId.value      = m.feeStructureId
+            addonFeeIds.value         = m.addonFeeIds ?: emptyList()
+            concessionType.value      = m.concessionType ?: "none"
+            concessionValue.value     = m.concessionValue?.toString() ?: ""
+            concessionReason.value    = m.concessionReason ?: ""
+            documents.value           = m.documents ?: emptyList()
         }
     }
 
-    fun selectRoom(roomId: String) {
-        _userOverrodeNextDate = false
-        feeGroupId.value = roomId
+    fun onGroupSelected(groupId: String?) {
+        if (isGroupLocked.value) return
+        feeGroupId.value = groupId
+        if (groupId != null) {
+            autoMatchRoomRent(groupId)
+        }
+    }
 
+    private fun autoMatchRoomRent(roomId: String) {
         val roomDoc = feeGroups.value.firstOrNull { it._id == roomId }
         val roomCap = roomDoc?.capacity ?: 1
-
-        // 1. Direct match on feeGroupId
-        // 2. Match plan name containing bed capacity (e.g. "2 Sharing" or "2")
-        // 3. Fallback to first primary structure
-        val matchedPlan = primaryStructures.value.firstOrNull { it.feeGroupId == roomId }
+        val matchedPlan = primaryStructures.value.firstOrNull { it.feeGroupId == roomId || it.feeGroupIds?.contains(roomId) == true }
             ?: primaryStructures.value.firstOrNull { it.name.contains("$roomCap", ignoreCase = true) }
             ?: primaryStructures.value.firstOrNull()
 
@@ -254,6 +374,7 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
     fun submit(session: UserSession?) {
         val fn         = firstName.value.trim()
         val ln         = lastName.value.trim()
+        val isSchool   = session?.isSchool ?: true
         val isBusiness = session?.isBusinessMode ?: true
 
         if (fn.isEmpty() || ln.isEmpty()) {
@@ -261,33 +382,91 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
             return
         }
 
-        val kid = knownId.value.trim().ifEmpty {
-            if (isBusiness) "TEN-${System.currentTimeMillis().toString().takeLast(6)}" else ""
-        }
-
-        if (!isBusiness && kid.isEmpty()) {
-            viewModelScope.launch { saveResult.emit(SaveResult.Error("Roll / Student ID is required")) }
-            return
+        val admNo = admissionNo.value.trim()
+        val kid = if (admNo.isNotEmpty()) admNo else knownId.value.trim().ifEmpty {
+            if (isBusiness) "TEN-${System.currentTimeMillis().toString().takeLast(6)}" else "STU-${System.currentTimeMillis().toString().takeLast(6)}"
         }
 
         viewModelScope.launch {
             isSubmitting.value = true
+            val yearId = AcademicYearManager.selectedYearId
+            val finalPermAddress = if (sameAddress.value) presentAddress.value.trim() else permanentAddress.value.trim()
+
             val request = CreateMemberRequest(
-                firstName        = fn,
-                middleName       = middleName.value.trim().ifEmpty { null },
-                lastName         = ln,
-                knownId          = kid.ifEmpty { null },
-                contact          = contact.value.trim().ifEmpty { null },
-                altContact       = altContact.value.trim().ifEmpty { null },
-                dob              = dob.value.trim().ifEmpty { null },
-                joiningDate      = joiningDate.value.trim().ifEmpty { null },
-                address          = address.value.trim().ifEmpty { null },
-                fatherOccupation = fatherOccupation.value.trim().ifEmpty { null },
-                motherOccupation = motherOccupation.value.trim().ifEmpty { null },
-                feeGroupId       = feeGroupId.value,
-                feeStructureId   = selectedPlanId.value,
-                addonFeeIds      = addonFeeIds.value.ifEmpty { null },
-                initialPayment   = if (isBusiness && !isEditing) {
+                firstName                = fn,
+                middleName               = middleName.value.trim().ifEmpty { null },
+                lastName                 = ln,
+                knownId                  = kid.ifEmpty { null },
+                admissionNo              = admNo.ifEmpty { kid },
+                rollNo                   = rollNo.value.trim().ifEmpty { null },
+                apaarId                  = apaarId.value.trim().ifEmpty { null },
+                aadhaarNo                = aadhaarNo.value.trim().ifEmpty { null },
+                dob                      = dob.value.trim().ifEmpty { null },
+                gender                   = gender.value,
+                placeOfBirth             = placeOfBirth.value.trim().ifEmpty { null },
+                nationality              = nationality.value.trim().ifEmpty { "Indian" },
+                motherTongue             = motherTongue.value.trim().ifEmpty { null },
+                religion                 = religion.value,
+                casteCategory            = casteCategory.value,
+                subCaste                 = subCaste.value.trim().ifEmpty { null },
+                bloodGroup               = bloodGroup.value,
+                medicalNotes             = medicalNotes.value.trim().ifEmpty { null },
+                identificationMarks      = identificationMarks.value.trim().ifEmpty { null },
+
+                contact                  = contact.value.trim().ifEmpty { fatherPhone.value.trim().ifEmpty { null } },
+                altContact               = altContact.value.trim().ifEmpty { motherPhone.value.trim().ifEmpty { null } },
+                email                    = email.value.trim().ifEmpty { null },
+                joiningDate              = joiningDate.value.trim().ifEmpty { null },
+
+                fatherName               = fatherName.value.trim().ifEmpty { null },
+                fatherAadhaar            = fatherAadhaar.value.trim().ifEmpty { null },
+                fatherQualification      = fatherQualification.value.trim().ifEmpty { null },
+                fatherOccupation         = fatherOccupation.value.trim().ifEmpty { null },
+                fatherIncome             = fatherIncome.value.trim().ifEmpty { null },
+                fatherPhone              = fatherPhone.value.trim().ifEmpty { null },
+                fatherEmail              = fatherEmail.value.trim().ifEmpty { null },
+
+                motherName               = motherName.value.trim().ifEmpty { null },
+                motherAadhaar            = motherAadhaar.value.trim().ifEmpty { null },
+                motherQualification      = motherQualification.value.trim().ifEmpty { null },
+                motherOccupation         = motherOccupation.value.trim().ifEmpty { null },
+                motherIncome             = motherIncome.value.trim().ifEmpty { null },
+                motherPhone              = motherPhone.value.trim().ifEmpty { null },
+                motherEmail              = motherEmail.value.trim().ifEmpty { null },
+
+                guardianName             = guardianName.value.trim().ifEmpty { null },
+                guardianRelation         = guardianRelation.value.trim().ifEmpty { null },
+                guardianPhone            = guardianPhone.value.trim().ifEmpty { null },
+                guardianAddress          = guardianAddress.value.trim().ifEmpty { null },
+
+                address                  = presentAddress.value.trim().ifEmpty { null },
+                presentAddress           = presentAddress.value.trim().ifEmpty { null },
+                permanentAddress         = finalPermAddress.ifEmpty { null },
+                city                     = city.value.trim().ifEmpty { null },
+                district                 = district.value.trim().ifEmpty { null },
+                state                    = state.value.trim().ifEmpty { null },
+                pincode                  = pincode.value.trim().ifEmpty { null },
+                emergencyContactName     = emergencyName.value.trim().ifEmpty { null },
+                emergencyContactPhone    = emergencyPhone.value.trim().ifEmpty { null },
+                emergencyContactRelation = emergencyRelation.value.trim().ifEmpty { null },
+
+                previousSchoolName       = previousSchoolName.value.trim().ifEmpty { null },
+                previousBoard            = previousBoard.value.trim().ifEmpty { null },
+                previousClassPassed      = previousClassPassed.value.trim().ifEmpty { null },
+                tcNumber                 = tcNumber.value.trim().ifEmpty { null },
+                tcDate                   = tcDate.value.trim().ifEmpty { null },
+                previousPercentage       = previousPercentage.value.trim().ifEmpty { null },
+
+                feeGroupId               = feeGroupId.value,
+                feeStructureId           = selectedPlanId.value,
+                addonFeeIds              = addonFeeIds.value.ifEmpty { null },
+                concessionType           = concessionType.value.ifEmpty { null },
+                concessionValue          = concessionValue.value.toDoubleOrNull(),
+                concessionReason         = concessionReason.value.trim().ifEmpty { null },
+                documents                = documents.value,
+                academicYearId           = yearId,
+
+                initialPayment           = if (isBusiness && !isEditing) {
                     val amt = posAmount.value.toDoubleOrNull() ?: 0.0
                     if (amt > 0) InitialPaymentDto(
                         amount             = amt,

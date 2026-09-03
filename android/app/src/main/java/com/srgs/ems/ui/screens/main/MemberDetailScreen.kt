@@ -492,7 +492,7 @@ fun MemberDetailScreen(
                 }
 
                 // Personal details
-                item { SCard { PersonalDetails(m, session?.isGym ?: false) } }
+                item { SCard { PersonalDetails(m, session?.isGym ?: false, session?.isSchool ?: true) } }
 
                 // Financial overview (non-teacher admins)
                 if (session?.isTeacher != true) {
@@ -639,32 +639,315 @@ private fun ActionBtn(label: String, bg: Color, fg: Color, modifier: Modifier, o
 
 // ── Personal details ──────────────────────────────────────────────────────────
 @Composable
-private fun PersonalDetails(m: MemberDetailDto, isGym: Boolean) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("👤", fontSize = 18.sp); Spacer(Modifier.width(8.dp))
-        Text("Personal Details", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-    }
-    Spacer(Modifier.height(12.dp))
-    val items = buildList<Pair<String, String>> {
-        if (!isGym && !m.knownId.isNullOrEmpty()) add("Roll / ID" to m.knownId)
-        if (isGym) add("Plans & Services" to (m.addonNames?.joinToString(", ")?.ifEmpty { "None" } ?: "None"))
-        else {
-            m.groupName?.let { add("Class Enrolled" to it) }
-            if (!m.addonNames.isNullOrEmpty()) add("Add-on Services" to m.addonNames.joinToString(", "))
+private fun PersonalDetails(
+    m: MemberDetailDto,
+    isGym: Boolean,
+    isSchool: Boolean = false
+) {
+    val context = LocalContext.current
+
+    if (isSchool) {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            // ── Section 1: Student Identity ──
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("🎓", fontSize = 18.sp)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Student Identity & Demographics", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                }
+                Spacer(Modifier.height(10.dp))
+
+                val idItems = buildList<Pair<String, String>> {
+                    add("Class / Section" to (m.groupName ?: "Unassigned"))
+                    m.admissionNo?.let { if (it.isNotEmpty()) add("Admission No" to it) } ?: m.knownId?.let { if (it.isNotEmpty()) add("Admission No" to it) }
+                    m.rollNo?.let { if (it.isNotEmpty()) add("Class Roll No" to it) }
+                    m.aadhaarNo?.let { if (it.isNotEmpty()) add("Aadhaar UID" to it) }
+                    m.apaarId?.let { if (it.isNotEmpty()) add("APAAR / PEN ID" to it) }
+                    m.dob?.take(10)?.let { if (it.isNotEmpty()) add("Date of Birth" to it) }
+                    m.gender?.let { if (it.isNotEmpty()) add("Gender" to it.replaceFirstChar { c -> c.uppercase() }) }
+                    m.bloodGroup?.let { if (it.isNotEmpty()) add("Blood Group" to it) }
+                    m.casteCategory?.let { if (it.isNotEmpty()) add("Category / Caste" to "$it ${m.subCaste ?: ""}".trim()) }
+                    m.religion?.let { if (it.isNotEmpty()) add("Religion" to it) }
+                    m.motherTongue?.let { if (it.isNotEmpty()) add("Mother Tongue" to it) }
+                    m.placeOfBirth?.let { if (it.isNotEmpty()) add("Place of Birth" to it) }
+                    m.identificationMarks?.let { if (it.isNotEmpty()) add("Ident. Marks" to it) }
+                    m.medicalNotes?.let { if (it.isNotEmpty()) add("Medical Notes" to it) }
+                }
+
+                idItems.forEachIndexed { i, (label, value) ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+                        Text(label, Modifier.weight(0.42f), fontSize = 13.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
+                        Text(value, Modifier.weight(0.58f), fontSize = 13.sp, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                    }
+                    if (i < idItems.lastIndex) HorizontalDivider(color = Border.copy(alpha = 0.5f))
+                }
+            }
+
+            HorizontalDivider(color = Border)
+
+            // ── Section 2: Parents & Guardian ──
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("👨‍👩‍👧", fontSize = 18.sp)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Parents & Guardian Details", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                }
+                Spacer(Modifier.height(10.dp))
+
+                // Father Profile
+                if (!m.fatherName.isNullOrBlank()) {
+                    Text("FATHER'S INFO", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = Primary, letterSpacing = 0.5.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text("Name: ${m.fatherName}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    if (!m.fatherOccupation.isNullOrBlank()) Text("Occupation: ${m.fatherOccupation}", fontSize = 12.sp, color = TextSecondary)
+                    if (!m.fatherQualification.isNullOrBlank()) Text("Qualification: ${m.fatherQualification}", fontSize = 12.sp, color = TextSecondary)
+                    if (!m.fatherPhone.isNullOrBlank()) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                            Text("📞 ${m.fatherPhone}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Primary)
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                "Dial",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Success,
+                                modifier = Modifier.clickable {
+                                    val intent = android.content.Intent(android.content.Intent.ACTION_DIAL, android.net.Uri.parse("tel:${m.fatherPhone}"))
+                                    context.startActivity(intent)
+                                }
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                // Mother Profile
+                if (!m.motherName.isNullOrBlank()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text("MOTHER'S INFO", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = Primary, letterSpacing = 0.5.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text("Name: ${m.motherName}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    if (!m.motherOccupation.isNullOrBlank()) Text("Occupation: ${m.motherOccupation}", fontSize = 12.sp, color = TextSecondary)
+                    if (!m.motherPhone.isNullOrBlank()) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                            Text("📞 ${m.motherPhone}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Primary)
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                "Dial",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Success,
+                                modifier = Modifier.clickable {
+                                    val intent = android.content.Intent(android.content.Intent.ACTION_DIAL, android.net.Uri.parse("tel:${m.motherPhone}"))
+                                    context.startActivity(intent)
+                                }
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                // Guardian Profile
+                if (!m.guardianName.isNullOrBlank()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text("LOCAL GUARDIAN", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextSecondary, letterSpacing = 0.5.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text("Name: ${m.guardianName} (${m.guardianRelation ?: "Guardian"})", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    if (!m.guardianPhone.isNullOrBlank()) Text("Phone: 📞 ${m.guardianPhone}", fontSize = 12.sp, color = TextSecondary)
+                }
+            }
+
+            HorizontalDivider(color = Border)
+
+            // ── Section 3: Address & Emergency ──
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("🏠", fontSize = 18.sp)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Address & Emergency", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                }
+                Spacer(Modifier.height(8.dp))
+
+                val fullPresentAddr = buildString {
+                    append(m.presentAddress ?: m.address ?: "")
+                    if (!m.city.isNullOrBlank()) append(", ${m.city}")
+                    if (!m.district.isNullOrBlank()) append(", ${m.district}")
+                    if (!m.state.isNullOrBlank()) append(", ${m.state}")
+                    if (!m.pincode.isNullOrBlank()) append(" - ${m.pincode}")
+                }.trim().trimStart(',')
+
+                if (fullPresentAddr.isNotBlank()) {
+                    Text("Present Address:", fontSize = 12.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
+                    Text(fullPresentAddr, fontSize = 13.sp, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(6.dp))
+                }
+
+                if (!m.permanentAddress.isNullOrBlank() && m.permanentAddress != m.presentAddress) {
+                    Text("Permanent Address:", fontSize = 12.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
+                    Text(m.permanentAddress, fontSize = 13.sp, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(6.dp))
+                }
+
+                if (!m.emergencyContactPhone.isNullOrBlank()) {
+                    Spacer(Modifier.height(4.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Danger.copy(alpha = 0.08f),
+                        border = BorderStroke(1.dp, Danger.copy(alpha = 0.25f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text("🚨 Emergency Contact", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Danger)
+                                Text("${m.emergencyContactName ?: "Contact"} (${m.emergencyContactRelation ?: "Relation"})", fontSize = 12.sp, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                            }
+                            Text(
+                                "📞 ${m.emergencyContactPhone}",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Danger,
+                                modifier = Modifier.clickable {
+                                    val intent = android.content.Intent(android.content.Intent.ACTION_DIAL, android.net.Uri.parse("tel:${m.emergencyContactPhone}"))
+                                    context.startActivity(intent)
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // ── Section 4: Previous School & TC ──
+            if (!m.previousSchoolName.isNullOrBlank() || !m.tcNumber.isNullOrBlank()) {
+                HorizontalDivider(color = Border)
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("🏫", fontSize = 18.sp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Previous School & TC", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    if (!m.previousSchoolName.isNullOrBlank()) Text("School: ${m.previousSchoolName} (${m.previousBoard ?: "Board"})", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                    if (!m.previousClassPassed.isNullOrBlank()) Text("Last Class Passed: ${m.previousClassPassed} • Score: ${m.previousPercentage ?: "N/A"}", fontSize = 12.sp, color = TextSecondary)
+                    if (!m.tcNumber.isNullOrBlank()) Text("TC No: #${m.tcNumber} ${if (!m.tcDate.isNullOrBlank()) "issued on ${m.tcDate}" else ""}", fontSize = 12.sp, color = TextMuted)
+                }
+            }
+
+            // ── Section 5: Concession & Scholarship ──
+            if (!m.concessionType.isNullOrBlank() && m.concessionType != "none") {
+                HorizontalDivider(color = Border)
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("🏷️", fontSize = 18.sp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Fee Concession / Scholarship", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Success)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text("Type: ${m.concessionType.replaceFirstChar { it.uppercase() }} ${if (m.concessionValue != null && m.concessionValue > 0) "(${m.concessionValue.toInt()}% Off)" else ""}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    if (!m.concessionReason.isNullOrBlank()) Text("Reason: ${m.concessionReason}", fontSize = 12.sp, color = TextSecondary)
+                }
+            }
+
+            // ── Section 6: Attached Documents & Certificates ──
+            if (m.documents.isNotEmpty()) {
+                HorizontalDivider(color = Border)
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("📁", fontSize = 18.sp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Attached Documents (${m.documents.size})", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        m.documents.forEach { doc ->
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Background.copy(alpha = 0.6f),
+                                border = BorderStroke(1.dp, Border),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            when (doc.docType) {
+                                                "birth_certificate" -> "📜"
+                                                "aadhaar"           -> "🆔"
+                                                "tc"                -> "🏫"
+                                                "marksheet"         -> "📊"
+                                                "caste_certificate" -> "🏷️"
+                                                "photo"             -> "📸"
+                                                else                -> "📄"
+                                            },
+                                            fontSize = 16.sp
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Column {
+                                            Text(doc.title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                                            doc.uploadedAt?.let { Text("Uploaded: ${it.take(10)}", fontSize = 10.sp, color = TextMuted) }
+                                        }
+                                    }
+
+                                    if (doc.url.isNotBlank()) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                try {
+                                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(doc.url))
+                                                    context.startActivity(intent)
+                                                } catch (_: Exception) {}
+                                            },
+                                            shape = RoundedCornerShape(6.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
+                                        ) {
+                                            Text("👁 View", fontSize = 12.sp, color = Primary, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
-        m.dob?.take(10)?.let { if (it.isNotEmpty()) add("Date of Birth" to it) }
-        m.contact?.let { if (it.isNotEmpty()) add("Contact" to "📞 $it") }
-        m.altContact?.let { if (it.isNotEmpty()) add("Alt Contact" to "📞 $it") }
-        m.address?.let { if (it.isNotEmpty()) add("Address" to it) }
-        m.fatherOccupation?.let { if (it.isNotEmpty() && it.lowercase() !in listOf("no","none","n/a","na","-")) add("Father Occ." to it) }
-        m.motherOccupation?.let { if (it.isNotEmpty() && it.lowercase() !in listOf("no","none","n/a","na","-")) add("Mother Occ." to it) }
-    }
-    items.forEachIndexed { i, (label, value) ->
-        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-            Text(label, Modifier.weight(0.4f), fontSize = 13.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
-            Text(value, Modifier.weight(0.6f), fontSize = 14.sp, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+    } else {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("👤", fontSize = 18.sp); Spacer(Modifier.width(8.dp))
+            Text("Personal Details", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
         }
-        if (i < items.lastIndex) HorizontalDivider(color = Border)
+        Spacer(Modifier.height(12.dp))
+        val items = buildList<Pair<String, String>> {
+            if (!isGym && !m.knownId.isNullOrEmpty()) add("Roll / ID" to m.knownId)
+            if (isGym) add("Plans & Services" to (m.addonNames?.joinToString(", ")?.ifEmpty { "None" } ?: "None"))
+            else {
+                m.groupName?.let { add("Class / Room" to it) }
+                if (!m.addonNames.isNullOrEmpty()) add("Add-on Services" to m.addonNames.joinToString(", "))
+            }
+            m.dob?.take(10)?.let { if (it.isNotEmpty()) add("Date of Birth" to it) }
+            m.contact?.let { if (it.isNotEmpty()) add("Contact" to "📞 $it") }
+            m.altContact?.let { if (it.isNotEmpty()) add("Alt Contact" to "📞 $it") }
+            m.address?.let { if (it.isNotEmpty()) add("Address" to it) }
+            m.fatherOccupation?.let { if (it.isNotEmpty() && it.lowercase() !in listOf("no","none","n/a","na","-")) add("Father Occ." to it) }
+            m.motherOccupation?.let { if (it.isNotEmpty() && it.lowercase() !in listOf("no","none","n/a","na","-")) add("Mother Occ." to it) }
+        }
+        items.forEachIndexed { i, (label, value) ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                Text(label, Modifier.weight(0.4f), fontSize = 13.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
+                Text(value, Modifier.weight(0.6f), fontSize = 14.sp, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+            }
+            if (i < items.lastIndex) HorizontalDivider(color = Border)
+        }
     }
 }
 

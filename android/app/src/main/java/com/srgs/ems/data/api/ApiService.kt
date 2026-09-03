@@ -286,6 +286,14 @@ interface ApiService {
     suspend fun getRankSheet(
         @Path("examId") examId: String
     ): Response<List<RankSheetEntryDto>>
+
+    // ── File Uploads ──────────────────────────────────────────────────────────
+    @GET("upload/presigned-url")
+    suspend fun getPresignedUrl(
+        @Query("filename") filename: String,
+        @Query("contentType") contentType: String? = null,
+        @Query("type") type: String? = null
+    ): Response<PresignedUrlResponse>
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -382,6 +390,7 @@ data class MemberDto(
     val lastName: String          = "",
     val contact: String?          = null,
     val knownId: String?          = null,
+    val rollNo: String?           = null,
     val admissionNo: String?      = null,
     val fatherName: String?       = null,
     val status: String            = "active",
@@ -405,13 +414,63 @@ data class MemberDetailDto(
     val middleName: String?       = null,
     val lastName: String          = "",
     val knownId: String?          = null,
+    val admissionNo: String?      = null,
+    val rollNo: String?           = null,
+    val apaarId: String?          = null,
+    val aadhaarNo: String?        = null,
+    val dob: String?              = null,
+    val gender: String?           = null,
+    val placeOfBirth: String?     = null,
+    val nationality: String?      = "Indian",
+    val motherTongue: String?     = null,
+    val religion: String?         = null,
+    val casteCategory: String?    = null,
+    val subCaste: String?         = null,
+    val bloodGroup: String?       = null,
+    val medicalNotes: String?     = null,
+    val identificationMarks: String? = null,
     val contact: String?          = null,
     val altContact: String?       = null,
-    val dob: String?              = null,
-    val joiningDate: String?      = null,
-    val address: String?          = null,
+    val email: String?            = null,
+    val fatherName: String?       = null,
+    val fatherAadhaar: String?    = null,
+    val fatherQualification: String? = null,
     val fatherOccupation: String? = null,
+    val fatherIncome: String?     = null,
+    val fatherPhone: String?      = null,
+    val fatherEmail: String?      = null,
+    val motherName: String?       = null,
+    val motherAadhaar: String?    = null,
+    val motherQualification: String? = null,
     val motherOccupation: String? = null,
+    val motherIncome: String?     = null,
+    val motherPhone: String?      = null,
+    val motherEmail: String?      = null,
+    val guardianName: String?     = null,
+    val guardianRelation: String? = null,
+    val guardianPhone: String?    = null,
+    val guardianAddress: String?  = null,
+    val address: String?          = null,
+    val presentAddress: String?   = null,
+    val permanentAddress: String? = null,
+    val city: String?             = null,
+    val district: String?         = null,
+    val state: String?            = null,
+    val pincode: String?          = null,
+    val emergencyContactName: String? = null,
+    val emergencyContactPhone: String? = null,
+    val emergencyContactRelation: String? = null,
+    val previousSchoolName: String? = null,
+    val previousBoard: String?    = null,
+    val previousClassPassed: String? = null,
+    val tcNumber: String?         = null,
+    val tcDate: String?           = null,
+    val previousPercentage: String? = null,
+    val concessionType: String?   = null,
+    val concessionValue: Double?  = null,
+    val concessionReason: String? = null,
+    val documents: List<MemberDocumentDto> = emptyList(),
+    val joiningDate: String?      = null,
     val profilePicUrl: String?    = null,
     val status: String            = "active",
     val feeGroupId: String?       = null,
@@ -425,6 +484,21 @@ data class MemberDetailDto(
     val holdStartDate: String?     = null,
     val holdHistory: List<HoldHistoryDto>? = null,
     val checkoutDetails: CheckoutDetailsDto? = null
+) {
+    val fullName: String get() = "$firstName $lastName".trim().ifBlank { "Student" }
+    val phone: String get() = contact ?: ""
+}
+
+data class MemberDocumentDto(
+    val title: String       = "",
+    val url: String         = "",
+    val docType: String     = "other", // "birth_certificate" | "aadhaar" | "tc" | "marksheet" | "caste_certificate" | "photo" | "other"
+    val uploadedAt: String? = null
+)
+
+data class PresignedUrlResponse(
+    val uploadUrl: String = "",
+    val publicUrl: String = ""
 )
 
 data class HoldHistoryDto(
@@ -460,13 +534,63 @@ data class CreateMemberRequest(
     val middleName: String?       = null,
     val lastName: String,
     val knownId: String?          = null,
+    val admissionNo: String?      = null,
+    val rollNo: String?           = null,
+    val apaarId: String?          = null,
+    val aadhaarNo: String?        = null,
+    val dob: String?              = null,
+    val gender: String?           = null,
+    val placeOfBirth: String?     = null,
+    val nationality: String?      = "Indian",
+    val motherTongue: String?     = null,
+    val religion: String?         = null,
+    val casteCategory: String?    = null,
+    val subCaste: String?         = null,
+    val bloodGroup: String?       = null,
+    val medicalNotes: String?     = null,
+    val identificationMarks: String? = null,
     val contact: String?          = null,
     val altContact: String?       = null,
-    val dob: String?              = null,
-    val joiningDate: String?      = null,
-    val address: String?          = null,
+    val email: String?            = null,
+    val fatherName: String?       = null,
+    val fatherAadhaar: String?    = null,
+    val fatherQualification: String? = null,
     val fatherOccupation: String? = null,
+    val fatherIncome: String?     = null,
+    val fatherPhone: String?      = null,
+    val fatherEmail: String?      = null,
+    val motherName: String?       = null,
+    val motherAadhaar: String?    = null,
+    val motherQualification: String? = null,
     val motherOccupation: String? = null,
+    val motherIncome: String?     = null,
+    val motherPhone: String?      = null,
+    val motherEmail: String?      = null,
+    val guardianName: String?     = null,
+    val guardianRelation: String? = null,
+    val guardianPhone: String?    = null,
+    val guardianAddress: String?  = null,
+    val address: String?          = null,
+    val presentAddress: String?   = null,
+    val permanentAddress: String? = null,
+    val city: String?             = null,
+    val district: String?         = null,
+    val state: String?            = null,
+    val pincode: String?          = null,
+    val emergencyContactName: String? = null,
+    val emergencyContactPhone: String? = null,
+    val emergencyContactRelation: String? = null,
+    val previousSchoolName: String? = null,
+    val previousBoard: String?    = null,
+    val previousClassPassed: String? = null,
+    val tcNumber: String?         = null,
+    val tcDate: String?           = null,
+    val previousPercentage: String? = null,
+    val concessionType: String?   = null,
+    val concessionValue: Double?  = null,
+    val concessionReason: String? = null,
+    val documents: List<MemberDocumentDto> = emptyList(),
+    val joiningDate: String?      = null,
     val feeGroupId: String?       = null,
     val feeStructureId: String?   = null,
     val addonFeeIds: List<String>? = null,
@@ -935,7 +1059,9 @@ data class ExamSubjectDto(
     val name: String = "",
     val date: String = "",
     val startTime: String = "",
-    val endTime: String = ""
+    val endTime: String = "",
+    val maxMarks: Double = 100.0,
+    val passMarks: Double = 35.0
 )
 
 data class ExamDto(
@@ -961,19 +1087,22 @@ data class ExamResultDto(
     @SerializedName("_id") val _id: String = "",
     val memberId: String = "",
     val memberName: String? = null,
+    val knownId: String? = null,
+    val rollNo: String? = null,
     val examId: String = "",
     val examName: String? = null,
     val subjectScores: List<SubjectScoreDto> = emptyList(),
     val totalMarks: Double = 0.0,
     val maxMarks: Double = 0.0,
     val percentage: Double = 0.0,
-    val grade: String = ""
+    val grade: String = "",
+    val remarks: String? = null
 )
 
 data class SubjectScoreDto(
     val subject: String = "",
     val marks: Double = 0.0,
-    val maxMarks: Double = 0.0
+    val maxMarks: Double = 100.0
 )
 
 data class RankSheetEntryDto(
