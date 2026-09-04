@@ -24,11 +24,16 @@ export class SalaryPaymentService extends BaseService<SalaryPayment> {
             const p = paymentMap.get(s._id!.toString());
             return {
                 staffId: s._id!.toString(),
+                employeeId: s.employeeId || null,
                 staffName: s.name,
                 staffRole: s.role,
                 designation: s.designation || null,
                 contactNumber: s.contactNumber,
                 monthlySalary: s.monthlySalary || 0,
+                hra: s.hra || 0,
+                allowances: s.allowances || 0,
+                pfDeduction: s.pfDeduction || 0,
+                taxDeduction: s.taxDeduction || 0,
                 status: p ? 'paid' : 'pending',
                 paymentRecord: p ? {
                     ...p,
@@ -51,12 +56,18 @@ export class SalaryPaymentService extends BaseService<SalaryPayment> {
         }
 
         const baseSalary = Number(data.baseSalary ?? staff.monthlySalary ?? 0);
-        const allowances = Number(data.allowances || 0);
-        const deductions = Number(data.deductions || 0);
-        const netSalary = baseSalary + allowances - deductions;
+        const hra = Number(data.hra ?? staff.hra ?? 0);
+        const allowances = Number(data.allowances ?? staff.allowances ?? 0);
+
+        const pfDeduction = Number(data.pfDeduction ?? staff.pfDeduction ?? 0);
+        const taxDeduction = Number(data.taxDeduction ?? staff.taxDeduction ?? 0);
+        const unpaidLeaveDeduction = Number(data.unpaidLeaveDeduction ?? 0);
+        const totalDeductions = Number(data.deductions != null ? data.deductions : (pfDeduction + taxDeduction + unpaidLeaveDeduction));
+
+        const netSalary = Math.max(0, (baseSalary + hra + allowances) - totalDeductions);
 
         const paymentDate = data.paymentDate || new Date().toISOString().split('T')[0];
-        const paymentMethod = data.paymentMethod || 'bank_transfer';
+        const paymentMethod = data.paymentMethod || 'cash';
         const remarks = data.remarks || `Salary payment for ${staff.name}`;
 
         // 1. Automatically create Expense entry under category "Staff Salaries"
@@ -83,11 +94,17 @@ export class SalaryPaymentService extends BaseService<SalaryPayment> {
             staffId,
             staffName: staff.name,
             staffRole: staff.role,
+            employeeId: staff.employeeId,
+            designation: staff.designation,
             month: Number(data.month),
             year: Number(data.year),
             baseSalary,
+            hra,
             allowances,
-            deductions,
+            pfDeduction,
+            taxDeduction,
+            unpaidLeaveDeduction,
+            deductions: totalDeductions,
             netSalary,
             paymentDate,
             paymentMethod,

@@ -15,7 +15,7 @@ import java.util.Calendar
 class StaffViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = StaffRepository(application.applicationContext)
 
-    // Tab state: 0 = Members, 1 = Payroll
+    // Tab state: 0 = Members/Teachers, 1 = Payroll
     val selectedTab = MutableStateFlow(0)
 
     private val _staffList = MutableStateFlow<List<StaffDto>>(emptyList())
@@ -23,6 +23,12 @@ class StaffViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _staffRoles = MutableStateFlow<List<StaffRoleSettingDto>>(emptyList())
     val staffRoles = _staffRoles.asStateFlow()
+
+    private val _feeGroups = MutableStateFlow<List<FeeGroupDto>>(emptyList())
+    val feeGroups = _feeGroups.asStateFlow()
+
+    private val _subjects = MutableStateFlow<List<SubjectDto>>(emptyList())
+    val subjects = _subjects.asStateFlow()
 
     private val _isLoading = MutableStateFlow(true)
     val isLoading = _isLoading.asStateFlow()
@@ -37,22 +43,43 @@ class StaffViewModel(application: Application) : AndroidViewModel(application) {
 
     val processStaffItem = MutableStateFlow<PayrollStaffItemDto?>(null)
     val processBaseSalary = MutableStateFlow("")
+    val processHra = MutableStateFlow("")
     val processAllowances = MutableStateFlow("")
-    val processDeductions = MutableStateFlow("")
-    val processPaymentMethod = MutableStateFlow("bank_transfer")
+    val processPfDeduction = MutableStateFlow("")
+    val processTaxDeduction = MutableStateFlow("")
+    val processUnpaidLeaveDeduction = MutableStateFlow("")
+    val processPaymentMethod = MutableStateFlow("cash")
     val processRemarks = MutableStateFlow("")
 
     val activePayslipRecord = MutableStateFlow<SalaryPaymentRecordDto?>(null)
 
-    // Form state
+    // ── Form State ────────────────────────────────────────────────────────────
     val editingStaffId = MutableStateFlow<String?>(null)
+    val employeeId = MutableStateFlow("")
     val name = MutableStateFlow("")
     val contactNumber = MutableStateFlow("")
-    val selectedRole = MutableStateFlow("admin")
+    val selectedRole = MutableStateFlow("teacher")
+    val gender = MutableStateFlow("male")
+    val dob = MutableStateFlow("")
     val designation = MutableStateFlow("")
     val qualificationsInput = MutableStateFlow("")
+    val specializationInput = MutableStateFlow("")
+    val experienceYears = MutableStateFlow("")
+    val panNumber = MutableStateFlow("")
+    val aadhaarNumber = MutableStateFlow("")
+
+    // Workload Allocations
+    val assignedClassTeacherGroupId = MutableStateFlow<String?>(null)
+    val assignedSubjects = MutableStateFlow<List<StaffSubjectAllocationDto>>(emptyList())
+
+    // Compensation
     val monthlySalary = MutableStateFlow("")
+    val hra = MutableStateFlow("")
+    val allowances = MutableStateFlow("")
+    val pfDeduction = MutableStateFlow("")
+    val taxDeduction = MutableStateFlow("")
     val joiningDate = MutableStateFlow("")
+    val address = MutableStateFlow("")
 
     val isSubmitting = MutableStateFlow(false)
 
@@ -69,8 +96,12 @@ class StaffViewModel(application: Application) : AndroidViewModel(application) {
             _isLoading.value = true
             val list = repository.getStaffList()
             val settings = repository.getEntitySettings()
+            val groups = repository.getFeeGroups()
+            val subs = repository.getSubjects()
 
             _staffList.value = list
+            _feeGroups.value = groups
+            _subjects.value = subs
             _staffRoles.value = settings?.staffRoles?.ifEmpty { defaultRoles() } ?: defaultRoles()
 
             if (_staffRoles.value.isNotEmpty() && selectedRole.value.isEmpty()) {
@@ -89,40 +120,98 @@ class StaffViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun defaultRoles(): List<StaffRoleSettingDto> = listOf(
+        StaffRoleSettingDto("Teacher", "teacher", enable_login = true),
         StaffRoleSettingDto("Admin", "admin", enable_login = true),
+        StaffRoleSettingDto("Accountant", "accountant", enable_login = true),
         StaffRoleSettingDto("Staff", "staff", enable_login = false)
     )
 
+    fun addSubjectAllocation(groupId: String, groupName: String, subjectName: String) {
+        if (groupId.isBlank() || subjectName.isBlank()) return
+        val current = assignedSubjects.value.toMutableList()
+        current.add(StaffSubjectAllocationDto(feeGroupId = groupId, feeGroupName = groupName, subjectName = subjectName))
+        assignedSubjects.value = current
+    }
+
+    fun removeSubjectAllocation(index: Int) {
+        val current = assignedSubjects.value.toMutableList()
+        if (index in current.indices) {
+            current.removeAt(index)
+            assignedSubjects.value = current
+        }
+    }
+
     fun startEditStaff(staff: StaffDto) {
         editingStaffId.value = staff._id
+        employeeId.value = staff.employeeId ?: ""
         name.value = staff.name
         contactNumber.value = staff.contactNumber
         selectedRole.value = staff.role
+        gender.value = staff.gender ?: "male"
+        dob.value = staff.dob ?: ""
         designation.value = staff.designation ?: ""
         qualificationsInput.value = staff.qualifications.joinToString(", ")
+        specializationInput.value = staff.specializationSubjects.joinToString(", ")
+        experienceYears.value = staff.experienceYears?.toString() ?: ""
+        panNumber.value = staff.panNumber ?: ""
+        aadhaarNumber.value = staff.aadhaarNumber ?: ""
+
+        assignedClassTeacherGroupId.value = staff.assignedClassTeacherGroupId
+        assignedSubjects.value = staff.assignedSubjects
+
         monthlySalary.value = staff.monthlySalary?.let { if (it % 1.0 == 0.0) it.toLong().toString() else it.toString() } ?: ""
+        hra.value = staff.hra?.let { if (it % 1.0 == 0.0) it.toLong().toString() else it.toString() } ?: ""
+        allowances.value = staff.allowances?.let { if (it % 1.0 == 0.0) it.toLong().toString() else it.toString() } ?: ""
+        pfDeduction.value = staff.pfDeduction?.let { if (it % 1.0 == 0.0) it.toLong().toString() else it.toString() } ?: ""
+        taxDeduction.value = staff.taxDeduction?.let { if (it % 1.0 == 0.0) it.toLong().toString() else it.toString() } ?: ""
         joiningDate.value = staff.joiningDate ?: ""
+        address.value = staff.address ?: ""
     }
 
     fun resetForm() {
         editingStaffId.value = null
+        employeeId.value = ""
         name.value = ""
         contactNumber.value = ""
-        selectedRole.value = _staffRoles.value.firstOrNull()?.code ?: "admin"
+        selectedRole.value = "teacher"
+        gender.value = "male"
+        dob.value = ""
         designation.value = ""
         qualificationsInput.value = ""
+        specializationInput.value = ""
+        experienceYears.value = ""
+        panNumber.value = ""
+        aadhaarNumber.value = ""
+        assignedClassTeacherGroupId.value = null
+        assignedSubjects.value = emptyList()
         monthlySalary.value = ""
+        hra.value = ""
+        allowances.value = ""
+        pfDeduction.value = ""
+        taxDeduction.value = ""
         joiningDate.value = ""
+        address.value = ""
     }
 
     fun saveStaff() {
         val n = name.value.trim()
         val c = contactNumber.value.trim()
         val r = selectedRole.value
+        val empId = employeeId.value.trim().ifEmpty { null }
         val des = designation.value.trim().ifEmpty { null }
         val qualList = qualificationsInput.value.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        val specList = specializationInput.value.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        val exp = experienceYears.value.trim().toIntOrNull()
+        val pan = panNumber.value.trim().ifEmpty { null }
+        val aadh = aadhaarNumber.value.trim().ifEmpty { null }
+
         val sal = monthlySalary.value.trim().toDoubleOrNull()
+        val hraVal = hra.value.trim().toDoubleOrNull()
+        val allowVal = allowances.value.trim().toDoubleOrNull()
+        val pfVal = pfDeduction.value.trim().toDoubleOrNull()
+        val taxVal = taxDeduction.value.trim().toDoubleOrNull()
         val jDate = joiningDate.value.trim().ifEmpty { null }
+        val addr = address.value.trim().ifEmpty { null }
 
         if (n.isEmpty() || c.isEmpty() || r.isEmpty()) {
             viewModelScope.launch { snackbarEvent.emit("Please fill in required fields (Name, Phone, Role)") }
@@ -130,13 +219,27 @@ class StaffViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         val req = CreateStaffRequest(
+            employeeId = empId,
             name = n,
             contactNumber = c,
             role = r,
+            gender = gender.value,
+            dob = dob.value.trim().ifEmpty { null },
             designation = des,
             qualifications = qualList,
+            specializationSubjects = specList,
+            experienceYears = exp,
+            panNumber = pan,
+            aadhaarNumber = aadh,
+            assignedClassTeacherGroupId = assignedClassTeacherGroupId.value,
+            assignedSubjects = assignedSubjects.value,
             monthlySalary = sal,
-            joiningDate = jDate
+            hra = hraVal,
+            allowances = allowVal,
+            pfDeduction = pfVal,
+            taxDeduction = taxVal,
+            joiningDate = jDate,
+            address = addr
         )
 
         viewModelScope.launch {
@@ -190,17 +293,24 @@ class StaffViewModel(application: Application) : AndroidViewModel(application) {
     fun startProcessSalary(item: PayrollStaffItemDto) {
         processStaffItem.value = item
         processBaseSalary.value = item.monthlySalary.let { if (it % 1.0 == 0.0) it.toLong().toString() else it.toString() }
-        processAllowances.value = ""
-        processDeductions.value = ""
-        processPaymentMethod.value = "bank_transfer"
-        processRemarks.value = "Monthly salary disbursement"
+        processHra.value = item.hra.let { if (it > 0) (if (it % 1.0 == 0.0) it.toLong().toString() else it.toString()) else "" }
+        processAllowances.value = item.allowances.let { if (it > 0) (if (it % 1.0 == 0.0) it.toLong().toString() else it.toString()) else "" }
+        processPfDeduction.value = item.pfDeduction.let { if (it > 0) (if (it % 1.0 == 0.0) it.toLong().toString() else it.toString()) else "" }
+        processTaxDeduction.value = item.taxDeduction.let { if (it > 0) (if (it % 1.0 == 0.0) it.toLong().toString() else it.toString()) else "" }
+        processUnpaidLeaveDeduction.value = ""
+        processPaymentMethod.value = "cash"
+        processRemarks.value = "Salary disbursement for ${MONTHS[selectedMonth.value - 1]} ${selectedYear.value}"
     }
 
     fun submitProcessSalary() {
         val item = processStaffItem.value ?: return
         val base = processBaseSalary.value.toDoubleOrNull() ?: item.monthlySalary
+        val hraVal = processHra.value.toDoubleOrNull() ?: 0.0
         val allow = processAllowances.value.toDoubleOrNull() ?: 0.0
-        val ded = processDeductions.value.toDoubleOrNull() ?: 0.0
+        val pf = processPfDeduction.value.toDoubleOrNull() ?: 0.0
+        val tax = processTaxDeduction.value.toDoubleOrNull() ?: 0.0
+        val lop = processUnpaidLeaveDeduction.value.toDoubleOrNull() ?: 0.0
+        val totalDed = pf + tax + lop
 
         if (base <= 0) {
             viewModelScope.launch { snackbarEvent.emit("Please specify a valid base salary") }
@@ -212,8 +322,12 @@ class StaffViewModel(application: Application) : AndroidViewModel(application) {
             month = selectedMonth.value,
             year = selectedYear.value,
             baseSalary = base,
+            hra = hraVal,
             allowances = allow,
-            deductions = ded,
+            pfDeduction = pf,
+            taxDeduction = tax,
+            unpaidLeaveDeduction = lop,
+            deductions = totalDed,
             paymentMethod = processPaymentMethod.value,
             remarks = processRemarks.value.trim().ifEmpty { null }
         )
@@ -222,7 +336,7 @@ class StaffViewModel(application: Application) : AndroidViewModel(application) {
             isSubmitting.value = true
             when (val res = repository.processSalary(req)) {
                 is SaveResult.Success -> {
-                    snackbarEvent.emit("✅ Salary processed & expense auto-logged!")
+                    snackbarEvent.emit("✅ Salary processed & logged into School Expenses!")
                     processStaffItem.value = null
                     loadPayroll()
                 }
@@ -232,3 +346,8 @@ class StaffViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 }
+
+val MONTHS = listOf(
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+)

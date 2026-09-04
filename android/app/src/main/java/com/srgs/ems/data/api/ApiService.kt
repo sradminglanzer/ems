@@ -898,16 +898,38 @@ data class FinancialHistoryDto(
 // ═══════════════════════════════════════════════════════════════════════════════
 //  STAFF
 // ═══════════════════════════════════════════════════════════════════════════════
+//  STAFF & TEACHERS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+data class StaffSubjectAllocationDto(
+    val feeGroupId: String = "",
+    val feeGroupName: String? = null,
+    val subjectName: String = ""
+)
 
 data class StaffDto(
     @SerializedName("_id") val _id: String = "",
+    val employeeId: String? = null,
     val name: String = "",
     val contactNumber: String = "",
     val role: String = "staff",
     val email: String? = null,
+    val gender: String? = null,
+    val dob: String? = null,
     val designation: String? = null,
     val qualifications: List<String> = emptyList(),
+    val specializationSubjects: List<String> = emptyList(),
+    val experienceYears: Int? = null,
+    val panNumber: String? = null,
+    val aadhaarNumber: String? = null,
+    val assignedClassTeacherGroupId: String? = null,
+    val assignedClassTeacherGroupName: String? = null,
+    val assignedSubjects: List<StaffSubjectAllocationDto> = emptyList(),
     val monthlySalary: Double? = null,
+    val hra: Double? = null,
+    val allowances: Double? = null,
+    val pfDeduction: Double? = null,
+    val taxDeduction: Double? = null,
     val salaryType: String = "monthly",
     val joiningDate: String? = null,
     val employmentType: String = "full-time",
@@ -918,13 +940,26 @@ data class StaffDto(
 )
 
 data class CreateStaffRequest(
+    val employeeId: String? = null,
     val name: String,
     val contactNumber: String,
     val role: String,
     val email: String? = null,
+    val gender: String? = null,
+    val dob: String? = null,
     val designation: String? = null,
     val qualifications: List<String> = emptyList(),
+    val specializationSubjects: List<String> = emptyList(),
+    val experienceYears: Int? = null,
+    val panNumber: String? = null,
+    val aadhaarNumber: String? = null,
+    val assignedClassTeacherGroupId: String? = null,
+    val assignedSubjects: List<StaffSubjectAllocationDto> = emptyList(),
     val monthlySalary: Double? = null,
+    val hra: Double? = null,
+    val allowances: Double? = null,
+    val pfDeduction: Double? = null,
+    val taxDeduction: Double? = null,
     val salaryType: String? = "monthly",
     val joiningDate: String? = null,
     val employmentType: String? = "full-time",
@@ -960,14 +995,20 @@ data class SalaryPaymentRecordDto(
     val staffId: String = "",
     val staffName: String = "",
     val staffRole: String = "",
+    val employeeId: String? = null,
+    val designation: String? = null,
     val month: Int = 1,
     val year: Int = 2026,
     val baseSalary: Double = 0.0,
+    val hra: Double = 0.0,
     val allowances: Double = 0.0,
+    val pfDeduction: Double = 0.0,
+    val taxDeduction: Double = 0.0,
+    val unpaidLeaveDeduction: Double = 0.0,
     val deductions: Double = 0.0,
     val netSalary: Double = 0.0,
     val paymentDate: String = "",
-    val paymentMethod: String = "bank_transfer",
+    val paymentMethod: String = "cash",
     val status: String = "paid",
     val remarks: String? = null,
     val expenseId: String? = null
@@ -975,11 +1016,16 @@ data class SalaryPaymentRecordDto(
 
 data class PayrollStaffItemDto(
     val staffId: String = "",
+    val employeeId: String? = null,
     val staffName: String = "",
     val staffRole: String = "",
     val designation: String? = null,
     val contactNumber: String = "",
     val monthlySalary: Double = 0.0,
+    val hra: Double = 0.0,
+    val allowances: Double = 0.0,
+    val pfDeduction: Double = 0.0,
+    val taxDeduction: Double = 0.0,
     val status: String = "pending",
     val paymentRecord: SalaryPaymentRecordDto? = null
 )
@@ -999,9 +1045,13 @@ data class ProcessSalaryRequest(
     val month: Int,
     val year: Int,
     val baseSalary: Double,
+    val hra: Double = 0.0,
     val allowances: Double = 0.0,
+    val pfDeduction: Double = 0.0,
+    val taxDeduction: Double = 0.0,
+    val unpaidLeaveDeduction: Double = 0.0,
     val deductions: Double = 0.0,
-    val paymentMethod: String = "bank_transfer",
+    val paymentMethod: String = "cash",
     val paymentDate: String? = null,
     val remarks: String? = null
 )

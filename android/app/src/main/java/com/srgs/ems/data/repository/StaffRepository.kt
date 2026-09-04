@@ -13,6 +13,20 @@ class StaffRepository(context: Context) {
         } catch (_: Exception) { emptyList() }
     }
 
+    suspend fun getFeeGroups(): List<FeeGroupDto> {
+        return try {
+            val res = api.getFeeGroups()
+            if (res.isSuccessful) res.body() ?: emptyList() else emptyList()
+        } catch (_: Exception) { emptyList() }
+    }
+
+    suspend fun getSubjects(): List<SubjectDto> {
+        return try {
+            val res = api.getSubjects()
+            if (res.isSuccessful) res.body() ?: emptyList() else emptyList()
+        } catch (_: Exception) { emptyList() }
+    }
+
     suspend fun getEntitySettings(): EntitySettingsDto? {
         return try {
             val res = api.getEntitySettings()

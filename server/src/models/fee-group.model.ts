@@ -6,16 +6,16 @@ export interface YearlyRoster {
 }
 
 export class FeeGroup {
-    _id?: ObjectId;
+    _id?: ObjectId | undefined;
     entityId: ObjectId;
     name: string;
-    description?: string;
+    description?: string | undefined;
     capacity: number = 1;
-    classTeacherId?: ObjectId; // Links to assigned staff member (Class Teacher)
+    classTeacherId?: ObjectId | undefined; // Links to assigned staff member (Class Teacher)
     yearlyRosters: YearlyRoster[];
     members: ObjectId[] = []; // For non-academic tenants like Gyms
-    createdAt?: Date;
-    updatedAt?: Date;
+    createdAt?: Date | undefined;
+    updatedAt?: Date | undefined;
 
     constructor(data: any) {
         if (data._id) this._id = new ObjectId(data._id);

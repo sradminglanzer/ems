@@ -26,6 +26,15 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+// Request Logger Middleware
+app.use((req, res, next) => {
+    const start = Date.now();
+    res.on('finish', () => {
+        const duration = Date.now() - start;
+        console.log(`📡 [${new Date().toISOString()}] ${req.method} ${req.originalUrl} - Status: ${res.statusCode} (${duration}ms)`);
+    });
+    next();
+});
 
 // Basic health check route
 app.get('/health', (req, res) => {

@@ -4,6 +4,7 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import staffService from '../services/staff.service';
 import userService from '../services/user.service';
 import entitySettingsService from '../services/entity-settings.service';
+import feeGroupService from '../services/fee-group.service';
 import { Staff } from '../models/staff.model';
 import { User } from '../models/user.model';
 import { HTTP_STATUS } from '../utils/constants';
@@ -86,11 +87,20 @@ export const createStaff = async (req: AuthRequest, res: Response, next: NextFun
             }
         }
 
-        const createdDoc = await staffService.getOne({ _id: staffInsertResult.insertedId });
+        // 4. Sync Class Teacher assignment with FeeGroup
+        const insertedId = staffInsertResult.insertedId;
+        if (insertedId && req.body.assignedClassTeacherGroupId && ObjectId.isValid(req.body.assignedClassTeacherGroupId)) {
+            await feeGroupService.update(
+                { _id: new ObjectId(req.body.assignedClassTeacherGroupId), entityId: new ObjectId(entityId) },
+                { $set: { classTeacherId: insertedId } }
+            );
+        }
+
+        const createdDoc = insertedId ? await staffService.getOne({ _id: insertedId }) : null;
 
         res.status(HTTP_STATUS.CREATED).json({
             ...createdDoc,
-            _id: staffInsertResult.insertedId.toString(),
+            _id: insertedId ? insertedId.toString() : '',
             enableLogin: shouldEnableLogin
         });
     } catch (error) {
@@ -134,6 +144,27 @@ export const updateStaff = async (req: AuthRequest, res: Response, next: NextFun
                 { entityId: new ObjectId(entityId), contactNumber: existing.contactNumber },
                 { $set: { ...(req.body.name && { name: req.body.name }), ...(req.body.role && { role: req.body.role }) } }
             );
+        }
+
+        // Sync Class Teacher assignment with FeeGroup
+        if (req.body.assignedClassTeacherGroupId !== undefined) {
+            if (req.body.assignedClassTeacherGroupId && ObjectId.isValid(req.body.assignedClassTeacherGroupId)) {
+                // Clear old assignments for this staff
+                await feeGroupService.update(
+                    { entityId: new ObjectId(entityId), classTeacherId: new ObjectId(staffId) },
+                    { $unset: { classTeacherId: 1 } }
+                );
+                // Set new assignment
+                await feeGroupService.update(
+                    { _id: new ObjectId(req.body.assignedClassTeacherGroupId), entityId: new ObjectId(entityId) },
+                    { $set: { classTeacherId: new ObjectId(staffId) } }
+                );
+            } else if (req.body.assignedClassTeacherGroupId === null || req.body.assignedClassTeacherGroupId === '') {
+                await feeGroupService.update(
+                    { entityId: new ObjectId(entityId), classTeacherId: new ObjectId(staffId) },
+                    { $unset: { classTeacherId: 1 } }
+                );
+            }
         }
 
         const updatedStaff = await staffService.getOne({ _id: new ObjectId(staffId) });
