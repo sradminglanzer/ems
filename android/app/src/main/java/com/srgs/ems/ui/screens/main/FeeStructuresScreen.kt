@@ -66,7 +66,7 @@ fun FeeStructuresScreen(
 ) {
     val session = SessionManager.session
     val labels = session?.labels ?: com.srgs.ems.data.api.EntityLabelsDto()
-    val isGym = session?.isBusinessMode ?: true
+    val isGym = session?.isGym ?: false
     val classLabel = labels.groupSingle
 
     val structures by vm.structures.collectAsState()

@@ -116,6 +116,14 @@ class FeeGroupsViewModel(application: Application) : AndroidViewModel(applicatio
                             val yearId = com.srgs.ems.data.AcademicYearManager.selectedYearId
                             val targetGroupId = target?._id ?: repository.getGroups(yearId).firstOrNull { it.name == n }?._id
                             if (targetGroupId != null) {
+                                val currentGroupIds = targetStruct.feeGroupIds?.toMutableList() ?: mutableListOf()
+                                if (targetStruct.feeGroupId != null && !currentGroupIds.contains(targetStruct.feeGroupId)) {
+                                    currentGroupIds.add(targetStruct.feeGroupId)
+                                }
+                                if (!currentGroupIds.contains(targetGroupId)) {
+                                    currentGroupIds.add(targetGroupId)
+                                }
+
                                 structRepo.updateStructure(
                                     id = targetStruct._id,
                                     name = targetStruct.name,
@@ -123,7 +131,7 @@ class FeeGroupsViewModel(application: Application) : AndroidViewModel(applicatio
                                     frequency = targetStruct.frequency,
                                     academicYearId = targetStruct.academicYearId ?: yearId,
                                     feeGroupId = targetGroupId,
-                                    feeGroupIds = listOf(targetGroupId),
+                                    feeGroupIds = currentGroupIds,
                                     type = targetStruct.type
                                 )
                             }
