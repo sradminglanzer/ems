@@ -40,6 +40,7 @@ export class Member {
     contact?: string;          // Primary Contact / WhatsApp
     altContact?: string;       // Secondary Contact
     email?: string;
+    parentPin?: string;        // 4-Digit Security PIN for Parent Portal Login
 
     // Father Details
     fatherName?: string;
@@ -142,6 +143,7 @@ export class Member {
         this.contact = data.contact || data.contactNumber || data.phone || data.fatherPhone;
         this.altContact = data.altContact || data.alt_contact || data.motherPhone;
         this.email = data.email;
+        this.parentPin = data.parentPin || data.parent_pin;
 
         // Father
         this.fatherName = data.fatherName || data.father_name;

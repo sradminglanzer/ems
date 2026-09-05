@@ -39,6 +39,9 @@ import com.srgs.ems.viewmodel.AuthViewModel
 import com.srgs.ems.viewmodel.LoginUiState
 import kotlinx.coroutines.launch
 
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+
 @Composable
 fun LoginScreen(
     viewModel: AuthViewModel = viewModel(),
@@ -81,7 +84,11 @@ fun LoginScreen(
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = Primary)
             }
             is LoginUiState.EnterNumber -> {
-                EnterNumberContent(isLoading = isLoading, onContinue = { viewModel.initiateLogin(it) })
+                EnterNumberContent(
+                    isLoading = isLoading,
+                    onStaffContinue = { viewModel.initiateLogin(it) },
+                    onParentLogin = { phone, pin -> viewModel.loginAsParent(phone, pin) }
+                )
             }
             is LoginUiState.EnterMpin -> {
                 EnterMpinContent(
@@ -95,7 +102,11 @@ fun LoginScreen(
                 )
             }
             is LoginUiState.EntityPicker -> {
-                EnterNumberContent(isLoading = isLoading, onContinue = {})
+                EnterNumberContent(
+                    isLoading = isLoading,
+                    onStaffContinue = {},
+                    onParentLogin = { _, _ -> }
+                )
                 EntityPickerSheet(
                     entities        = state.entities,
                     onEntitySelected = { entity -> viewModel.initiateLoginForEntity(state.contactNumber, entity) },
@@ -107,44 +118,124 @@ fun LoginScreen(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ENTER NUMBER
+// ENTER NUMBER & LOGIN MODE SWITCHER
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun EnterNumberContent(isLoading: Boolean, onContinue: (String) -> Unit) {
-    var phone   by remember { mutableStateOf("") }
-    val keyboard = LocalSoftwareKeyboardController.current
+private fun EnterNumberContent(
+    isLoading: Boolean,
+    onStaffContinue: (String) -> Unit,
+    onParentLogin: (String, String) -> Unit
+) {
+    var loginMode by remember { mutableStateOf(0) } // 0: Staff / Admin, 1: Parent Portal
+    var phone     by remember { mutableStateOf("") }
+    var pin       by remember { mutableStateOf("") }
+    val keyboard  = LocalSoftwareKeyboardController.current
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 24.dp)
+            .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         // Logo circle
         Box(
             modifier = Modifier
-                .size(100.dp)
+                .size(88.dp)
                 .shadow(8.dp, CircleShape)
                 .background(Surface, CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Filled.Person, null, modifier = Modifier.size(52.dp), tint = Primary)
+            Icon(
+                if (loginMode == 0) Icons.Filled.Person else Icons.Filled.Phone,
+                null,
+                modifier = Modifier.size(46.dp),
+                tint = Primary
+            )
         }
 
-        Spacer(Modifier.height(28.dp))
-        Text("Welcome", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary, letterSpacing = (-0.5).sp)
-        Text("Enter your contact number to begin", fontSize = 15.sp, color = TextSecondary, modifier = Modifier.padding(top = 6.dp))
-        Spacer(Modifier.height(36.dp))
+        Spacer(Modifier.height(20.dp))
+        Text(
+            if (loginMode == 0) "School & Staff Login" else "👨‍👩‍👧 Parent Portal",
+            fontSize = 26.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = TextPrimary,
+            letterSpacing = (-0.5).sp
+        )
+        Text(
+            if (loginMode == 0) "Enter your registered number to proceed"
+            else "Access student attendance, diary, report cards & fees",
+            fontSize = 13.sp,
+            color = TextSecondary,
+            modifier = Modifier.padding(top = 4.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+        Spacer(Modifier.height(24.dp))
+
+        // Toggle Tab Selector
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = Surface,
+            border = BorderStroke(1.dp, Border),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(modifier = Modifier.padding(4.dp)) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (loginMode == 0) Primary else Color.Transparent,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { loginMode = 0 }
+                        .padding(vertical = 8.dp)
+                ) {
+                    Text(
+                        "Staff / Admin",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (loginMode == 0) Color.White else TextSecondary,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (loginMode == 1) Primary else Color.Transparent,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { loginMode = 1 }
+                        .padding(vertical = 8.dp)
+                ) {
+                    Text(
+                        "Parent Login",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (loginMode == 1) Color.White else TextSecondary,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
 
         // Form card
         Card(
             modifier   = Modifier.fillMaxWidth(),
-            shape      = RoundedCornerShape(24.dp),
+            shape      = RoundedCornerShape(20.dp),
             colors     = CardDefaults.cardColors(containerColor = Surface),
             elevation  = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
-            Column(modifier = Modifier.padding(24.dp)) {
-                Text("CONTACT NUMBER", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextSecondary, letterSpacing = 0.8.sp)
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text(
+                    "REGISTERED MOBILE NUMBER",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextSecondary,
+                    letterSpacing = 0.8.sp
+                )
                 Spacer(Modifier.height(8.dp))
 
                 OutlinedTextField(
@@ -154,7 +245,12 @@ private fun EnterNumberContent(isLoading: Boolean, onContinue: (String) -> Unit)
                     placeholder   = { Text("e.g. 9876543210", color = TextMuted) },
                     leadingIcon   = { Icon(Icons.Filled.Phone, null, tint = TextMuted) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                    keyboardActions = KeyboardActions(onDone = { keyboard?.hide(); onContinue(phone) }),
+                    keyboardActions = KeyboardActions(onDone = {
+                        if (loginMode == 0) {
+                            keyboard?.hide()
+                            onStaffContinue(phone)
+                        }
+                    }),
                     singleLine    = true,
                     shape         = RoundedCornerShape(12.dp),
                     colors        = OutlinedTextFieldDefaults.colors(
@@ -165,12 +261,56 @@ private fun EnterNumberContent(isLoading: Boolean, onContinue: (String) -> Unit)
                     )
                 )
 
+                if (loginMode == 1) {
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        "4-DIGIT SECURITY PIN",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextSecondary,
+                        letterSpacing = 0.8.sp
+                    )
+                    Spacer(Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value         = pin,
+                        onValueChange = { if (it.length <= 4) pin = it.filter(Char::isDigit) },
+                        modifier      = Modifier.fillMaxWidth(),
+                        placeholder   = { Text("4-digit PIN (default: last 4 digits)", color = TextMuted) },
+                        leadingIcon   = { Icon(Icons.Filled.Lock, null, tint = TextMuted) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        keyboardActions = KeyboardActions(onDone = {
+                            keyboard?.hide()
+                            onParentLogin(phone, pin)
+                        }),
+                        singleLine    = true,
+                        shape         = RoundedCornerShape(12.dp),
+                        colors        = OutlinedTextFieldDefaults.colors(
+                            unfocusedBorderColor    = Border,
+                            focusedBorderColor      = Primary,
+                            unfocusedContainerColor = Background,
+                            focusedContainerColor   = Background
+                        )
+                    )
+                    Text(
+                        "First time logging in? Default PIN is the last 4 digits of your phone number.",
+                        fontSize = 11.sp,
+                        color = TextMuted,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
+
                 Spacer(Modifier.height(20.dp))
 
                 Button(
-                    onClick  = { keyboard?.hide(); onContinue(phone) },
-                    enabled  = !isLoading,
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    onClick  = {
+                        keyboard?.hide()
+                        if (loginMode == 0) onStaffContinue(phone)
+                        else onParentLogin(phone, pin)
+                    },
+                    enabled  = !isLoading && phone.length == 10 && (loginMode == 0 || pin.length == 4),
+                    modifier = Modifier.fillMaxWidth().height(50.dp),
                     shape    = RoundedCornerShape(12.dp),
                     colors   = ButtonDefaults.buttonColors(
                         containerColor        = Primary,
@@ -178,7 +318,12 @@ private fun EnterNumberContent(isLoading: Boolean, onContinue: (String) -> Unit)
                     )
                 ) {
                     if (isLoading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    else Text("Continue", fontSize = 16.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                    else Text(
+                        if (loginMode == 0) "Continue" else "Login to Parent Portal",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
                 }
             }
         }

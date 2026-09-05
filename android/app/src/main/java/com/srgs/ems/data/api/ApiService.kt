@@ -294,6 +294,16 @@ interface ApiService {
         @Query("contentType") contentType: String? = null,
         @Query("type") type: String? = null
     ): Response<PresignedUrlResponse>
+
+    // ── Parent Portal ─────────────────────────────────────────────────────────
+    @POST("auth/parent-login")
+    suspend fun parentLogin(@Body request: ParentLoginRequest): Response<ParentLoginResponseDto>
+
+    @POST("auth/parent-set-pin")
+    suspend fun parentSetPin(@Body request: ParentSetPinRequest): Response<Unit>
+
+    @GET("parent/student/{memberId}/dashboard")
+    suspend fun getChildDashboard(@Path("memberId") memberId: String): Response<ParentDashboardDto>
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1235,4 +1245,145 @@ data class UpdateTrackingRequest(
 data class StudentTrackingUpdate(
     val memberId: String,
     val status: String // "pending" | "completed" | "not_done"
+)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  PARENT PORTAL DTOs
+// ═══════════════════════════════════════════════════════════════════════════════
+
+data class ParentLoginRequest(
+    val contactNumber: String,
+    val pin: String? = null
+)
+
+data class ParentLoginResponseDto(
+    val token: String? = null,
+    val role: String? = null,
+    val parentPhone: String? = null,
+    val parentName: String? = null,
+    val schoolName: String? = null,
+    val entityId: String? = null,
+    val pinRequired: Boolean = false,
+    val isFirstTime: Boolean = false,
+    val defaultPinHint: String? = null,
+    val message: String? = null,
+    val children: List<ParentChildDto> = emptyList()
+)
+
+data class ParentChildDto(
+    val memberId: String = "",
+    val firstName: String = "",
+    val lastName: String = "",
+    val fullName: String = "",
+    val rollNo: String = "",
+    val admissionNo: String = "",
+    val knownId: String = "",
+    val feeGroupId: String? = null,
+    val groupName: String = "",
+    val profilePicUrl: String? = null,
+    val classTeacherName: String? = null,
+    val classTeacherPhone: String? = null,
+    val entityId: String = "",
+    val schoolName: String = ""
+)
+
+data class ParentSetPinRequest(
+    val contactNumber: String? = null,
+    val newPin: String
+)
+
+data class ParentStudentProfileDto(
+    @SerializedName("_id") val _id: String = "",
+    val name: String = "",
+    val rollNo: String = "",
+    val admissionNo: String = "",
+    val knownId: String = "",
+    val className: String = "",
+    val dob: String? = null,
+    val bloodGroup: String? = null,
+    val fatherName: String? = null,
+    val motherName: String? = null,
+    val classTeacherName: String? = null,
+    val classTeacherPhone: String? = null,
+    val profilePicUrl: String? = null
+)
+
+data class ParentCalendarDayDto(
+    val date: String = "",
+    val status: String = "present" // "present" | "absent" | "late"
+)
+
+data class ParentMonthAttendanceDto(
+    val month: Int = 1,
+    val year: Int = 2026,
+    val presentDays: Int = 0,
+    val absentDays: Int = 0,
+    val totalDays: Int = 0,
+    val percentage: Int = 100,
+    val calendar: List<ParentCalendarDayDto> = emptyList()
+)
+
+data class ParentAttendanceDto(
+    val todayStatus: String = "not_marked", // "present" | "absent" | "late" | "not_marked"
+    val thisMonth: ParentMonthAttendanceDto = ParentMonthAttendanceDto()
+)
+
+data class ParentDiaryItemDto(
+    @SerializedName("_id") val _id: String = "",
+    val subjectName: String = "General",
+    val content: String = "",
+    val assignedDate: String = "",
+    val authorName: String = "Class Teacher"
+)
+
+data class ParentExamResultDto(
+    val examId: String = "",
+    val examName: String = "",
+    val subjectScores: List<SubjectScoreDto> = emptyList(),
+    val totalMarks: Double = 0.0,
+    val maxMarks: Double = 0.0,
+    val percentage: Double = 0.0,
+    val grade: String = "",
+    val remarks: String? = null
+)
+
+data class ParentExamsDto(
+    val upcoming: List<ExamDto> = emptyList(),
+    val results: List<ParentExamResultDto> = emptyList()
+)
+
+data class ParentPaymentReceiptDto(
+    @SerializedName("_id") val _id: String = "",
+    val receiptNo: String = "",
+    val amount: Double = 0.0,
+    val paymentDate: String = "",
+    val paymentMethod: String = "cash",
+    val notes: String? = null
+)
+
+data class ParentFeesDto(
+    val planName: String = "Annual Tuition Fee",
+    val totalPlanAmount: Double = 0.0,
+    val totalPaid: Double = 0.0,
+    val pendingDues: Double = 0.0,
+    val nextPaymentDate: String? = null,
+    val payments: List<ParentPaymentReceiptDto> = emptyList()
+)
+
+data class ParentNoticeDto(
+    val id: String = "",
+    val title: String = "",
+    val category: String = "Academic",
+    val date: String = "",
+    val content: String = ""
+)
+
+data class ParentDashboardDto(
+    val student: ParentStudentProfileDto,
+    val schoolName: String = "",
+    val attendance: ParentAttendanceDto,
+    val diary: List<ParentDiaryItemDto> = emptyList(),
+    val exams: ParentExamsDto = ParentExamsDto(),
+    val fees: ParentFeesDto = ParentFeesDto(),
+    val notices: List<ParentNoticeDto> = emptyList()
 )

@@ -15,6 +15,12 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+import com.srgs.ems.data.api.TokenManager
+import com.srgs.ems.data.models.UserSession
+import com.srgs.ems.data.repository.ParentRepository
+import com.srgs.ems.data.repository.ResponseResult
+import com.srgs.ems.data.repository.SaveResult
+
 // ── UI States ──────────────────────────────────────────────────────────────────
 sealed class LoginUiState {
     object Checking : LoginUiState()
@@ -38,6 +44,7 @@ sealed class AuthEvent {
 class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = AuthRepository(application.applicationContext)
+    private val parentRepository = ParentRepository(application.applicationContext)
 
     private val _uiState     = MutableStateFlow<LoginUiState>(LoginUiState.Checking)
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
@@ -135,6 +142,45 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                 is AuthRepository.AuthResult.Success -> _events.emit(AuthEvent.NavigateToDashboard)
                 is AuthRepository.AuthResult.Failure -> _errorMessage.value = r.message
                 else -> {}
+            }
+            _isLoading.value = false
+        }
+    }
+
+    // ── Parent Portal Login ───────────────────────────────────────────────────
+    fun loginAsParent(phone: String, pin: String) {
+        if (phone.length < 10) {
+            _errorMessage.value = "Please enter a valid 10-digit mobile number"
+            return
+        }
+        if (pin.length < 4) {
+            _errorMessage.value = "Please enter your 4-digit Security PIN"
+            return
+        }
+        viewModelScope.launch {
+            _isLoading.value = true
+            _errorMessage.value = null
+            when (val res = parentRepository.parentLogin(phone, pin)) {
+                is ResponseResult.Success -> {
+                    val data = res.data
+                    if (!data.token.isNullOrBlank()) {
+                        TokenManager.getInstance(getApplication<Application>().applicationContext).saveToken(data.token)
+                    }
+                    val userSession = UserSession(
+                        id = "parent",
+                        name = data.parentName ?: "Parent",
+                        phone = data.parentPhone ?: phone,
+                        role = "parent",
+                        entityId = data.entityId,
+                        entityName = data.schoolName ?: "School"
+                    )
+                    SessionManager.setSession(userSession)
+                    SessionManager.setParentChildren(data.children)
+                    _events.emit(AuthEvent.NavigateToDashboard)
+                }
+                is ResponseResult.Error -> {
+                    _errorMessage.value = res.message
+                }
             }
             _isLoading.value = false
         }

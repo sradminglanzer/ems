@@ -20,5 +20,6 @@ data class UserSession(
     val hasAcademicYears: Boolean get() = labels.hasAcademicYears || isSchool
     val isAdmin: Boolean          get() = role == "admin" || role == "owner"
     val isTeacher: Boolean  get() = role == "teacher"
+    val isParent: Boolean   get() = role == "parent"
     val initials: String    get() = name.split(" ").take(2).mapNotNull { it.firstOrNull()?.uppercaseChar() }.joinToString("")
 }
