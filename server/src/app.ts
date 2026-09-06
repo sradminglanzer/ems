@@ -20,7 +20,6 @@ import reportsRoutes from './routes/reports.route';
 import entitySettingsRoutes from './routes/entity-settings.route';
 import staffRoutes from './routes/staff.route';
 import salaryPaymentRoutes from './routes/salary-payment.route';
-import parentRoutes from './routes/parent.route';
 import { errorHandler } from './middleware/error.middleware';
 
 const app = express();
@@ -44,7 +43,6 @@ app.get('/health', (req, res) => {
 
 // API Routes
 app.use('/api/auth', authRoutes);
-app.use('/api/parent', parentRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/fee-groups', feeGroupRoutes);
 app.use('/api/exams', examRoutes);

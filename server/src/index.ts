@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 5001;
 
 const startServer = async () => {
     await connectDB();
-    initExpiryAlertJob();
+    // initExpiryAlertJob(); // Disabled 8:00 AM subscription expiry cron job
     initRecurringExpenseJob();
 
     app.listen(PORT, () => {

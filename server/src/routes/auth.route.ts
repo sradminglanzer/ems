@@ -1,17 +1,14 @@
 import { Router } from 'express';
-import { loginOrSetup } from '../controllers/auth.controller';
-import { parentLogin, parentSetPin } from '../controllers/parent.controller';
+import { loginOrSetup, setParentPin } from '../controllers/auth.controller';
 import { validateRequest } from '../middleware/validate.middleware';
 import { loginSchema } from '../validations/user.validation';
-import { authenticateToken } from '../middleware/auth.middleware';
 
 const router = Router();
 
-// Route for Staff / Admin Login and MPIN setup
+// Unified Route for Login & MPIN / PIN setup (Auto-discovers Staff vs Parent)
 router.post('/login', validateRequest(loginSchema), loginOrSetup);
 
-// Routes for Parent Login and PIN management
-router.post('/parent-login', parentLogin);
-router.post('/parent-set-pin', parentSetPin);
+// Route for Parent PIN updates
+router.post('/set-pin', setParentPin);
 
 export default router;

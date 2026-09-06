@@ -14,6 +14,11 @@ import com.srgs.ems.ui.screens.auth.SetupMpinScreen
 import com.srgs.ems.ui.screens.main.MainAppScreen
 import com.srgs.ems.ui.screens.parent.ParentMainScreen
 
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import com.srgs.ems.data.repository.AuthRepository
+import kotlinx.coroutines.launch
+
 sealed class Screen(val route: String) {
     object Login      : Screen("login")
     object SetupMpin  : Screen("setup_mpin/{contactNumber}/{entityId}") {
@@ -29,6 +34,9 @@ fun AppNavigation(
     navController: NavHostController = rememberNavController(),
     startDestination: String = Screen.Login.route
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
     NavHost(navController = navController, startDestination = startDestination, modifier = modifier) {
 
         composable(Screen.Login.route) {
@@ -67,9 +75,11 @@ fun AppNavigation(
         composable(Screen.MainApp.route) {
             MainAppScreen(
                 onSignOut = {
-                    SessionManager.clearSession()
-                    navController.navigate(Screen.Login.route) {
-                        popUpTo(0) { inclusive = true }
+                    coroutineScope.launch {
+                        AuthRepository(context).clearSession()
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
                     }
                 }
             )
@@ -79,9 +89,11 @@ fun AppNavigation(
             ParentMainScreen(
                 initialChildren = SessionManager.parentChildren,
                 onSignOut = {
-                    SessionManager.clearSession()
-                    navController.navigate(Screen.Login.route) {
-                        popUpTo(0) { inclusive = true }
+                    coroutineScope.launch {
+                        AuthRepository(context).clearSession()
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
                     }
                 }
             )

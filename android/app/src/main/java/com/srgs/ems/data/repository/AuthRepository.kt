@@ -7,6 +7,7 @@ import com.srgs.ems.data.SessionManager
 import com.srgs.ems.data.api.ApiClient
 import com.srgs.ems.data.api.EntityDto
 import com.srgs.ems.data.api.LoginApiRequest
+import com.srgs.ems.data.api.ParentChildDto
 import com.srgs.ems.data.api.TokenManager
 import com.srgs.ems.data.api.UserDto
 import com.srgs.ems.data.api.toUserSession
@@ -33,7 +34,12 @@ class AuthRepository(context: Context) {
             val contactNumber: String,
             val entityId: String?,
             val brandingName: String? = null,
-            val brandingLogo: String? = null
+            val brandingLogo: String? = null,
+            val isParent: Boolean = false,
+            val isFirstTime: Boolean = false,
+            val defaultPinHint: String? = null,
+            val hasParentProfile: Boolean = false,
+            val children: List<ParentChildDto> = emptyList()
         ) : AuthResult()
 
         data class Success(val user: UserDto) : AuthResult()
@@ -54,7 +60,7 @@ class AuthRepository(context: Context) {
         SessionManager.clearSession()
     }
 
-    // ── Phase 1: Send phone number → determine next step ──────────────────────
+    // ── Phase 1: Send phone number → determine next step (Auto-detects Staff vs Parent)
     suspend fun initiateLogin(contactNumber: String, entityId: String?): AuthResult {
         return try {
             val response = api.login(LoginApiRequest(contactNumber = contactNumber, entityId = entityId))
@@ -73,7 +79,17 @@ class AuthRepository(context: Context) {
                         val id = body.entity?.id ?: entityId
                         tokenManager.saveContact(contactNumber)
                         if (!id.isNullOrEmpty()) tokenManager.saveEntityId(id)
-                        AuthResult.RequiresMpin(contactNumber, id, body.entity?.name, body.entity?.logoUrl)
+                        AuthResult.RequiresMpin(
+                            contactNumber = contactNumber,
+                            entityId = id,
+                            brandingName = body.entity?.name,
+                            brandingLogo = body.entity?.logoUrl,
+                            isParent = body.isParent,
+                            isFirstTime = body.isFirstTime,
+                            defaultPinHint = body.defaultPinHint,
+                            hasParentProfile = body.hasParentProfile,
+                            children = body.children
+                        )
                     }
                 }
             } else {
@@ -84,7 +100,7 @@ class AuthRepository(context: Context) {
         }
     }
 
-    // ── Phase 2: Verify MPIN ───────────────────────────────────────────────────
+    // ── Phase 2: Verify MPIN / Security PIN ─────────────────────────────────────
     suspend fun verifyMpin(contactNumber: String, mpin: String, entityId: String?): AuthResult {
         return try {
             val response = api.login(LoginApiRequest(contactNumber, mpin = mpin, entityId = entityId))
@@ -94,9 +110,12 @@ class AuthRepository(context: Context) {
                     tokenManager.saveToken(body.token)
                     tokenManager.saveUser(body.user)
                     SessionManager.setSession(body.user.toUserSession())
+                    if (!body.children.isNullOrEmpty()) {
+                        SessionManager.setParentChildren(body.children)
+                    }
                     AuthResult.Success(body.user)
-                } else AuthResult.Failure("Invalid MPIN. Please try again.")
-            } else AuthResult.Failure("Invalid MPIN. Please try again.")
+                } else AuthResult.Failure("Authentication failed. Please check your PIN.")
+            } else AuthResult.Failure(parseError(response.errorBody()?.string()))
         } catch (e: Exception) {
             AuthResult.Failure(e.message ?: "Connection error.")
         }
@@ -114,6 +133,9 @@ class AuthRepository(context: Context) {
                     if (entityId.isNotEmpty()) tokenManager.saveEntityId(entityId)
                     tokenManager.saveUser(body.user)
                     SessionManager.setSession(body.user.toUserSession())
+                    if (!body.children.isNullOrEmpty()) {
+                        SessionManager.setParentChildren(body.children)
+                    }
                     AuthResult.Success(body.user)
                 } else AuthResult.Failure("Setup failed. Unexpected response.")
             } else AuthResult.Failure(parseError(response.errorBody()?.string()))
@@ -124,10 +146,12 @@ class AuthRepository(context: Context) {
 
     // ── Error parser ──────────────────────────────────────────────────────────
     private fun parseError(errorBody: String?): String {
-        if (errorBody.isNullOrEmpty()) return "Something went wrong."
+        if (errorBody.isNullOrEmpty()) return "Invalid credentials or user not registered."
         return try {
             Gson().fromJson(errorBody, JsonObject::class.java)?.get("message")?.asString
-                ?: "Something went wrong."
-        } catch (_: Exception) { "Something went wrong." }
+                ?: "Invalid credentials or user not registered."
+        } catch (_: Exception) {
+            "Invalid credentials or user not registered."
+        }
     }
 }

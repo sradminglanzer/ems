@@ -12,6 +12,11 @@ import feeGroupService from '../services/fee-group.service';
 import feeStructureService from '../services/fee-structure.service';
 import feePaymentService from '../services/fee-payment.service';
 import userService from '../services/user.service';
+import staffService from '../services/staff.service';
+import attendanceService from '../services/attendance.service';
+import diaryService from '../services/diary.service';
+import examService from '../services/exam.service';
+import examResultService from '../services/exam-result.service';
 import { getDB } from '../config/db';
 
 export const getMembers = async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -21,12 +26,14 @@ export const getMembers = async (req: AuthRequest, res: Response, next: NextFunc
         let members = await memberService.getByEntity(entityId);
         console.log('members', members);
         if (req.user!.role === 'parent') {
-            const parentUser = await userService.getOne({ _id: new ObjectId(req.user!.userId) });
-            if (parentUser && parentUser.contactNumber) {
-                members = members.filter(m => m.contact === parentUser.contactNumber || m.altContact === parentUser.contactNumber);
-            } else {
-                members = [];
-            }
+            const parentPhone = req.user!.userId.replace('parent_', '');
+            members = members.filter(m =>
+                m.contact === parentPhone ||
+                m.fatherPhone === parentPhone ||
+                m.motherPhone === parentPhone ||
+                m.altContact === parentPhone ||
+                m.emergencyContactPhone === parentPhone
+            );
         }
 
         const [feeGroups, feeStructures, feePayments] = await Promise.all([
@@ -267,28 +274,6 @@ export const createMember = async (req: AuthRequest, res: Response, next: NextFu
             } catch (e: any) {
                 console.error('Error auto-enrolling into fee group during member creation:', e);
             }
-        }
-
-        // Ensure a parent user exists for this contact number
-        try {
-            if (member.contact) {
-                const existingParent = await userService.getOne({
-                    entityId: new ObjectId(req.user!.entityId),
-                    contactNumber: member.contact
-                });
-                if (!existingParent) {
-                    const newUser = new User({
-                        entityId: new ObjectId(req.user!.entityId),
-                        name: `Parent of ${member.firstName}`,
-                        contactNumber: member.contact,
-                        role: 'parent',
-                        mpin: '' // Require setup
-                    });
-                    await userService.insert(newUser);
-                }
-            }
-        } catch (e: any) {
-            console.error('Error auto-creating parent user:', e);
         }
 
         let generatedReceiptNo;
@@ -550,6 +535,213 @@ export const checkoutMember = async (req: AuthRequest, res: Response, next: Next
         );
 
         res.status(HTTP_STATUS.OK).json({ success: true, message: 'Member checked out successfully', checkoutDetails });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getStudentDashboard = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const memberId = req.params.id as string;
+        if (!memberId || memberId.length !== 24) {
+            throw new AppError('Valid Member ID is required', HTTP_STATUS.BAD_REQUEST);
+        }
+
+        const student = await memberService.getOne({ _id: new ObjectId(memberId) });
+        if (!student) {
+            throw new AppError('Student record not found', HTTP_STATUS.NOT_FOUND);
+        }
+
+        const entityId = student.entityId.toString();
+        const now = new Date();
+        const todayDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
+        const currentMonth = now.getMonth() + 1;
+        const currentYear = now.getFullYear();
+
+        const db = getDB();
+
+        // Run parallel data fetches
+        const [
+            entity,
+            group,
+            todayAttendance,
+            monthlyAttendanceList,
+            todayDiary,
+            recentExams,
+            allResults,
+            feePayments,
+            feeStructures
+        ] = await Promise.all([
+            db.collection('entities').findOne({ _id: new ObjectId(entityId) }),
+            student.feeGroupId ? feeGroupService.getOne({ _id: new ObjectId(student.feeGroupId) }) : null,
+            attendanceService.getOne({
+                entityId: new ObjectId(entityId),
+                date: todayDate,
+                'records.memberId': new ObjectId(memberId)
+            }),
+            attendanceService.get({
+                entityId: new ObjectId(entityId),
+                'records.memberId': new ObjectId(memberId)
+            }),
+            diaryService.get({
+                entityId: new ObjectId(entityId),
+                ...(student.feeGroupId && { classId: new ObjectId(student.feeGroupId) })
+            }),
+            examService.getByEntity(entityId, student.academicYearId?.toString()),
+            examResultService.getByMember(memberId),
+            feePaymentService.getByMember(memberId, entityId, student.academicYearId?.toString()),
+            feeStructureService.getByEntity(entityId, student.academicYearId?.toString())
+        ]);
+
+        // Class teacher lookup
+        let classTeacherName: string | null = null;
+        let classTeacherPhone: string | null = null;
+        if (group?.classTeacherId) {
+            const ct = await staffService.getOne({ _id: new ObjectId(group.classTeacherId) });
+            classTeacherName = ct?.name || null;
+            classTeacherPhone = ct?.contactNumber || null;
+        }
+
+        // Today's attendance status
+        let todayStatus = 'not_marked';
+        if (todayAttendance) {
+            const rec = (todayAttendance as any).records?.find((r: any) => r.memberId.toString() === memberId);
+            if (rec) todayStatus = rec.status;
+        }
+
+        // Monthly attendance calculation
+        const thisMonthRecords = monthlyAttendanceList.filter((a: any) => {
+            const ad = new Date(a.date);
+            return ad.getMonth() + 1 === currentMonth && ad.getFullYear() === currentYear;
+        });
+
+        let presentDays = 0;
+        let absentDays = 0;
+        const calendar: Array<{ date: string; status: string }> = [];
+
+        thisMonthRecords.forEach((a: any) => {
+            const rec = a.records?.find((r: any) => r.memberId.toString() === memberId);
+            const status = rec?.status || 'not_marked';
+            const dateStr = new Date(a.date).toISOString().split('T')[0]!;
+            calendar.push({ date: dateStr, status });
+            if (status === 'present') presentDays++;
+            else if (status === 'absent') absentDays++;
+        });
+
+        const totalMarkedDays = presentDays + absentDays;
+        const attendancePercentage = totalMarkedDays > 0 ? Math.round((presentDays / totalMarkedDays) * 100) : 100;
+
+        // Diary items formatting
+        const diaryItems = (todayDiary || []).map((d: any) => ({
+            _id: d._id?.toString() || '',
+            subjectName: d.subjectName || 'General',
+            content: d.description || d.title || '',
+            assignedDate: d.date ? new Date(d.date).toISOString().split('T')[0] : '',
+            authorName: 'Class Teacher'
+        }));
+
+        // Exam results formatting
+        const results = (allResults || []).map((r: any) => {
+            const ex = (recentExams || []).find((e: any) => e._id?.toString() === r.examId?.toString());
+            return {
+                examId: r.examId?.toString() || '',
+                examName: ex?.name || 'Term Exam',
+                subjectScores: (r.subjectScores || []).map((s: any) => ({
+                    subject: s.subject || 'Subject',
+                    marks: Number(s.marks) || 0,
+                    maxMarks: Number(s.maxMarks) || 100
+                })),
+                totalMarks: Number(r.totalMarks) || 0,
+                maxMarks: Number(r.maxMarks) || 100,
+                percentage: Number(r.percentage) || 0,
+                grade: r.grade || 'A',
+                remarks: r.remarks || null
+            };
+        });
+
+        const upcomingExams = (recentExams || []).slice(0, 5).map((e: any) => ({
+            _id: e._id?.toString() || '',
+            name: e.name || '',
+            startDate: e.startDate || '',
+            endDate: e.endDate || '',
+            feeGroupId: e.feeGroupId?.toString() || null,
+            feeGroupName: group?.name || '',
+            subjects: e.subjects || []
+        }));
+
+        // Fee calculations
+        const totalPlanAmount = (feeStructures || []).reduce((sum: number, s: any) => sum + (Number(s.amount) || 0), 0);
+        const totalPaid = (feePayments || []).reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+        const pendingDues = Math.max(0, totalPlanAmount - totalPaid);
+
+        const payments = (feePayments || []).map((p: any) => ({
+            _id: p._id?.toString() || '',
+            receiptNo: p.receiptNo || 'REC-' + (p._id?.toString() || '').slice(-4).toUpperCase(),
+            amount: Number(p.amount) || 0,
+            paymentDate: p.paymentDate ? new Date(p.paymentDate).toISOString().split('T')[0] : '',
+            paymentMethod: p.paymentMethod || 'cash',
+            notes: p.notes || null
+        }));
+
+        return res.status(HTTP_STATUS.OK).json({
+            student: {
+                _id: student._id?.toString() || '',
+                name: `${student.firstName || ''} ${student.lastName || ''}`.trim() || 'Student',
+                rollNo: student.rollNo || '',
+                admissionNo: student.admissionNo || '',
+                knownId: student.knownId || '',
+                className: group?.name || '',
+                dob: student.dob ? new Date(student.dob).toISOString().split('T')[0] : null,
+                bloodGroup: student.bloodGroup || null,
+                fatherName: student.fatherName || null,
+                motherName: student.motherName || null,
+                classTeacherName,
+                classTeacherPhone,
+                profilePicUrl: student.profilePicUrl || null
+            },
+            schoolName: entity?.name || 'School',
+            attendance: {
+                todayStatus,
+                thisMonth: {
+                    month: currentMonth,
+                    year: currentYear,
+                    presentDays,
+                    absentDays,
+                    totalDays: calendar.length,
+                    percentage: attendancePercentage,
+                    calendar
+                }
+            },
+            diary: diaryItems,
+            exams: {
+                upcoming: upcomingExams,
+                results
+            },
+            fees: {
+                planName: group?.name ? `${group.name} Annual Fee` : 'Annual Fee Plan',
+                totalPlanAmount,
+                totalPaid,
+                pendingDues,
+                nextPaymentDate: null,
+                payments
+            },
+            notices: [
+                {
+                    id: '1',
+                    title: 'Upcoming Parent-Teacher Meeting',
+                    category: 'Academic',
+                    date: 'This Saturday',
+                    content: 'Dear Parents, PTM will be conducted this Saturday from 9:30 AM to 1:00 PM.'
+                },
+                {
+                    id: '2',
+                    title: 'Annual Sports Day Registrations Open',
+                    category: 'Events',
+                    date: 'Active',
+                    content: 'Students interested in track and field events are requested to register with the sports coordinator.'
+                }
+            ]
+        });
     } catch (error) {
         next(error);
     }

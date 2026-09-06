@@ -12,6 +12,9 @@ interface ApiService {
     @POST("auth/login")
     suspend fun login(@Body request: LoginApiRequest): Response<LoginApiResponse>
 
+    @POST("auth/set-pin")
+    suspend fun setParentPin(@Body request: ParentSetPinRequest): Response<Unit>
+
     // ── Dashboard ─────────────────────────────────────────────────────────────
     @GET("dashboard/stats")
     suspend fun getDashboardStats(
@@ -26,6 +29,9 @@ interface ApiService {
 
     @GET("members/{id}")
     suspend fun getMemberDetail(@Path("id") id: String): Response<MemberDetailDto>
+
+    @GET("members/{id}/dashboard")
+    suspend fun getStudentDashboard(@Path("id") id: String): Response<ParentDashboardDto>
 
     @POST("members")
     suspend fun createMember(@Body request: CreateMemberRequest): Response<CreateMemberResponse>
@@ -324,7 +330,12 @@ data class LoginApiResponse(
     val requiresEntitySelection: Boolean = false,
     val entities: List<EntityDto>? = null,
     val entity: EntityBrandingDto? = null,
-    val message: String? = null
+    val message: String? = null,
+    val isParent: Boolean = false,
+    val isFirstTime: Boolean = false,
+    val defaultPinHint: String? = null,
+    val hasParentProfile: Boolean = false,
+    val children: List<ParentChildDto> = emptyList()
 )
 
 data class EntityLabelsDto(
@@ -342,9 +353,9 @@ data class EntityLabelsDto(
 )
 
 data class UserDto(
-    @SerializedName("_id") val _id: String = "",
+    @SerializedName("_id", alternate = ["id"]) val _id: String = "",
     val name: String          = "",
-    val phone: String         = "",
+    @SerializedName("phone", alternate = ["contactNumber", "contact"]) val phone: String = "",
     val role: String          = "",
     val entityId: String?     = null,
     val entityType: String?   = null,
@@ -1253,7 +1264,8 @@ data class StudentTrackingUpdate(
 
 data class ParentLoginRequest(
     val contactNumber: String,
-    val pin: String? = null
+    val pin: String? = null,
+    val entityId: String? = null
 )
 
 data class ParentLoginResponseDto(

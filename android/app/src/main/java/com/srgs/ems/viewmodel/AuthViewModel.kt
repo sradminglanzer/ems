@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.srgs.ems.BuildConfig
 import com.srgs.ems.data.SessionManager
 import com.srgs.ems.data.api.EntityDto
+import com.srgs.ems.data.api.TokenManager
+import com.srgs.ems.data.models.UserSession
 import com.srgs.ems.data.repository.AuthRepository
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,12 +17,6 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-import com.srgs.ems.data.api.TokenManager
-import com.srgs.ems.data.models.UserSession
-import com.srgs.ems.data.repository.ParentRepository
-import com.srgs.ems.data.repository.ResponseResult
-import com.srgs.ems.data.repository.SaveResult
-
 // ── UI States ──────────────────────────────────────────────────────────────────
 sealed class LoginUiState {
     object Checking : LoginUiState()
@@ -29,7 +25,11 @@ sealed class LoginUiState {
         val contactNumber: String,
         val entityId: String? = null,
         val brandingName: String? = null,
-        val brandingLogo: String? = null
+        val brandingLogo: String? = null,
+        val isParent: Boolean = false,
+        val isFirstTime: Boolean = false,
+        val defaultPinHint: String? = null,
+        val hasParentProfile: Boolean = false
     ) : LoginUiState()
     data class EntityPicker(val entities: List<EntityDto>, val contactNumber: String) : LoginUiState()
 }
@@ -44,7 +44,6 @@ sealed class AuthEvent {
 class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = AuthRepository(application.applicationContext)
-    private val parentRepository = ParentRepository(application.applicationContext)
 
     private val _uiState     = MutableStateFlow<LoginUiState>(LoginUiState.Checking)
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
@@ -67,11 +66,14 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     private fun checkSavedSession() {
         viewModelScope.launch {
             if (repository.hasToken()) {
-                // Restore user session into in-memory SessionManager
                 val savedUser = repository.getSavedUser()
-                if (savedUser != null) SessionManager.setSession(savedUser)
-                _events.emit(AuthEvent.NavigateToDashboard)
-                return@launch
+                if (savedUser != null) {
+                    SessionManager.setSession(savedUser)
+                    _events.emit(AuthEvent.NavigateToDashboard)
+                    return@launch
+                } else {
+                    repository.clearSession()
+                }
             }
             val savedContact = repository.getSavedContact()
             if (!savedContact.isNullOrEmpty()) {
@@ -85,11 +87,15 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ── Step 1: Submit phone number ───────────────────────────────────────────
+    // ── Step 1: Submit phone number (Auto-discovers Staff vs Parent) ───────────
     fun initiateLogin(contactNumber: String) {
-        if (contactNumber.length < 10) { _errorMessage.value = "Please enter a valid 10-digit contact number"; return }
+        if (contactNumber.length < 10) {
+            _errorMessage.value = "Please enter a valid 10-digit contact number"
+            return
+        }
         viewModelScope.launch {
-            _isLoading.value = true; _errorMessage.value = null
+            _isLoading.value = true
+            _errorMessage.value = null
             val entityId = BuildConfig.ENTITY_ID.ifEmpty { null }
             when (val r = repository.initiateLogin(contactNumber, entityId)) {
                 is AuthRepository.AuthResult.RequiresEntitySelection ->
@@ -97,7 +103,16 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                 is AuthRepository.AuthResult.RequiresSetup ->
                     _events.emit(AuthEvent.NavigateToSetupMpin(r.contactNumber, r.entityId))
                 is AuthRepository.AuthResult.RequiresMpin ->
-                    _uiState.value = LoginUiState.EnterMpin(r.contactNumber, r.entityId, r.brandingName, r.brandingLogo)
+                    _uiState.value = LoginUiState.EnterMpin(
+                        contactNumber = r.contactNumber,
+                        entityId = r.entityId,
+                        brandingName = r.brandingName,
+                        brandingLogo = r.brandingLogo,
+                        isParent = r.isParent,
+                        isFirstTime = r.isFirstTime,
+                        defaultPinHint = r.defaultPinHint,
+                        hasParentProfile = r.hasParentProfile
+                    )
                 is AuthRepository.AuthResult.Failure -> _errorMessage.value = r.message
                 else -> {}
             }
@@ -108,12 +123,22 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     // ── Step 1b: Select entity (VitaDesk shared mode) ─────────────────────────
     fun initiateLoginForEntity(contactNumber: String, entity: EntityDto) {
         viewModelScope.launch {
-            _isLoading.value = true; _errorMessage.value = null
+            _isLoading.value = true
+            _errorMessage.value = null
             when (val r = repository.initiateLogin(contactNumber, entity.id)) {
                 is AuthRepository.AuthResult.RequiresSetup ->
                     _events.emit(AuthEvent.NavigateToSetupMpin(r.contactNumber, r.entityId))
                 is AuthRepository.AuthResult.RequiresMpin ->
-                    _uiState.value = LoginUiState.EnterMpin(contactNumber, entity.id, entity.name, entity.logoUrl)
+                    _uiState.value = LoginUiState.EnterMpin(
+                        contactNumber = contactNumber,
+                        entityId = entity.id,
+                        brandingName = entity.name,
+                        brandingLogo = entity.logoUrl,
+                        isParent = r.isParent,
+                        isFirstTime = r.isFirstTime,
+                        defaultPinHint = r.defaultPinHint,
+                        hasParentProfile = r.hasParentProfile
+                    )
                 is AuthRepository.AuthResult.Failure -> _errorMessage.value = r.message
                 else -> {}
             }
@@ -121,7 +146,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ── Step 2: Verify MPIN ───────────────────────────────────────────────────
+    // ── Step 2: Verify MPIN / Security PIN ────────────────────────────────────
     fun verifyMpin(contactNumber: String, mpin: String, entityId: String?) {
         viewModelScope.launch {
             _isLoading.value = true
@@ -137,50 +162,12 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     // ── Setup MPIN (first-time) ───────────────────────────────────────────────
     fun setupMpin(contactNumber: String, mpin: String, entityId: String) {
         viewModelScope.launch {
-            _isLoading.value = true; _errorMessage.value = null
+            _isLoading.value = true
+            _errorMessage.value = null
             when (val r = repository.setupMpin(contactNumber, mpin, entityId)) {
                 is AuthRepository.AuthResult.Success -> _events.emit(AuthEvent.NavigateToDashboard)
                 is AuthRepository.AuthResult.Failure -> _errorMessage.value = r.message
                 else -> {}
-            }
-            _isLoading.value = false
-        }
-    }
-
-    // ── Parent Portal Login ───────────────────────────────────────────────────
-    fun loginAsParent(phone: String, pin: String) {
-        if (phone.length < 10) {
-            _errorMessage.value = "Please enter a valid 10-digit mobile number"
-            return
-        }
-        if (pin.length < 4) {
-            _errorMessage.value = "Please enter your 4-digit Security PIN"
-            return
-        }
-        viewModelScope.launch {
-            _isLoading.value = true
-            _errorMessage.value = null
-            when (val res = parentRepository.parentLogin(phone, pin)) {
-                is ResponseResult.Success -> {
-                    val data = res.data
-                    if (!data.token.isNullOrBlank()) {
-                        TokenManager.getInstance(getApplication<Application>().applicationContext).saveToken(data.token)
-                    }
-                    val userSession = UserSession(
-                        id = "parent",
-                        name = data.parentName ?: "Parent",
-                        phone = data.parentPhone ?: phone,
-                        role = "parent",
-                        entityId = data.entityId,
-                        entityName = data.schoolName ?: "School"
-                    )
-                    SessionManager.setSession(userSession)
-                    SessionManager.setParentChildren(data.children)
-                    _events.emit(AuthEvent.NavigateToDashboard)
-                }
-                is ResponseResult.Error -> {
-                    _errorMessage.value = res.message
-                }
             }
             _isLoading.value = false
         }
