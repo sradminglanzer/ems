@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import diaryService from '../services/diary.service';
 import feeGroupService from '../services/fee-group.service';
+import memberService from '../services/member.service';
 import { AppError } from '../utils/AppError';
 import { ObjectId } from 'mongodb';
 
@@ -51,18 +52,31 @@ export const createDiaryEntry = async (req: Request, res: Response) => {
         });
 
         if (feeGroup) {
-            let memberIds: string[] = [];
-            if (academicYearId) {
-                const roster = feeGroup.yearlyRosters?.find((r: any) => r.academicYearId.toString() === academicYearId);
+            let memberIdObjects: ObjectId[] = [];
+            if (academicYearId && feeGroup.yearlyRosters) {
+                const roster = (feeGroup.yearlyRosters as any[]).find((r: any) => r.academicYearId && r.academicYearId.toString() === academicYearId);
                 if (roster && roster.members) {
-                    memberIds = roster.members.map((id: any) => id.toString());
+                    memberIdObjects = (roster.members as any[]).map((mId: any) => new ObjectId(mId.toString()));
                 }
-            } else {
-                 memberIds = feeGroup.members?.map((id: any) => id.toString()) || [];
+            } else if (!academicYearId && feeGroup.members) {
+                memberIdObjects = (feeGroup.members as any[]).map((mId: any) => new ObjectId(mId.toString()));
             }
 
-            studentTracking = memberIds.map(id => ({
-                memberId: new ObjectId(id),
+            const memberConditions: any[] = [
+                { feeGroupId: new ObjectId(classId as string) }
+            ];
+            if (memberIdObjects.length > 0) {
+                memberConditions.push({ _id: { $in: memberIdObjects } });
+            }
+
+            const classMembers = await memberService.get({
+                entityId: new ObjectId(entityId),
+                status: { $ne: 'checked_out' },
+                $or: memberConditions
+            });
+
+            studentTracking = classMembers.map((m: any) => ({
+                memberId: m._id!,
                 status: 'pending'
             }));
         }
@@ -147,6 +161,62 @@ export const updateTracking = async (req: Request, res: Response) => {
     }
 };
 
+export const updateDiaryEntry = async (req: Request, res: Response) => {
+    try {
+        const id = req.params.id as string;
+        const { entityId } = (req as any).user;
+        const { title, description, type, subjectId, dueDate, attachments } = req.body;
+
+        const diary = await diaryService.getOne({ _id: new ObjectId(id), entityId: new ObjectId(entityId) });
+        if (!diary) return res.status(404).json(new AppError('Diary entry not found', 404));
+
+        const updateData: any = {
+            updatedAt: new Date()
+        };
+        if (title !== undefined) updateData.title = title;
+        if (description !== undefined) updateData.description = description;
+        if (type !== undefined) updateData.type = type;
+        if (subjectId !== undefined) updateData.subjectId = subjectId ? new ObjectId(subjectId) : null;
+        if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate) : null;
+        if (attachments !== undefined) updateData.attachments = attachments;
+
+        await diaryService.update(
+            { _id: new ObjectId(id) },
+            { $set: updateData }
+        );
+
+        const docs = await diaryService.getDiariesPopulated({ _id: new ObjectId(id) });
+        let populated = docs[0];
+        if (populated && populated.populatedMembers) {
+            const memberMap = new Map(populated.populatedMembers.map((m: any) => [m._id.toString(), m]));
+            populated.studentTracking = (populated.studentTracking || []).map((t: any) => ({
+                ...t,
+                memberId: memberMap.get(t.memberId.toString()) || t.memberId
+            }));
+            delete populated.populatedMembers;
+        }
+
+        res.status(200).json(populated);
+    } catch (error: any) {
+        res.status(500).json(new AppError(error.message, 500));
+    }
+};
+
+export const deleteDiaryEntry = async (req: Request, res: Response) => {
+    try {
+        const id = req.params.id as string;
+        const { entityId } = (req as any).user;
+
+        const diary = await diaryService.getOne({ _id: new ObjectId(id), entityId: new ObjectId(entityId) });
+        if (!diary) return res.status(404).json(new AppError('Diary entry not found', 404));
+
+        await diaryService.delete({ _id: new ObjectId(id), entityId: new ObjectId(entityId) });
+        res.status(200).json({ success: true, message: 'Diary entry deleted successfully' });
+    } catch (error: any) {
+        res.status(500).json(new AppError(error.message, 500));
+    }
+};
+
 export const getMemberDiaryFeed = async (req: Request, res: Response) => {
     try {
         const { entityId } = (req as any).user;
@@ -165,3 +235,4 @@ export const getMemberDiaryFeed = async (req: Request, res: Response) => {
         res.status(500).json(new AppError(error.message, 500));
     }
 };
+

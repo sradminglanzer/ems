@@ -22,40 +22,69 @@ export const getAttendance = async (req: Request, res: Response) => {
 
         const normalizedDate = normalizeDate(date as string);
 
+        const entityIdObj = new ObjectId(entityId);
+        const classIdObj = new ObjectId(classId as string);
+
+        const feeGroup = await feeGroupService.getOne({ 
+            _id: classIdObj, 
+            entityId: entityIdObj 
+        });
+        
+        if (!feeGroup) {
+            return res.status(404).json(new AppError('Class not found', 404));
+        }
+
+        let memberIdObjects: ObjectId[] = [];
+        if (academicYearId && feeGroup.yearlyRosters) {
+            const roster = (feeGroup.yearlyRosters as any[]).find((r: any) => r.academicYearId && r.academicYearId.toString() === academicYearId);
+            if (roster && roster.members) {
+                memberIdObjects = (roster.members as any[]).map((mId: any) => new ObjectId(mId.toString()));
+            }
+        } else if (!academicYearId && feeGroup.members) {
+            memberIdObjects = (feeGroup.members as any[]).map((mId: any) => new ObjectId(mId.toString()));
+        }
+
+        const memberConditions: any[] = [
+            { feeGroupId: classIdObj }
+        ];
+        if (memberIdObjects.length > 0) {
+            memberConditions.push({ _id: { $in: memberIdObjects } });
+        }
+
+        let memberQuery: any = {
+            entityId: entityIdObj,
+            status: { $ne: 'checked_out' },
+            $or: memberConditions
+        };
+
+        if (academicYearId) {
+            memberQuery = {
+                entityId: entityIdObj,
+                status: { $ne: 'checked_out' },
+                $and: [
+                    { $or: memberConditions },
+                    {
+                        $or: [
+                            { academicYearId: new ObjectId(academicYearId as string) },
+                            { academicYearId: academicYearId },
+                            { academicYearId: { $exists: false } },
+                            { academicYearId: null }
+                        ]
+                    }
+                ]
+            };
+        }
+
+        const classMembers = await memberService.get(memberQuery);
+
         let attendance = await attendanceService.getAttendanceWithMembers({
-            entityId: new ObjectId(entityId),
-            classId: new ObjectId(classId as string),
+            entityId: entityIdObj,
+            classId: classIdObj,
             date: normalizedDate
         });
 
         // If attendance hasn't been marked yet for this day, generate a template
         if (!attendance) {
-            const feeGroup = await feeGroupService.getOne({ 
-                _id: new ObjectId(classId as string), 
-                entityId: new ObjectId(entityId) 
-            });
-            
-            if (!feeGroup) {
-                return res.status(404).json(new AppError('Class not found', 404));
-            }
-
-            let memberIds: string[] = [];
-            if (academicYearId) {
-                const roster = feeGroup.yearlyRosters?.find((r: any) => r.academicYearId.toString() === academicYearId);
-                if (roster && roster.members) {
-                    memberIds = roster.members.map((id: any) => id.toString());
-                }
-            } else {
-                 memberIds = feeGroup.members?.map((id: any) => id.toString()) || [];
-            }
-
-            if (memberIds.length === 0) {
-                 return res.status(200).json({ isNew: true, records: [] });
-            }
-
-            const allMembers = await memberService.getByEntity(entityId);
-            const classMembers = allMembers.filter(m => memberIds.includes(m._id!.toString()));
-
             const defaultRecords = classMembers.map(m => ({
                 memberId: m, 
                 status: 'present',
@@ -69,6 +98,28 @@ export const getAttendance = async (req: Request, res: Response) => {
                 date: normalizedDate,
                 records: defaultRecords
             });
+        }
+
+        // If attendance already exists, check if all active class members are in records.
+        // If some members joined the class after attendance was initially saved, merge them seamlessly!
+        const existingMemberIds = new Set(
+            (attendance.records || []).map((r: any) => {
+                const m = r.memberId;
+                if (!m) return '';
+                return (m._id ? m._id.toString() : m.toString());
+            })
+        );
+
+        const missingRecords = classMembers
+            .filter(m => m._id && !existingMemberIds.has(m._id.toString()))
+            .map(m => ({
+                memberId: m,
+                status: 'present',
+                remarks: ''
+            }));
+
+        if (missingRecords.length > 0) {
+            attendance.records = [...(attendance.records || []), ...missingRecords];
         }
 
         res.status(200).json({ isNew: false, ...attendance });

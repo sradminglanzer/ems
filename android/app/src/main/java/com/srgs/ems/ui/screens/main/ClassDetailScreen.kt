@@ -2,9 +2,12 @@ package com.srgs.ems.ui.screens.main
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -22,11 +25,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import com.srgs.ems.data.SessionManager
 import com.srgs.ems.data.api.DiaryDto
 import com.srgs.ems.data.api.MemberDto
@@ -275,6 +280,13 @@ fun ClassDetailScreen(
                                 vm.startPostDiary()
                                 showPostSheet = true
                             },
+                            onEditClick = { diary ->
+                                vm.startEditDiary(diary)
+                                showPostSheet = true
+                            },
+                            onDeleteClick = { diary ->
+                                vm.deleteDiaryEntry(diary._id)
+                            },
                             onUpdateTracking = { diaryId, studentId, status ->
                                 vm.updateStudentTracking(diaryId, studentId, status)
                             }
@@ -476,6 +488,8 @@ private fun StudentRosterCard(
 private fun ClassDiaryTab(
     feed: List<DiaryDto>,
     onPostClick: () -> Unit,
+    onEditClick: (DiaryDto) -> Unit,
+    onDeleteClick: (DiaryDto) -> Unit,
     onUpdateTracking: (diaryId: String, studentId: String, status: String) -> Unit
 ) {
     LazyColumn(
@@ -531,14 +545,25 @@ private fun ClassDiaryTab(
             }
         } else {
             items(feed, key = { it._id }) { diary ->
-                DiaryEntryCard(diary = diary)
+                DiaryEntryCard(
+                    diary = diary,
+                    onEditClick = { onEditClick(diary) },
+                    onDeleteClick = { onDeleteClick(diary) }
+                )
             }
         }
     }
 }
 
 @Composable
-private fun DiaryEntryCard(diary: DiaryDto) {
+private fun DiaryEntryCard(
+    diary: DiaryDto,
+    onEditClick: () -> Unit,
+    onDeleteClick: () -> Unit
+) {
+    var showMenu by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
     val typeColor = when (diary.type) {
         "homework"     -> Primary
         "announcement" -> AccentOrange
@@ -553,6 +578,30 @@ private fun DiaryEntryCard(diary: DiaryDto) {
         else           -> "REMINDER"
     }
 
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Delete Diary Entry", fontWeight = FontWeight.Bold) },
+            text = { Text("Are you sure you want to delete '${diary.title}'? This action cannot be undone.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteDialog = false
+                        onDeleteClick()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Danger)
+                ) {
+                    Text("Delete", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = Surface,
@@ -561,7 +610,7 @@ private fun DiaryEntryCard(diary: DiaryDto) {
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(16.dp)) {
-            // Header Row: Category Badge + Subject + Date
+            // Header Row: Category Badge + Subject + Date + Action Menu
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -599,13 +648,49 @@ private fun DiaryEntryCard(diary: DiaryDto) {
                     }
                 }
 
-                if (!diary.dueDate.isNullOrBlank()) {
-                    Text(
-                        text = "Due: ${diary.dueDate.take(10)}",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Danger
-                    )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (!diary.dueDate.isNullOrBlank()) {
+                        Text(
+                            text = "Due: ${diary.dueDate.take(10)}",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Danger
+                        )
+                    }
+
+                    Box {
+                        IconButton(
+                            onClick = { showMenu = true },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(Icons.Filled.MoreVert, contentDescription = "Options", tint = TextMuted, modifier = Modifier.size(18.dp))
+                        }
+
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Edit Entry", fontSize = 13.sp) },
+                                leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null, tint = Primary, modifier = Modifier.size(16.dp)) },
+                                onClick = {
+                                    showMenu = false
+                                    onEditClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Delete Entry", fontSize = 13.sp, color = Danger) },
+                                leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = Danger, modifier = Modifier.size(16.dp)) },
+                                onClick = {
+                                    showMenu = false
+                                    showDeleteDialog = true
+                                }
+                            )
+                        }
+                    }
                 }
             }
 
@@ -628,6 +713,27 @@ private fun DiaryEntryCard(diary: DiaryDto) {
                 color = TextSecondary,
                 lineHeight = 18.sp
             )
+
+            // Attachments Image Gallery
+            if (diary.attachments.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    diary.attachments.forEach { imgUrl ->
+                        AsyncImage(
+                            model = imgUrl,
+                            contentDescription = "Attachment",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(100.dp, 75.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(1.dp, Border, RoundedCornerShape(8.dp))
+                        )
+                    }
+                }
+            }
 
             // Author stamp
             if (diary.createdBy != null) {
@@ -718,10 +824,10 @@ private fun ClassFeesTab(feeStructures: List<com.srgs.ems.data.api.FeeStructureD
                             Text(plan.frequency.uppercase(), fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = Primary)
                         }
                         Text(
-                            text = "₹${currencyFmt.format(plan.amount.toLong())}",
+                            text = "₹${currencyFmt.format(plan.amount)}",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = TextPrimary
+                            color = Success
                         )
                     }
                 }
@@ -731,7 +837,7 @@ private fun ClassFeesTab(feeStructures: List<com.srgs.ems.data.api.FeeStructureD
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  POST DIARY ENTRY BOTTOM SHEET
+//  POST / EDIT DIARY BOTTOM SHEET
 // ═══════════════════════════════════════════════════════════════════════════════
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -741,11 +847,24 @@ private fun PostDiaryBottomSheet(
     subjects: List<com.srgs.ems.data.api.SubjectDto>,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
+    val editingId by vm.editingDiaryId.collectAsState()
     val postType by vm.postType.collectAsState()
     val postSubjectId by vm.postSubjectId.collectAsState()
     val postTitle by vm.postTitle.collectAsState()
     val postDescription by vm.postDescription.collectAsState()
+    val postAttachments by vm.postAttachments.collectAsState()
+    val isUploadingImage by vm.isUploadingImage.collectAsState()
     val isPosting by vm.isPosting.collectAsState()
+
+    var showUrlInput by remember { mutableStateOf(false) }
+    var newImageUrl by remember { mutableStateOf("") }
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { vm.uploadPhotoFromUri(context, it) }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -759,8 +878,17 @@ private fun PostDiaryBottomSheet(
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 24.dp)
         ) {
-            Text("Post Class Diary Entry", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
-            Text("Assign homework, test alerts, or class notices", fontSize = 13.sp, color = TextSecondary)
+            Text(
+                if (editingId != null) "Edit Diary Entry" else "Post Class Diary Entry",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = TextPrimary
+            )
+            Text(
+                if (editingId != null) "Update homework or class notice" else "Assign homework, test alerts, or class notices",
+                fontSize = 13.sp,
+                color = TextSecondary
+            )
             Spacer(Modifier.height(18.dp))
 
             // Category Selector
@@ -837,17 +965,126 @@ private fun PostDiaryBottomSheet(
                 shape = RoundedCornerShape(10.dp),
                 colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Border, focusedBorderColor = Primary)
             )
+            Spacer(Modifier.height(16.dp))
+
+            // Image Attachments Section
+            Text("Attach Photos / Images", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.padding(bottom = 6.dp))
+
+            // Photo picker button and loader
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = { photoPickerLauncher.launch("image/*") },
+                    enabled = !isUploadingImage && !isPosting,
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                    modifier = Modifier.height(44.dp)
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("📸 Choose Photo from Gallery", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+
+                if (isUploadingImage) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Primary)
+                    Text("Uploading...", fontSize = 12.sp, color = TextSecondary)
+                }
+            }
+
+            if (postAttachments.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    postAttachments.forEachIndexed { idx, url ->
+                        Box(modifier = Modifier.size(80.dp, 60.dp)) {
+                            AsyncImage(
+                                model = url,
+                                contentDescription = "Attachment $idx",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .border(1.dp, Border, RoundedCornerShape(8.dp))
+                            )
+                            IconButton(
+                                onClick = { vm.removeAttachment(idx) },
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .size(20.dp)
+                                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                            ) {
+                                Icon(Icons.Filled.Close, contentDescription = "Remove", tint = Color.White, modifier = Modifier.size(12.dp))
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            // Secondary: Or paste URL
+            Text(
+                text = if (showUrlInput) "− Hide image link input" else "+ Or enter image web link",
+                fontSize = 12.sp,
+                color = Primary,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clickable { showUrlInput = !showUrlInput }
+            )
+
+            if (showUrlInput) {
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = newImageUrl,
+                        onValueChange = { newImageUrl = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("Paste image URL (https://...)", fontSize = 12.sp) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Border, focusedBorderColor = Primary)
+                    )
+                    Button(
+                        onClick = {
+                            if (newImageUrl.isNotBlank()) {
+                                vm.addAttachment(newImageUrl)
+                                newImageUrl = ""
+                            }
+                        },
+                        enabled = newImageUrl.isNotBlank(),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                        modifier = Modifier.height(52.dp)
+                    ) {
+                        Text("Attach", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
             Spacer(Modifier.height(24.dp))
 
             Button(
                 onClick = { vm.submitDiaryEntry(onSuccess = onDismiss) },
-                enabled = !isPosting,
+                enabled = !isPosting && !isUploadingImage,
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Primary)
             ) {
                 if (isPosting) CircularProgressIndicator(Modifier.size(20.dp), Color.White, 2.dp)
-                else Text("✓  Post to Class Diary", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                else Text(
+                    if (editingId != null) "💾  Update Diary Entry" else "✓  Post to Class Diary",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
             }
         }
     }

@@ -2,6 +2,8 @@ package com.srgs.ems.ui.screens.parent
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -17,7 +19,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -26,17 +31,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import com.srgs.ems.data.api.*
 import com.srgs.ems.ui.theme.*
 import com.srgs.ems.viewmodel.ParentViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 
-enum class ParentTab(val title: String) {
-    HOME("Home"),
-    DIARY("Diary"),
-    ACADEMICS("Exams"),
-    FEES("Fees")
+enum class ParentTab(val title: String, val icon: ImageVector) {
+    HOME("Home", Icons.Filled.Home),
+    DIARY("Diary", Icons.Filled.DateRange),
+    ACADEMICS("Academics", Icons.Filled.CheckCircle),
+    FEES("Fees", Icons.Filled.ShoppingCart)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -59,77 +65,130 @@ fun ParentMainScreen(
     val selectedReceipt by viewModel.selectedReceipt.collectAsState()
 
     var currentTab by remember { mutableStateOf(ParentTab.HOME) }
-    var showChildDropdown by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            text = dashboardData?.schoolName ?: activeChild?.schoolName ?: "School Parent Portal",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TextPrimary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        // Child switcher trigger
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable { if (childrenList.size > 1) showChildDropdown = true }
-                                .padding(vertical = 2.dp, horizontal = 4.dp)
-                        ) {
-                            Text(
-                                text = "👤 ${activeChild?.fullName?.ifBlank { activeChild?.firstName } ?: "Student"} (${activeChild?.groupName ?: "Class"})",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Primary
-                            )
-                            if (childrenList.size > 1) {
-                                Icon(Icons.Filled.ArrowDropDown, contentDescription = "Switch child", tint = Primary, modifier = Modifier.size(18.dp))
+            Surface(
+                color = Surface,
+                tonalElevation = 3.dp,
+                shadowElevation = 3.dp
+            ) {
+                TopAppBar(
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        Brush.linearGradient(
+                                            listOf(GradientStart, GradientEnd)
+                                        )
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("🎓", fontSize = 18.sp)
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = dashboardData?.schoolName ?: activeChild?.schoolName ?: "Parent Portal",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = TextPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "Family & Student Hub",
+                                    fontSize = 11.sp,
+                                    color = TextSecondary,
+                                    fontWeight = FontWeight.Medium
+                                )
                             }
                         }
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { viewModel.refreshCurrentChild() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh", tint = Primary)
-                    }
-                    IconButton(onClick = onSignOut) {
-                        Icon(Icons.Filled.ExitToApp, contentDescription = "Sign Out", tint = TextMuted)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Surface)
-            )
+                    },
+                    actions = {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(end = 12.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(PrimaryLight.copy(alpha = 0.15f))
+                                    .clickable { viewModel.refreshCurrentChild() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Filled.Refresh,
+                                    contentDescription = "Refresh",
+                                    tint = PrimaryDark,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(DangerLight.copy(alpha = 0.6f))
+                                    .clickable { onSignOut() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Filled.ExitToApp,
+                                    contentDescription = "Sign Out",
+                                    tint = Danger,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Surface)
+                )
+            }
         },
         bottomBar = {
-            NavigationBar(containerColor = Surface, tonalElevation = 8.dp) {
-                ParentTab.values().forEach { tab ->
-                    val selected = currentTab == tab
-                    NavigationBarItem(
-                        selected = selected,
-                        onClick = { currentTab = tab },
-                        icon = {
-                            when (tab) {
-                                ParentTab.HOME -> Icon(Icons.Filled.Home, contentDescription = tab.title)
-                                ParentTab.DIARY -> Icon(Icons.Filled.DateRange, contentDescription = tab.title)
-                                ParentTab.ACADEMICS -> Icon(Icons.Filled.CheckCircle, contentDescription = tab.title)
-                                ParentTab.FEES -> Icon(Icons.Filled.Info, contentDescription = tab.title)
-                            }
-                        },
-                        label = { Text(tab.title, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Primary,
-                            selectedTextColor = Primary,
-                            indicatorColor = PrimaryLight.copy(alpha = 0.2f),
-                            unselectedIconColor = TextMuted,
-                            unselectedTextColor = TextMuted
+            Surface(
+                color = Surface,
+                tonalElevation = 8.dp,
+                shadowElevation = 12.dp
+            ) {
+                NavigationBar(
+                    containerColor = Surface,
+                    tonalElevation = 0.dp
+                ) {
+                    ParentTab.values().forEach { tab ->
+                        val selected = currentTab == tab
+                        NavigationBarItem(
+                            selected = selected,
+                            onClick = { currentTab = tab },
+                            icon = {
+                                Icon(
+                                    imageVector = tab.icon,
+                                    contentDescription = tab.title,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            },
+                            label = {
+                                Text(
+                                    tab.title,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Medium
+                                )
+                            },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = PrimaryDark,
+                                selectedTextColor = PrimaryDark,
+                                indicatorColor = PrimaryLight.copy(alpha = 0.25f),
+                                unselectedIconColor = TextMuted,
+                                unselectedTextColor = TextMuted
+                            )
                         )
-                    )
+                    }
                 }
             }
         },
@@ -142,13 +201,20 @@ fun ParentMainScreen(
         ) {
             if (isLoading && dashboardData == null) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Primary)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(color = Primary, strokeWidth = 3.dp)
+                        Spacer(Modifier.height(14.dp))
+                        Text("Loading student records...", fontSize = 13.sp, color = TextSecondary)
+                    }
                 }
             } else if (dashboardData != null) {
                 val data = dashboardData!!
                 when (currentTab) {
                     ParentTab.HOME -> ParentHomeTab(
                         data = data,
+                        childrenList = childrenList,
+                        activeChild = activeChild,
+                        onSwitchChild = { viewModel.switchChild(it) },
                         onCallTeacher = { phone ->
                             if (!phone.isNullOrBlank()) {
                                 val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
@@ -156,6 +222,7 @@ fun ParentMainScreen(
                             }
                         },
                         onNavigateToDiary = { currentTab = ParentTab.DIARY },
+                        onNavigateToAcademics = { currentTab = ParentTab.ACADEMICS },
                         onNavigateToFees = { currentTab = ParentTab.FEES }
                     )
                     ParentTab.DIARY -> ParentDiaryTab(
@@ -175,76 +242,30 @@ fun ParentMainScreen(
                 }
             } else {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(errorMsg ?: "No data found for this student", color = TextSecondary)
-                        Spacer(Modifier.height(12.dp))
-                        Button(onClick = { viewModel.refreshCurrentChild() }, colors = ButtonDefaults.buttonColors(containerColor = Primary)) {
-                            Text("Retry")
-                        }
-                    }
-                }
-            }
-
-            // Sibling Switcher Dropdown Modal
-            if (showChildDropdown) {
-                Dialog(onDismissRequest = { showChildDropdown = false }) {
                     Card(
-                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.padding(24.dp),
+                        shape = RoundedCornerShape(20.dp),
                         colors = CardDefaults.cardColors(containerColor = Surface),
-                        modifier = Modifier.fillMaxWidth().padding(16.dp)
+                        elevation = CardDefaults.cardElevation(4.dp)
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text("Select Student / Child", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                            Spacer(Modifier.height(12.dp))
-                            childrenList.forEach { child ->
-                                val isSelected = child.memberId == activeChild?.memberId
-                                Surface(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 4.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable {
-                                            viewModel.switchChild(child)
-                                            showChildDropdown = false
-                                        },
-                                    color = if (isSelected) PrimaryLight.copy(alpha = 0.2f) else Background,
-                                    border = BorderStroke(1.dp, if (isSelected) Primary else Border)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(40.dp)
-                                                .clip(CircleShape)
-                                                .background(Primary),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = (child.firstName.firstOrNull() ?: 'S').toString(),
-                                                color = Color.White,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 18.sp
-                                            )
-                                        }
-                                        Spacer(Modifier.width(12.dp))
-                                        Column(Modifier.weight(1f)) {
-                                            Text(child.fullName.ifBlank { child.firstName }, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
-                                            Text("Class: ${child.groupName.ifBlank { "N/A" }}  •  Roll: ${child.rollNo.ifBlank { "N/A" }}", fontSize = 12.sp, color = TextSecondary)
-                                        }
-                                        if (isSelected) {
-                                            Icon(Icons.Filled.CheckCircle, contentDescription = "Active", tint = Primary, modifier = Modifier.size(20.dp))
-                                        }
-                                    }
-                                }
-                            }
-                            Spacer(Modifier.height(8.dp))
-                            TextButton(
-                                onClick = { showChildDropdown = false },
-                                modifier = Modifier.align(Alignment.End)
+                        Column(
+                            modifier = Modifier.padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("⚠️", fontSize = 36.sp)
+                            Spacer(Modifier.height(10.dp))
+                            Text("Unable to Load Records", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                            Spacer(Modifier.height(6.dp))
+                            Text(errorMsg ?: "No data found for this student. Please pull down to retry.", color = TextSecondary, textAlign = TextAlign.Center, fontSize = 13.sp)
+                            Spacer(Modifier.height(16.dp))
+                            Button(
+                                onClick = { viewModel.refreshCurrentChild() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                                shape = RoundedCornerShape(12.dp)
                             ) {
-                                Text("Close", color = Primary)
+                                Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Retry", fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -274,14 +295,18 @@ fun ParentMainScreen(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TAB 1: 🏠 DASHBOARD / HOME
+// TAB 1: 🏠 DASHBOARD / HOME (Lush Gradient & Quick Actions)
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 fun ParentHomeTab(
     data: ParentDashboardDto,
+    childrenList: List<ParentChildDto>,
+    activeChild: ParentChildDto?,
+    onSwitchChild: (ParentChildDto) -> Unit,
     onCallTeacher: (String?) -> Unit,
     onNavigateToDiary: () -> Unit,
+    onNavigateToAcademics: () -> Unit,
     onNavigateToFees: () -> Unit
 ) {
     val student = data.student
@@ -291,174 +316,328 @@ fun ParentHomeTab(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 1. Student Identity Card
+        // 1. Sibling Switcher Bar (if more than 1 child)
+        if (childrenList.size > 1) {
+            item {
+                Column {
+                    Text(
+                        "SWITCH STUDENT / CHILD",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextMuted,
+                        letterSpacing = 0.8.sp
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(childrenList) { child ->
+                            val isSelected = child.memberId == activeChild?.memberId
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isSelected) PrimaryDark else Surface,
+                                border = BorderStroke(1.dp, if (isSelected) PrimaryDark else Border),
+                                shadowElevation = if (isSelected) 3.dp else 1.dp,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { onSwitchChild(child) }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(24.dp)
+                                            .clip(CircleShape)
+                                            .background(if (isSelected) Color.White else Primary),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = (child.firstName.firstOrNull() ?: 'S').toString(),
+                                            color = if (isSelected) PrimaryDark else Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                    Spacer(Modifier.width(8.dp))
+                                    Column {
+                                        Text(
+                                            child.fullName.ifBlank { child.firstName },
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isSelected) Color.White else TextPrimary
+                                        )
+                                        Text(
+                                            child.groupName.ifBlank { "Class" },
+                                            fontSize = 10.sp,
+                                            color = if (isSelected) Color.White.copy(alpha = 0.8f) else TextSecondary
+                                        )
+                                    }
+                                    if (isSelected) {
+                                        Spacer(Modifier.width(6.dp))
+                                        Icon(
+                                            Icons.Filled.CheckCircle,
+                                            contentDescription = "Active",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. 🌟 HERO GRADIENT STUDENT PROFILE CARD
         item {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(Color(0xFF4F46E5), Color(0xFF6366F1), Color(0xFF0EA5E9))
+                            )
+                        )
+                        .padding(20.dp)
+                ) {
+                    Column {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            // Avatar with glowing ring
+                            Box(
+                                modifier = Modifier
+                                    .size(68.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.25f))
+                                    .border(2.5.dp, Color.White, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = (student.name.firstOrNull() ?: 'S').toString().uppercase(),
+                                    color = Color.White,
+                                    fontSize = 28.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
+                            Spacer(Modifier.width(16.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    student.name,
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White,
+                                    letterSpacing = (-0.3).sp
+                                )
+                                Spacer(Modifier.height(3.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = Color.White.copy(alpha = 0.22f)
+                                    ) {
+                                        Text(
+                                            "Class: ${student.className.ifBlank { "N/A" }}",
+                                            color = Color.White,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                    if (student.rollNo.isNotBlank()) {
+                                        Spacer(Modifier.width(6.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = Color.White.copy(alpha = 0.22f)
+                                        ) {
+                                            Text(
+                                                "Roll #${student.rollNo}",
+                                                color = Color.White,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "Adm No: ${student.admissionNo.ifBlank { student.knownId.ifBlank { "N/A" } }}",
+                                    fontSize = 11.sp,
+                                    color = Color.White.copy(alpha = 0.85f)
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+                        HorizontalDivider(color = Color.White.copy(alpha = 0.2f), thickness = 1.dp)
+                        Spacer(Modifier.height(12.dp))
+
+                        // Quick stat pills inside hero
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            HeroStatBadge("Attendance", "${attendance.thisMonth.percentage}%", "📊")
+                            HeroStatBadge("Today", attendance.todayStatus.ifBlank { "Active" }, "🟢")
+                            HeroStatBadge("Fee Dues", if (fees.pendingDues > 0) "₹${"%.0f".format(fees.pendingDues)}" else "Cleared", "💳")
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. ⚡ QUICK ACTION SHORTCUTS
+        item {
+            Column {
+                Text(
+                    "QUICK ACTIONS",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextMuted,
+                    letterSpacing = 0.8.sp
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    QuickActionTile(
+                        title = "Diary",
+                        subtitle = "Homework",
+                        icon = Icons.Filled.DateRange,
+                        color = Color(0xFF6366F1),
+                        modifier = Modifier.weight(1f),
+                        onClick = onNavigateToDiary
+                    )
+                    QuickActionTile(
+                        title = "Exams",
+                        subtitle = "Report Card",
+                        icon = Icons.Filled.CheckCircle,
+                        color = Color(0xFF0EA5E9),
+                        modifier = Modifier.weight(1f),
+                        onClick = onNavigateToAcademics
+                    )
+                    QuickActionTile(
+                        title = "Fees",
+                        subtitle = "Receipts",
+                        icon = Icons.Filled.ShoppingCart,
+                        color = Color(0xFF10B981),
+                        modifier = Modifier.weight(1f),
+                        onClick = onNavigateToFees
+                    )
+                }
+            }
+        }
+
+        // 4. 👨‍🏫 CLASS TEACHER & 1-TAP CALL CONNECT
+        item {
+            Card(
+                shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = Surface),
-                elevation = CardDefaults.cardElevation(2.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
                     modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(64.dp)
-                            .clip(CircleShape)
-                            .background(Primary),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = (student.name.firstOrNull() ?: 'S').toString(),
-                            color = Color.White,
-                            fontSize = 26.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Spacer(Modifier.width(16.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(student.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                        Text("Class: ${student.className.ifBlank { "N/A" }}", fontSize = 14.sp, color = TextSecondary)
-                        Row(modifier = Modifier.padding(top = 4.dp)) {
-                            Text("Roll: ${student.rollNo.ifBlank { "N/A" }}", fontSize = 12.sp, color = TextMuted)
-                            Spacer(Modifier.width(12.dp))
-                            Text("Adm No: ${student.admissionNo.ifBlank { student.knownId.ifBlank { "N/A" } }}", fontSize = 12.sp, color = TextMuted)
-                        }
-                    }
-                }
-            }
-        }
-
-        // 2. Today's Attendance Badge
-        item {
-            Card(
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Surface),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.DateRange, contentDescription = null, tint = Primary, modifier = Modifier.size(24.dp))
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text("Today's Attendance", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                            Text(
-                                SimpleDateFormat("EEE, dd MMM yyyy", Locale.getDefault()).format(Date()),
-                                fontSize = 12.sp,
-                                color = TextSecondary
-                            )
-                        }
-                    }
-                    val (statusText, statusBg, statusColor) = when (attendance.todayStatus.lowercase()) {
-                        "present" -> Triple("🟢 Present", Color(0xFFE8F5E9), Color(0xFF2E7D32))
-                        "absent" -> Triple("🔴 Absent", Color(0xFFFFEBEE), Color(0xFFC62828))
-                        "late" -> Triple("🟡 Late", Color(0xFFFFF8E1), Color(0xFFF57F17))
-                        else -> Triple("⚪ Not Marked", Color(0xFFF5F5F5), Color(0xFF757575))
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = statusBg,
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                    ) {
-                        Text(
-                            text = statusText,
-                            color = statusColor,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                        )
-                    }
-                }
-            }
-        }
-
-        // 3. Class Teacher Card
-        item {
-            Card(
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Surface),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                         Box(
-                            modifier = Modifier.size(42.dp).clip(CircleShape).background(PrimaryLight.copy(alpha = 0.2f)),
+                            modifier = Modifier
+                                .size(46.dp)
+                                .clip(CircleShape)
+                                .background(PrimaryLight.copy(alpha = 0.18f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Filled.Person, contentDescription = null, tint = Primary)
+                            Icon(Icons.Filled.Person, contentDescription = null, tint = Primary, modifier = Modifier.size(26.dp))
                         }
                         Spacer(Modifier.width(12.dp))
                         Column {
-                            Text("Class Teacher", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = TextMuted)
+                            Text("CLASS TEACHER", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 0.6.sp)
                             Text(
                                 student.classTeacherName ?: "Not Assigned",
-                                fontSize = 14.sp,
+                                fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = TextPrimary
                             )
+                            if (!student.classTeacherPhone.isNullOrBlank()) {
+                                Text(student.classTeacherPhone, fontSize = 12.sp, color = TextSecondary)
+                            }
                         }
                     }
                     if (!student.classTeacherPhone.isNullOrBlank()) {
                         Button(
                             onClick = { onCallTeacher(student.classTeacherPhone) },
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Success),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
                         ) {
-                            Icon(Icons.Filled.Phone, contentDescription = "Call", modifier = Modifier.size(16.dp))
+                            Icon(Icons.Filled.Phone, contentDescription = "Call", modifier = Modifier.size(16.dp), tint = Color.White)
                             Spacer(Modifier.width(6.dp))
-                            Text("Call", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("Call", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
                 }
             }
         }
 
-        // 4. Pending Fee Alert (if dues > 0)
+        // 5. 💳 PENDING FEE ALERT (High-Impact Banner if dues > 0)
         if (fees.pendingDues > 0) {
             item {
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = Color(0xFFFFF3E0),
-                    border = BorderStroke(1.dp, Color(0xFFFFB74D)),
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFFFFF7ED),
+                    border = BorderStroke(1.2.dp, Color(0xFFFDBA74)),
+                    shadowElevation = 2.dp,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .clickable { onNavigateToFees() }
                 ) {
                     Row(
-                        modifier = Modifier.padding(14.dp),
+                        modifier = Modifier.padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                            Icon(Icons.Filled.Info, contentDescription = null, tint = Color(0xFFE65100), modifier = Modifier.size(28.dp))
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFFFEDD5)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("💳", fontSize = 20.sp)
+                            }
                             Spacer(Modifier.width(12.dp))
                             Column {
-                                Text("Fee Balance Due", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFFBF360C))
-                                Text("₹${"%.0f".format(fees.pendingDues)} outstanding", fontSize = 13.sp, color = Color(0xFFD84315))
+                                Text("Fee Balance Due", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFFC2410C))
+                                Text("₹${"%.0f".format(fees.pendingDues)} pending • Tap to view breakdown", fontSize = 12.sp, color = Color(0xFF9A3412))
                             }
                         }
-                        Text("View >", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFFBF360C))
+                        Icon(Icons.Filled.ArrowForward, contentDescription = null, tint = Color(0xFFC2410C), modifier = Modifier.size(18.dp))
                     }
                 }
             }
         }
 
-        // 5. 📢 School Notices & Announcements
+        // 6. 📢 SCHOOL NOTICES & ANNOUNCEMENTS
         item {
             Column {
                 Row(
@@ -472,48 +651,62 @@ fun ParentHomeTab(
 
                 if (notices.isEmpty()) {
                     Card(
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(14.dp),
                         colors = CardDefaults.cardColors(containerColor = Surface),
+                        elevation = CardDefaults.cardElevation(1.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(
-                            "No new announcements today",
-                            fontSize = 13.sp,
-                            color = TextSecondary,
-                            modifier = Modifier.padding(16.dp)
-                        )
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("✨", fontSize = 22.sp)
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                "No new announcements today. You are all caught up!",
+                                fontSize = 13.sp,
+                                color = TextSecondary
+                            )
+                        }
                     }
                 } else {
                     notices.forEach { notice ->
                         Card(
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(14.dp),
                             colors = CardDefaults.cardColors(containerColor = Surface),
+                            elevation = CardDefaults.cardElevation(2.dp),
                             modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
                         ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
+                            Column(modifier = Modifier.padding(16.dp)) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    val (catBg, catColor) = when (notice.category.lowercase()) {
+                                        "urgent" -> Pair(DangerLight, Danger)
+                                        "event" -> Pair(SecondaryLight, Secondary)
+                                        "exam" -> Pair(WarningLight, Warning)
+                                        else -> Pair(PrimaryLight.copy(alpha = 0.2f), Primary)
+                                    }
                                     Surface(
                                         shape = RoundedCornerShape(6.dp),
-                                        color = PrimaryLight.copy(alpha = 0.2f)
+                                        color = catBg
                                     ) {
                                         Text(
-                                            notice.category,
-                                            fontSize = 11.sp,
-                                            color = Primary,
-                                            fontWeight = FontWeight.Bold,
+                                            notice.category.uppercase(),
+                                            fontSize = 10.sp,
+                                            color = catColor,
+                                            fontWeight = FontWeight.ExtraBold,
                                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                                         )
                                     }
                                     Text(notice.date, fontSize = 11.sp, color = TextMuted)
                                 }
-                                Spacer(Modifier.height(6.dp))
+                                Spacer(Modifier.height(8.dp))
                                 Text(notice.title, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                                 Spacer(Modifier.height(4.dp))
-                                Text(notice.content, fontSize = 13.sp, color = TextSecondary, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                                Text(notice.content, fontSize = 13.sp, color = TextSecondary, maxLines = 3, overflow = TextOverflow.Ellipsis, lineHeight = 18.sp)
                             }
                         }
                     }
@@ -521,7 +714,7 @@ fun ParentHomeTab(
             }
         }
 
-        // 6. Today's Diary / Homework Preview
+        // 7. 📖 TODAY'S DIARY / HOMEWORK PREVIEW
         item {
             Column {
                 Row(
@@ -531,26 +724,34 @@ fun ParentHomeTab(
                 ) {
                     Text("📖 Today's Diary & Homework", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                     TextButton(onClick = onNavigateToDiary) {
-                        Text("View All >", color = Primary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text("View All >", color = Primary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
                 }
                 Spacer(Modifier.height(4.dp))
                 if (data.diary.isEmpty()) {
                     Card(
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(14.dp),
                         colors = CardDefaults.cardColors(containerColor = Surface),
+                        elevation = CardDefaults.cardElevation(1.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(
-                            "No homework assigned for today",
-                            fontSize = 13.sp,
-                            color = TextSecondary,
-                            modifier = Modifier.padding(16.dp)
-                        )
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("🎉", fontSize = 22.sp)
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                "No homework tasks assigned for today",
+                                fontSize = 13.sp,
+                                color = TextSecondary
+                            )
+                        }
                     }
                 } else {
                     data.diary.take(2).forEach { item ->
                         DiaryCardItem(item)
+                        Spacer(Modifier.height(8.dp))
                     }
                 }
             }
@@ -558,8 +759,57 @@ fun ParentHomeTab(
     }
 }
 
+@Composable
+fun HeroStatBadge(label: String, value: String, emoji: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(emoji, fontSize = 12.sp)
+            Spacer(Modifier.width(4.dp))
+            Text(value, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+        }
+        Text(label, fontSize = 10.sp, color = Color.White.copy(alpha = 0.8f))
+    }
+}
+
+@Composable
+fun QuickActionTile(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    color: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .clickable { onClick() }
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(color.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = title, tint = color, modifier = Modifier.size(22.dp))
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Text(subtitle, fontSize = 10.sp, color = TextMuted)
+        }
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// TAB 2: 📖 CLASS DIARY
+// TAB 2: 📖 CLASS DIARY (Interactive Calendar & Subject Badges)
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -569,16 +819,26 @@ fun ParentDiaryTab(
     onSelectDate: (String) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Class Diary & Homework", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-        Text("Daily homework, assignments and class notes", fontSize = 13.sp, color = TextSecondary)
+        Text("Class Diary & Homework", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
+        Text("Daily assignments, class tasks and teacher notes", fontSize = 13.sp, color = TextSecondary)
         Spacer(Modifier.height(16.dp))
 
         if (diaryItems.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Filled.DateRange, contentDescription = null, tint = TextMuted, modifier = Modifier.size(48.dp))
-                    Spacer(Modifier.height(12.dp))
-                    Text("No diary entries recorded for this date", color = TextSecondary, fontSize = 14.sp)
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(CircleShape)
+                            .background(PrimaryLight.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Filled.DateRange, contentDescription = null, tint = Primary, modifier = Modifier.size(32.dp))
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Text("No Diary Entries", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    Spacer(Modifier.height(4.dp))
+                    Text("No homework logged for this period", color = TextSecondary, fontSize = 13.sp)
                 }
             }
         } else {
@@ -596,13 +856,61 @@ fun ParentDiaryTab(
 
 @Composable
 fun DiaryCardItem(item: ParentDiaryItemDto) {
+    val (subjectColor, emoji) = when {
+        item.subjectName.contains("Math", ignoreCase = true) -> Pair(Color(0xFF6366F1), "🔢")
+        item.subjectName.contains("Sci", ignoreCase = true) -> Pair(Color(0xFF10B981), "🔬")
+        item.subjectName.contains("Eng", ignoreCase = true) -> Pair(Color(0xFFEC4899), "📚")
+        item.subjectName.contains("Soc", ignoreCase = true) || item.subjectName.contains("Hist", ignoreCase = true) -> Pair(Color(0xFFF59E0B), "🌍")
+        item.subjectName.contains("Hindi", ignoreCase = true) || item.subjectName.contains("Lang", ignoreCase = true) -> Pair(Color(0xFF8B5CF6), "✍️")
+        else -> Pair(Primary, "📝")
+    }
+
+    var selectedImageToView by remember { mutableStateOf<String?>(null) }
+
+    if (selectedImageToView != null) {
+        Dialog(onDismissRequest = { selectedImageToView = null }) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Surface,
+                modifier = Modifier.fillMaxWidth().padding(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Attachment Preview", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        IconButton(onClick = { selectedImageToView = null }) {
+                            Icon(Icons.Filled.Close, contentDescription = "Close")
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    AsyncImage(
+                        model = selectedImageToView,
+                        contentDescription = "Full Attachment",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 350.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                    )
+                }
+            }
+        }
+    }
+
     Card(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Surface),
-        elevation = CardDefaults.cardElevation(2.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
+            // Header Row: Subject Badge + Date
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -610,22 +918,85 @@ fun DiaryCardItem(item: ParentDiaryItemDto) {
             ) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = PrimaryLight.copy(alpha = 0.2f)
+                    color = subjectColor.copy(alpha = 0.15f)
                 ) {
-                    Text(
-                        item.subjectName,
-                        color = Primary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(emoji, fontSize = 12.sp)
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            item.subjectName,
+                            color = subjectColor,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 12.sp
+                        )
+                    }
                 }
-                Text(item.assignedDate, fontSize = 11.sp, color = TextMuted)
+                Text(item.assignedDate, fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.Medium)
             }
-            Spacer(Modifier.height(8.dp))
-            Text(item.content, fontSize = 14.sp, color = TextPrimary, lineHeight = 20.sp)
-            Spacer(Modifier.height(8.dp))
-            Text("Assigned by: ${item.authorName}", fontSize = 12.sp, color = TextMuted)
+
+            Spacer(Modifier.height(10.dp))
+
+            // Title / Topic
+            if (item.title.isNotBlank() || item.topic.isNotBlank()) {
+                Text(
+                    text = item.title.ifBlank { item.topic },
+                    fontSize = 15.sp,
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(4.dp))
+            }
+
+            // Description / Content
+            if (item.content.isNotBlank()) {
+                Text(
+                    text = item.content,
+                    fontSize = 13.sp,
+                    color = if (item.title.isNotBlank() || item.topic.isNotBlank()) TextSecondary else TextPrimary,
+                    lineHeight = 19.sp,
+                    fontWeight = FontWeight.Normal
+                )
+            }
+
+            // Attached Images
+            val allAttachments = if (item.attachments.isNotEmpty()) {
+                item.attachments
+            } else if (!item.imageUrl.isNullOrBlank()) {
+                listOf(item.imageUrl)
+            } else {
+                emptyList()
+            }
+
+            if (allAttachments.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    allAttachments.forEach { imgUrl ->
+                        AsyncImage(
+                            model = imgUrl,
+                            contentDescription = "Diary Attachment",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(110.dp, 80.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .border(1.dp, Border, RoundedCornerShape(10.dp))
+                                .clickable { selectedImageToView = imgUrl }
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Person, contentDescription = null, tint = TextMuted, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Assigned by: ${item.authorName}", fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.Medium)
+            }
         }
     }
 }
@@ -643,14 +1014,18 @@ fun ParentAcademicsTab(
     var subTab by remember { mutableStateOf(0) } // 0: Attendance, 1: Exam Results, 2: Timetable
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Academics & Attendance", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+        Text("Academics & Attendance", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
         Spacer(Modifier.height(12.dp))
 
         // Tab Selector Row
-        TabRow(selectedTabIndex = subTab, containerColor = Surface) {
-            Tab(selected = subTab == 0, onClick = { subTab = 0 }, text = { Text("Attendance") })
-            Tab(selected = subTab == 1, onClick = { subTab = 1 }, text = { Text("Report Cards") })
-            Tab(selected = subTab == 2, onClick = { subTab = 2 }, text = { Text("Timetable") })
+        TabRow(
+            selectedTabIndex = subTab,
+            containerColor = Surface,
+            contentColor = Primary
+        ) {
+            Tab(selected = subTab == 0, onClick = { subTab = 0 }, text = { Text("Attendance", fontWeight = FontWeight.Bold) })
+            Tab(selected = subTab == 1, onClick = { subTab = 1 }, text = { Text("Report Cards", fontWeight = FontWeight.Bold) })
+            Tab(selected = subTab == 2, onClick = { subTab = 2 }, text = { Text("Timetable", fontWeight = FontWeight.Bold) })
         }
         Spacer(Modifier.height(16.dp))
 
@@ -659,20 +1034,21 @@ fun ParentAcademicsTab(
                 // Monthly Attendance Summary & Stats
                 val m = attendance.thisMonth
                 Card(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(containerColor = Surface),
+                    elevation = CardDefaults.cardElevation(2.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("This Month Attendance", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        Text("This Month Attendance", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
                         Spacer(Modifier.height(16.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceEvenly
                         ) {
                             StatBox("Attendance", "${m.percentage}%", Primary)
-                            StatBox("Present", "${m.presentDays} Days", Color(0xFF2E7D32))
-                            StatBox("Absent", "${m.absentDays} Days", Color(0xFFC62828))
+                            StatBox("Present", "${m.presentDays} Days", Success)
+                            StatBox("Absent", "${m.absentDays} Days", Danger)
                         }
                     }
                 }
@@ -687,23 +1063,26 @@ fun ParentAcademicsTab(
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(m.calendar.take(15)) { day ->
                             Surface(
-                                shape = RoundedCornerShape(10.dp),
+                                shape = RoundedCornerShape(12.dp),
                                 color = Surface,
+                                border = BorderStroke(1.dp, Border),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(12.dp),
+                                    modifier = Modifier.padding(14.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(day.date, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
-                                    val (color, text) = when (day.status.lowercase()) {
-                                        "present" -> Pair(Color(0xFF2E7D32), "Present")
-                                        "absent" -> Pair(Color(0xFFC62828), "Absent")
-                                        "late" -> Pair(Color(0xFFF57F17), "Late")
-                                        else -> Pair(TextMuted, "N/A")
+                                    val (badgeBg, badgeColor, text) = when (day.status.lowercase()) {
+                                        "present" -> Triple(SuccessLight, Success, "Present")
+                                        "absent" -> Triple(DangerLight, Danger, "Absent")
+                                        "late" -> Triple(WarningLight, Warning, "Late")
+                                        else -> Triple(Background, TextMuted, "N/A")
                                     }
-                                    Text(text, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = color)
+                                    Surface(shape = RoundedCornerShape(6.dp), color = badgeBg) {
+                                        Text(text, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = badgeColor, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+                                    }
                                 }
                             }
                         }
@@ -717,39 +1096,40 @@ fun ParentAcademicsTab(
                         Text("No exam results published yet", color = TextSecondary, fontSize = 14.sp)
                     }
                 } else {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         items(exams.results) { res ->
                             Card(
-                                shape = RoundedCornerShape(14.dp),
+                                shape = RoundedCornerShape(18.dp),
                                 colors = CardDefaults.cardColors(containerColor = Surface),
+                                elevation = CardDefaults.cardElevation(2.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Column(modifier = Modifier.padding(16.dp)) {
+                                Column(modifier = Modifier.padding(18.dp)) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(res.examName, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                                        Text(res.examName, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
                                         Surface(
-                                            shape = RoundedCornerShape(6.dp),
+                                            shape = RoundedCornerShape(8.dp),
                                             color = PrimaryLight.copy(alpha = 0.2f)
                                         ) {
                                             Text(
                                                 "Grade: ${res.grade}",
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.ExtraBold,
                                                 color = Primary,
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                             )
                                         }
                                     }
                                     Spacer(Modifier.height(8.dp))
                                     Text("Score: ${"%.0f".format(res.totalMarks)} / ${"%.0f".format(res.maxMarks)} (${"%.1f".format(res.percentage)}%)", fontSize = 14.sp, color = TextSecondary)
-                                    Spacer(Modifier.height(12.dp))
+                                    Spacer(Modifier.height(14.dp))
                                     Button(
                                         onClick = { onViewReportCard(res) },
-                                        shape = RoundedCornerShape(8.dp),
+                                        shape = RoundedCornerShape(12.dp),
                                         colors = ButtonDefaults.buttonColors(containerColor = Primary),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
@@ -770,19 +1150,20 @@ fun ParentAcademicsTab(
                         Text("No upcoming exams scheduled", color = TextSecondary, fontSize = 14.sp)
                     }
                 } else {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         items(exams.upcoming) { ex ->
                             Card(
-                                shape = RoundedCornerShape(14.dp),
+                                shape = RoundedCornerShape(18.dp),
                                 colors = CardDefaults.cardColors(containerColor = Surface),
+                                elevation = CardDefaults.cardElevation(2.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Column(modifier = Modifier.padding(16.dp)) {
-                                    Text(ex.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                                Column(modifier = Modifier.padding(18.dp)) {
+                                    Text(ex.name, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
                                     if (ex.startDate.isNotBlank() || ex.endDate.isNotBlank()) {
                                         Text("${ex.startDate} - ${ex.endDate}", fontSize = 12.sp, color = TextMuted)
                                     }
-                                    Spacer(Modifier.height(8.dp))
+                                    Spacer(Modifier.height(12.dp))
                                     ex.subjects.forEach { item ->
                                         Row(
                                             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -805,8 +1186,9 @@ fun ParentAcademicsTab(
 @Composable
 fun StatBox(label: String, value: String, color: Color) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = color)
-        Text(label, fontSize = 11.sp, color = TextMuted)
+        Text(value, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = color)
+        Spacer(Modifier.height(2.dp))
+        Text(label, fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -824,33 +1206,64 @@ fun ParentFeesTab(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Summary Cards
+        // Summary Hero Card
         item {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = Surface),
-                elevation = CardDefaults.cardElevation(2.dp),
+                elevation = CardDefaults.cardElevation(3.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(fees.planName, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                    Spacer(Modifier.height(16.dp))
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(fees.planName.ifBlank { "Academic Fee Plan" }, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (fees.pendingDues > 0) WarningLight else SuccessLight
+                        ) {
+                            Text(
+                                if (fees.pendingDues > 0) "Dues Outstanding" else "Cleared",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (fees.pendingDues > 0) Warning else Success,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(18.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        StatBox("Total Plan", "₹${"%.0f".format(fees.totalPlanAmount)}", TextPrimary)
-                        StatBox("Paid So Far", "₹${"%.0f".format(fees.totalPaid)}", Color(0xFF2E7D32))
-                        StatBox("Remaining Due", "₹${"%.0f".format(fees.pendingDues)}", if (fees.pendingDues > 0) Color(0xFFC62828) else Color(0xFF2E7D32))
+                        StatBox("Total Fee", "₹${"%.0f".format(fees.totalPlanAmount)}", TextPrimary)
+                        StatBox("Total Paid", "₹${"%.0f".format(fees.totalPaid)}", Success)
+                        StatBox("Remaining", "₹${"%.0f".format(fees.pendingDues)}", if (fees.pendingDues > 0) Danger else Success)
                     }
                     if (!fees.nextPaymentDate.isNullOrBlank()) {
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            "Next Payment Due: ${fees.nextPaymentDate}",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color(0xFFD84315)
-                        )
+                        Spacer(Modifier.height(14.dp))
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFFFF7ED),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("📅", fontSize = 14.sp)
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "Next Installment Due: ${fees.nextPaymentDate}",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFC2410C)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -864,37 +1277,39 @@ fun ParentFeesTab(
         if (fees.payments.isEmpty()) {
             item {
                 Card(
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(14.dp),
                     colors = CardDefaults.cardColors(containerColor = Surface),
+                    elevation = CardDefaults.cardElevation(1.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("No payment receipts recorded yet", color = TextSecondary, fontSize = 13.sp, modifier = Modifier.padding(16.dp))
+                    Text("No payment receipts recorded yet", color = TextSecondary, fontSize = 13.sp, modifier = Modifier.padding(18.dp))
                 }
             }
         } else {
             items(fees.payments) { p ->
                 Card(
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(14.dp),
                     colors = CardDefaults.cardColors(containerColor = Surface),
+                    elevation = CardDefaults.cardElevation(2.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
-                        modifier = Modifier.padding(14.dp),
+                        modifier = Modifier.padding(16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
                             Text("Receipt #${p.receiptNo.ifBlank { "N/A" }}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                             Text("${p.paymentDate} • ${p.paymentMethod.uppercase()}", fontSize = 12.sp, color = TextSecondary)
-                            Text("₹${"%.0f".format(p.amount)}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                            Text("₹${"%.0f".format(p.amount)}", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Success)
                         }
                         Button(
                             onClick = { onViewReceipt(p) },
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(10.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = PrimaryLight.copy(alpha = 0.2f)),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
                         ) {
-                            Text("View", color = Primary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("View", color = PrimaryDark, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
                     }
                 }
@@ -915,8 +1330,9 @@ fun ReportCardDialog(
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Card(
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(22.dp),
             colors = CardDefaults.cardColors(containerColor = Surface),
+            elevation = CardDefaults.cardElevation(6.dp),
             modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp)
         ) {
             Column(
@@ -927,9 +1343,9 @@ fun ReportCardDialog(
                 // Header
                 Text(
                     text = "ACADEMIC REPORT CARD",
-                    fontSize = 18.sp,
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    color = Primary,
+                    color = PrimaryDark,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -943,7 +1359,7 @@ fun ReportCardDialog(
                 )
                 Spacer(Modifier.height(12.dp))
                 HorizontalDivider(color = Border)
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(10.dp))
 
                 // Student Info Grid
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -954,34 +1370,34 @@ fun ReportCardDialog(
                     Text("Roll No: ${student?.rollNo ?: "N/A"}", fontSize = 12.sp, color = TextSecondary)
                     Text("Adm No: ${student?.admissionNo ?: student?.knownId ?: "N/A"}", fontSize = 12.sp, color = TextSecondary)
                 }
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(14.dp))
 
                 // Subject Scores Table
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(10.dp),
                     color = Background,
                     border = BorderStroke(1.dp, Border)
                 ) {
-                    Column(Modifier.padding(8.dp)) {
+                    Column(Modifier.padding(10.dp)) {
                         Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Subject", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = TextSecondary, modifier = Modifier.weight(2f))
                             Text("Max", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = TextSecondary, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
                             Text("Scored", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = TextSecondary, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
                         }
                         reportCard.subjectScores.forEach { sc ->
-                            Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(sc.subject.ifBlank { "Subject" }, fontSize = 12.sp, color = TextPrimary, modifier = Modifier.weight(2f))
                                 Text("${sc.maxMarks.toInt()}", fontSize = 12.sp, color = TextSecondary, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
-                                Text("${sc.marks.toInt()}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Primary, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+                                Text("${sc.marks.toInt()}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = PrimaryDark, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
                             }
                         }
                     }
                 }
 
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(14.dp))
                 // Summary Block
                 Row(
-                    Modifier.fillMaxWidth().background(PrimaryLight.copy(alpha = 0.2f), RoundedCornerShape(8.dp)).padding(10.dp),
+                    Modifier.fillMaxWidth().background(PrimaryLight.copy(alpha = 0.18f), RoundedCornerShape(10.dp)).padding(12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -989,24 +1405,24 @@ fun ReportCardDialog(
                         Text("Total: ${"%.0f".format(reportCard.totalMarks)} / ${"%.0f".format(reportCard.maxMarks)}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                         Text("Percentage: ${"%.1f".format(reportCard.percentage)}%", fontSize = 12.sp, color = TextSecondary)
                     }
-                    Surface(shape = RoundedCornerShape(6.dp), color = Primary) {
-                        Text("Grade: ${reportCard.grade}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+                    Surface(shape = RoundedCornerShape(8.dp), color = PrimaryDark) {
+                        Text("Grade: ${reportCard.grade}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp))
                     }
                 }
 
                 if (!reportCard.remarks.isNullOrBlank()) {
-                    Spacer(Modifier.height(8.dp))
-                    Text("Remarks: ${reportCard.remarks}", fontSize = 12.sp, color = TextSecondary)
+                    Spacer(Modifier.height(10.dp))
+                    Text("Teacher Remarks: ${reportCard.remarks}", fontSize = 12.sp, color = TextSecondary)
                 }
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(18.dp))
                 Button(
                     onClick = onDismiss,
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
                 ) {
-                    Text("Close", fontWeight = FontWeight.Bold)
+                    Text("Close", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
             }
         }
@@ -1026,19 +1442,21 @@ fun PaymentReceiptDialog(
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Card(
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(22.dp),
             colors = CardDefaults.cardColors(containerColor = Surface),
+            elevation = CardDefaults.cardElevation(6.dp),
             modifier = Modifier.fillMaxWidth().padding(16.dp)
         ) {
             Column(
-                modifier = Modifier.padding(20.dp),
+                modifier = Modifier.padding(22.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(schoolName.ifBlank { "School Fee Receipt" }, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary, textAlign = TextAlign.Center)
-                Text("OFFICIAL PAYMENT RECEIPT", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Primary, letterSpacing = 1.sp)
-                Spacer(Modifier.height(12.dp))
+                Text(schoolName.ifBlank { "School Fee Receipt" }, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(2.dp))
+                Text("OFFICIAL PAYMENT RECEIPT", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = PrimaryDark, letterSpacing = 1.sp)
+                Spacer(Modifier.height(14.dp))
                 HorizontalDivider(color = Border)
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(14.dp))
 
                 ReceiptRow("Receipt No", "#${receipt.receiptNo.ifBlank { "N/A" }}")
                 ReceiptRow("Date", receipt.paymentDate)
@@ -1048,23 +1466,23 @@ fun PaymentReceiptDialog(
                 if (!receipt.notes.isNullOrBlank()) {
                     ReceiptRow("Notes", receipt.notes)
                 }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(10.dp))
                 HorizontalDivider(color = Border)
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(10.dp))
 
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Total Paid Amount", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                    Text("₹${"%.0f".format(receipt.amount)}", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF2E7D32))
+                    Text("₹${"%.0f".format(receipt.amount)}", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Success)
                 }
 
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(22.dp))
                 Button(
                     onClick = onDismiss,
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
                 ) {
-                    Text("Done", fontWeight = FontWeight.Bold)
+                    Text("Done", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
             }
         }

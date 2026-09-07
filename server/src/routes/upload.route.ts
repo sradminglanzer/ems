@@ -5,5 +5,6 @@ import { authenticateToken } from '../middleware/auth.middleware';
 const router = Router();
 
 router.get('/presigned-url', authenticateToken, uploadController.getPresignedUrl);
+router.post('/image', authenticateToken, uploadController.uploadImageDirect);
 
 export default router;

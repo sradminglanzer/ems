@@ -93,7 +93,7 @@ export const getFeeGroupDetails = async (req: AuthRequest, res: Response, next: 
 
         let memberIdObjects: ObjectId[] = [];
         if (academicYearId && group.yearlyRosters) {
-            const roster = (group.yearlyRosters as any[]).find((r: any) => r.academicYearId.toString() === academicYearId);
+            const roster = (group.yearlyRosters as any[]).find((r: any) => r.academicYearId && r.academicYearId.toString() === academicYearId);
             if (roster && roster.members) {
                 memberIdObjects = (roster.members as any[]).map((mId: any) => new ObjectId(mId.toString()));
             }
@@ -101,11 +101,40 @@ export const getFeeGroupDetails = async (req: AuthRequest, res: Response, next: 
             memberIdObjects = (group.members as any[]).map((mId: any) => new ObjectId(mId.toString()));
         }
 
+        const memberConditions: any[] = [
+            { feeGroupId: groupIdObj }
+        ];
+        if (memberIdObjects.length > 0) {
+            memberConditions.push({ _id: { $in: memberIdObjects } });
+        }
+
+        let memberQuery: any = {
+            entityId: entityIdObj,
+            status: { $ne: 'checked_out' },
+            $or: memberConditions
+        };
+
+        if (academicYearId) {
+            memberQuery = {
+                entityId: entityIdObj,
+                status: { $ne: 'checked_out' },
+                $and: [
+                    { $or: memberConditions },
+                    {
+                        $or: [
+                            { academicYearId: new ObjectId(academicYearId) },
+                            { academicYearId: academicYearId },
+                            { academicYearId: { $exists: false } },
+                            { academicYearId: null }
+                        ]
+                    }
+                ]
+            };
+        }
+
         // Parallel fetch using services — no raw DB access
         const [members, feeStructures, academicYears, allGroups] = await Promise.all([
-            memberIdObjects.length > 0
-                ? memberService.get({ _id: { $in: memberIdObjects }, entityId: entityIdObj } as any)
-                : Promise.resolve([]),
+            memberService.get(memberQuery),
             feeStructureService.get({ feeGroupId: groupIdObj, entityId: entityIdObj } as any),
             academicYearService.getByEntity(req.user!.entityId as string),
             feeGroupService.getByEntity(req.user!.entityId as string)

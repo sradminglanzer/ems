@@ -583,7 +583,7 @@ export const getStudentDashboard = async (req: AuthRequest, res: Response, next:
                 entityId: new ObjectId(entityId),
                 'records.memberId': new ObjectId(memberId)
             }),
-            diaryService.get({
+            diaryService.getDiariesPopulated({
                 entityId: new ObjectId(entityId),
                 ...(student.feeGroupId && { classId: new ObjectId(student.feeGroupId) })
             }),
@@ -634,10 +634,14 @@ export const getStudentDashboard = async (req: AuthRequest, res: Response, next:
         // Diary items formatting
         const diaryItems = (todayDiary || []).map((d: any) => ({
             _id: d._id?.toString() || '',
-            subjectName: d.subjectName || 'General',
-            content: d.description || d.title || '',
-            assignedDate: d.date ? new Date(d.date).toISOString().split('T')[0] : '',
-            authorName: 'Class Teacher'
+            subjectName: d.subjectId?.name || d.subjectName || 'General',
+            title: d.title || d.topic || '',
+            topic: d.title || d.topic || '',
+            content: d.description || d.content || d.title || '',
+            attachments: Array.isArray(d.attachments) ? d.attachments : [],
+            imageUrl: Array.isArray(d.attachments) && d.attachments.length > 0 ? d.attachments[0] : (d.imageUrl || null),
+            assignedDate: d.date ? new Date(d.date).toISOString().split('T')[0] : (d.createdAt ? new Date(d.createdAt).toISOString().split('T')[0] : ''),
+            authorName: d.createdBy?.name || 'Class Teacher'
         }));
 
         // Exam results formatting
@@ -683,6 +687,49 @@ export const getStudentDashboard = async (req: AuthRequest, res: Response, next:
             notes: p.notes || null
         }));
 
+        // Dynamic Notices & Announcements Query
+        let notices: any[] = [];
+        try {
+            const db = getDB();
+            if (db) {
+                const noticeDocs = await db.collection('notices')
+                    .find({ entityId: student.entityId, status: { $ne: 'archived' } })
+                    .sort({ createdAt: -1 })
+                    .limit(5)
+                    .toArray();
+
+                if (noticeDocs.length > 0) {
+                    notices = noticeDocs.map((n: any) => ({
+                        id: n._id?.toString() || '',
+                        title: n.title || 'Announcement',
+                        category: n.category || 'General',
+                        date: n.createdAt ? new Date(n.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Recent',
+                        content: n.content || ''
+                    }));
+                } else {
+                    // Check diary for announcements / reminders for this class or school
+                    const diaryAnnouncements = await db.collection('diary')
+                        .find({
+                            entityId: student.entityId,
+                            type: { $in: ['announcement', 'reminder'] }
+                        })
+                        .sort({ date: -1 })
+                        .limit(5)
+                        .toArray();
+
+                    if (diaryAnnouncements.length > 0) {
+                        notices = diaryAnnouncements.map((d: any) => ({
+                            id: d._id?.toString() || '',
+                            title: d.title || (d.type === 'reminder' ? 'Important Reminder' : 'School Announcement'),
+                            category: d.type === 'reminder' ? 'Reminder' : 'Academic',
+                            date: d.date ? new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Recent',
+                            content: d.content || d.description || ''
+                        }));
+                    }
+                }
+            }
+        } catch (_e) { /* ignore */ }
+
         return res.status(HTTP_STATUS.OK).json({
             student: {
                 _id: student._id?.toString() || '',
@@ -725,22 +772,7 @@ export const getStudentDashboard = async (req: AuthRequest, res: Response, next:
                 nextPaymentDate: null,
                 payments
             },
-            notices: [
-                {
-                    id: '1',
-                    title: 'Upcoming Parent-Teacher Meeting',
-                    category: 'Academic',
-                    date: 'This Saturday',
-                    content: 'Dear Parents, PTM will be conducted this Saturday from 9:30 AM to 1:00 PM.'
-                },
-                {
-                    id: '2',
-                    title: 'Annual Sports Day Registrations Open',
-                    category: 'Events',
-                    date: 'Active',
-                    content: 'Students interested in track and field events are requested to register with the sports coordinator.'
-                }
-            ]
+            notices
         });
     } catch (error) {
         next(error);
