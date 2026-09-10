@@ -9,11 +9,13 @@ import com.srgs.ems.data.api.*
 import com.srgs.ems.data.repository.DiaryRepository
 import com.srgs.ems.data.repository.FeeGroupRepository
 import com.srgs.ems.data.repository.SaveResult
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -46,12 +48,12 @@ class ClassDetailViewModel(application: Application) : AndroidViewModel(applicat
     val searchQuery = MutableStateFlow("")
 
     // Post / Edit Diary Form States
+    val selectedDiaryDate = MutableStateFlow(LocalDate.now().toString())
     val editingDiaryId = MutableStateFlow<String?>(null)
     val postType = MutableStateFlow("homework")
     val postSubjectId = MutableStateFlow<String?>(null)
     val postTitle = MutableStateFlow("")
     val postDescription = MutableStateFlow("")
-    val postDueDate = MutableStateFlow(LocalDate.now().plusDays(1).toString())
     val postAttachments = MutableStateFlow<List<String>>(emptyList())
     val isPosting = MutableStateFlow(false)
 
@@ -73,6 +75,26 @@ class ClassDetailViewModel(application: Application) : AndroidViewModel(applicat
             _classId.value = id
             loadClassData(id)
         }
+    }
+
+    fun selectDate(dateStr: String) {
+        selectedDiaryDate.value = dateStr
+    }
+
+    fun goToPreviousDay() {
+        try {
+            selectedDiaryDate.value = LocalDate.parse(selectedDiaryDate.value).minusDays(1).toString()
+        } catch (_: Exception) {}
+    }
+
+    fun goToNextDay() {
+        try {
+            selectedDiaryDate.value = LocalDate.parse(selectedDiaryDate.value).plusDays(1).toString()
+        } catch (_: Exception) {}
+    }
+
+    fun goToToday() {
+        selectedDiaryDate.value = LocalDate.now().toString()
     }
 
     fun loadClassData(id: String = _classId.value) {
@@ -97,13 +119,12 @@ class ClassDetailViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    fun startPostDiary() {
+    fun startPostDiary(subjectId: String? = null) {
         editingDiaryId.value = null
         postType.value = "homework"
-        postSubjectId.value = _subjects.value.firstOrNull()?._id
+        postSubjectId.value = subjectId ?: _subjects.value.firstOrNull()?._id
         postTitle.value = ""
         postDescription.value = ""
-        postDueDate.value = LocalDate.now().plusDays(1).toString()
         postAttachments.value = emptyList()
     }
 
@@ -113,7 +134,6 @@ class ClassDetailViewModel(application: Application) : AndroidViewModel(applicat
         postSubjectId.value = diary.subjectId?._id ?: _subjects.value.firstOrNull()?._id
         postTitle.value = diary.title
         postDescription.value = diary.description
-        postDueDate.value = diary.dueDate?.take(10) ?: LocalDate.now().plusDays(1).toString()
         postAttachments.value = diary.attachments
     }
 
@@ -138,35 +158,16 @@ class ClassDetailViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             try {
                 isUploadingImage.value = true
-                val inputStream = context.contentResolver.openInputStream(uri)
-                val originalBitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
-                inputStream?.close()
-
-                if (originalBitmap == null) {
-                    snackbarEvent.emit("❌ Failed to decode selected image")
-                    isUploadingImage.value = false
-                    return@launch
+                val uploadResult = withContext(Dispatchers.IO) {
+                    val cr = context.contentResolver
+                    val mime = cr.getType(uri) ?: "image/jpeg"
+                    val bytes = cr.openInputStream(uri)?.use { it.readBytes() }
+                        ?: throw Exception("Could not read image file")
+                    val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                    val dataUri = "data:$mime;base64,$base64"
+                    diaryRepo.uploadImage(dataUri, "diary_${System.currentTimeMillis()}.jpg")
                 }
 
-                // Scale image down to max 1280px maintaining aspect ratio
-                val maxDim = 1280
-                val width = originalBitmap.width
-                val height = originalBitmap.height
-                val scaledBitmap = if (width > maxDim || height > maxDim) {
-                    val ratio = width.toFloat() / height.toFloat()
-                    val newW = if (ratio >= 1f) maxDim else (maxDim * ratio).toInt()
-                    val newH = if (ratio >= 1f) (maxDim / ratio).toInt() else maxDim
-                    android.graphics.Bitmap.createScaledBitmap(originalBitmap, newW, newH, true)
-                } else {
-                    originalBitmap
-                }
-
-                val baos = java.io.ByteArrayOutputStream()
-                scaledBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, baos)
-                val imageBytes = baos.toByteArray()
-                val base64String = "data:image/jpeg;base64," + android.util.Base64.encodeToString(imageBytes, android.util.Base64.NO_WRAP)
-
-                val uploadResult = diaryRepo.uploadImage(base64String, "diary_${System.currentTimeMillis()}.jpg")
                 uploadResult.onSuccess { url ->
                     addAttachment(url)
                     snackbarEvent.emit("📸 Photo attached successfully!")
@@ -187,9 +188,10 @@ class ClassDetailViewModel(application: Application) : AndroidViewModel(applicat
         val cId = _classId.value
         val yearId = AcademicYearManager.selectedYearId
         val editId = editingDiaryId.value
+        val dateStr = selectedDiaryDate.value
 
-        if (title.isEmpty() || desc.isEmpty() || cId.isEmpty()) {
-            viewModelScope.launch { snackbarEvent.emit("Title and instructions are required") }
+        if (title.isEmpty() || cId.isEmpty()) {
+            viewModelScope.launch { snackbarEvent.emit("Homework title/topic is required") }
             return
         }
 
@@ -201,7 +203,7 @@ class ClassDetailViewModel(application: Application) : AndroidViewModel(applicat
                     description = desc,
                     type = postType.value,
                     subjectId = postSubjectId.value?.ifBlank { null },
-                    dueDate = if (postType.value == "homework" || postType.value == "test") postDueDate.value else null,
+                    date = dateStr,
                     attachments = postAttachments.value
                 )
                 diaryRepo.updateDiaryEntry(editId, req)
@@ -213,7 +215,7 @@ class ClassDetailViewModel(application: Application) : AndroidViewModel(applicat
                     type = postType.value,
                     title = title,
                     description = desc,
-                    dueDate = if (postType.value == "homework" || postType.value == "test") postDueDate.value else null,
+                    date = dateStr,
                     attachments = postAttachments.value
                 )
                 diaryRepo.createDiaryEntry(req)
@@ -221,7 +223,7 @@ class ClassDetailViewModel(application: Application) : AndroidViewModel(applicat
 
             when (res) {
                 is SaveResult.Success -> {
-                    snackbarEvent.emit(if (editId != null) "✅ Diary entry updated successfully!" else "✅ Diary entry posted successfully!")
+                    snackbarEvent.emit(if (editId != null) "✅ Diary entry updated successfully!" else "✅ Diary entry saved!")
                     editingDiaryId.value = null
                     postTitle.value = ""
                     postDescription.value = ""

@@ -48,6 +48,7 @@ object MainRoute {
     const val FeeGroups     = "main_fee_groups"
     const val FeeStructures = "main_fee_structures"
     const val Exams         = "main_exams"
+    const val Subjects      = "main_subjects"
     const val AcademicYears = "main_academic_years"
     const val Settings      = "main_settings"
     const val ClassDetail   = "main_class_detail/{classId}"
@@ -300,11 +301,12 @@ private fun buildDrawerSections(session: UserSession?): List<DrawerSection> {
             DrawerItem(MainRoute.Reports,       "Business Reports",  "📊"),
         )),
         DrawerSection("MANAGEMENT", listOf(
-            DrawerItem(MainRoute.Staff,         "Staff Management",  "👤", visible = !isTeacher),
-            DrawerItem(MainRoute.FeeGroups,     labels.groupPlural,  labels.groupIcon, visible = !(session?.isGym ?: false)),
-            DrawerItem(MainRoute.Exams,         "Exams & Results",   "📝", visible = !isBusiness),
-            DrawerItem(MainRoute.AcademicYears, "Academic Years",    "📅", visible = !isBusiness && isAdmin),
-            DrawerItem(MainRoute.Settings,      "Settings",          "⚙️",  visible = isAdmin),
+            DrawerItem(MainRoute.Staff,         "Staff Management",   "👤", visible = !isTeacher),
+            DrawerItem(MainRoute.FeeGroups,     labels.groupPlural,   labels.groupIcon, visible = !(session?.isGym ?: false)),
+            DrawerItem(MainRoute.Subjects,      "Subjects Directory", "📚", visible = !isBusiness),
+            DrawerItem(MainRoute.Exams,         "Exams & Results",    "📝", visible = !isBusiness),
+            DrawerItem(MainRoute.AcademicYears, "Academic Years",     "📅", visible = !isBusiness && isAdmin),
+            DrawerItem(MainRoute.Settings,      "Settings",           "⚙️",  visible = isAdmin),
         )),
     )
 }
@@ -403,7 +405,8 @@ private fun MainNavHost(navController: NavHostController, onSignOut: () -> Unit)
                 onBack = { navController.popBackStack() },
                 onNavigateToMemberDetail = { id -> navController.navigate("main_member_detail/$id") },
                 onNavigateToMemberAdd = { groupId -> navController.navigate("main_add_member?groupId=$groupId") },
-                onNavigateToAttendance = { navController.navigate(MainRoute.Attendance) }
+                onNavigateToAttendance = { navController.navigate(MainRoute.Attendance) },
+                onNavigateToSubjects = { navController.navigate(MainRoute.Subjects) }
             )
         }
         composable(MainRoute.FeeStructures) {
@@ -411,6 +414,7 @@ private fun MainNavHost(navController: NavHostController, onSignOut: () -> Unit)
                 onNavigateToMembers = { navController.navigate(MainRoute.Members) }
             )
         }
+        composable(MainRoute.Subjects)      { SubjectsScreen(onBack = { navController.popBackStack() }) }
         composable(MainRoute.Exams)         { ExamsScreen() }
         composable(MainRoute.AcademicYears) { AcademicYearsScreen() }
         composable(MainRoute.Settings)      { SettingsScreen() }

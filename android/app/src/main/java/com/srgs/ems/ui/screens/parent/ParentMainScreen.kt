@@ -34,6 +34,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.srgs.ems.data.SessionManager
 import com.srgs.ems.data.api.*
+import com.srgs.ems.ui.screens.main.getSubjectStyle
 import com.srgs.ems.ui.theme.*
 import com.srgs.ems.viewmodel.ParentViewModel
 import java.text.SimpleDateFormat
@@ -229,7 +230,9 @@ fun ParentMainScreen(
                     ParentTab.DIARY -> ParentDiaryTab(
                         diaryItems = data.diary,
                         selectedDate = viewModel.selectedDiaryDate.collectAsState().value,
-                        onSelectDate = { viewModel.selectDiaryDate(it) }
+                        onSelectDate = { viewModel.selectDiaryDate(it) },
+                        completedHomeworkIds = viewModel.completedHomeworkIds.collectAsState().value,
+                        onToggleHomeworkCompleted = { viewModel.toggleHomeworkCompleted(it) }
                     )
                     ParentTab.ACADEMICS -> ParentAcademicsTab(
                         attendance = data.attendance,
@@ -750,9 +753,60 @@ fun ParentHomeTab(
                         }
                     }
                 } else {
-                    data.diary.take(2).forEach { item ->
-                        DiaryCardItem(item)
-                        Spacer(Modifier.height(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = Surface,
+                        border = BorderStroke(1.dp, Border),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            data.diary.take(3).forEachIndexed { index, item ->
+                                val (subjEmoji, subjColor) = getSubjectStyle(item.subjectName)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onNavigateToDiary() }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = subjColor.copy(alpha = 0.12f),
+                                        border = BorderStroke(0.5.dp, subjColor.copy(alpha = 0.35f))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(subjEmoji, fontSize = 11.sp)
+                                            Spacer(Modifier.width(3.dp))
+                                            Text(
+                                                text = item.subjectName,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = subjColor,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(
+                                        text = item.displayTitle,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = TextPrimary,
+                                        modifier = Modifier.weight(1f),
+                                        maxLines = 1
+                                    )
+                                }
+                                if (index < data.diary.take(3).lastIndex) {
+                                    HorizontalDivider(
+                                        color = Border.copy(alpha = 0.5f),
+                                        modifier = Modifier.padding(horizontal = 8.dp)
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -810,21 +864,203 @@ fun QuickActionTile(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TAB 2: 📖 CLASS DIARY (Interactive Calendar & Subject Badges)
+// TAB 2: 📖 CLASS DIARY (Weekly Date Strip, Homework Checklist & Photo Viewer)
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 fun ParentDiaryTab(
     diaryItems: List<ParentDiaryItemDto>,
     selectedDate: String,
-    onSelectDate: (String) -> Unit
+    onSelectDate: (String) -> Unit,
+    completedHomeworkIds: Set<String> = emptySet(),
+    onToggleHomeworkCompleted: (String) -> Unit = {}
 ) {
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Class Diary & Homework", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
-        Text("Daily assignments, class tasks and teacher notes", fontSize = 13.sp, color = TextSecondary)
-        Spacer(Modifier.height(16.dp))
+    val todayStr = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()) }
+    var showAllDates by remember { mutableStateOf(false) }
 
-        if (diaryItems.isEmpty()) {
+    val calendarDays = remember {
+        val list = mutableListOf<Pair<String, Pair<String, String>>>() // (fullDate "yyyy-MM-dd", (dayName "MON", dayNum "10"))
+        val cal = Calendar.getInstance()
+        cal.add(Calendar.DAY_OF_MONTH, -4)
+        for (i in 0..6) {
+            val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(cal.time)
+            val dayName = SimpleDateFormat("EEE", Locale.getDefault()).format(cal.time).uppercase()
+            val dayNum = SimpleDateFormat("dd", Locale.getDefault()).format(cal.time)
+            list.add(Pair(dateStr, Pair(dayName, dayNum)))
+            cal.add(Calendar.DAY_OF_MONTH, 1)
+        }
+        list
+    }
+
+    val activeFilteredItems = remember(diaryItems, selectedDate, showAllDates) {
+        if (showAllDates) diaryItems
+        else {
+            val filtered = diaryItems.filter {
+                it.assignedDate.take(10) == selectedDate.take(10)
+            }
+            if (filtered.isEmpty() && diaryItems.isNotEmpty() && selectedDate == todayStr) {
+                // If today is empty, fallback to showing all recent so parents don't see a blank screen
+                diaryItems
+            } else {
+                filtered
+            }
+        }
+    }
+
+    val totalItemsCount = activeFilteredItems.size
+    val completedCount = activeFilteredItems.count { completedHomeworkIds.contains(it.id) }
+    val progress = if (totalItemsCount > 0) completedCount.toFloat() / totalItemsCount.toFloat() else 0f
+
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text("Class Diary & Homework", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
+                Text("Daily assignments, class tasks and teacher notes", fontSize = 12.sp, color = TextSecondary)
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        // ── Horizontal Weekly Date Strip ─────────────────────────────────
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // "All" pill
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = if (showAllDates) Primary else Surface,
+                border = BorderStroke(1.dp, if (showAllDates) Primary else Border),
+                modifier = Modifier
+                    .height(60.dp)
+                    .clickable {
+                        showAllDates = true
+                    }
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.padding(horizontal = 14.dp)
+                ) {
+                    Text(
+                        text = "ALL\nTASKS",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (showAllDates) Color.White else TextPrimary,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 14.sp
+                    )
+                }
+            }
+
+            // 7 Days
+            calendarDays.forEach { (dateStr, dayPair) ->
+                val (dayName, dayNum) = dayPair
+                val isSelected = !showAllDates && (selectedDate.take(10) == dateStr)
+                val isToday = dateStr == todayStr
+                val hasEntries = diaryItems.any { it.assignedDate.take(10) == dateStr }
+
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isSelected) Primary else Surface,
+                    border = BorderStroke(1.dp, if (isSelected) Primary else if (isToday) Primary.copy(alpha = 0.5f) else Border),
+                    shadowElevation = if (isSelected) 3.dp else 0.dp,
+                    modifier = Modifier
+                        .width(52.dp)
+                        .height(60.dp)
+                        .clickable {
+                            showAllDates = false
+                            onSelectDate(dateStr)
+                        }
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(vertical = 6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = if (isToday) "TODAY" else dayName,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isSelected) Color.White.copy(alpha = 0.85f) else if (isToday) Primary else TextMuted
+                        )
+                        Text(
+                            text = dayNum,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isSelected) Color.White else TextPrimary
+                        )
+                        Box(
+                            modifier = Modifier
+                                .size(4.dp)
+                                .clip(CircleShape)
+                                .background(if (hasEntries) (if (isSelected) Color.White else Primary) else Color.Transparent)
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        // ── Progress & Checklist Summary Banner ──────────────────────────
+        if (activeFilteredItems.isNotEmpty()) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = Surface,
+                border = BorderStroke(1.dp, Border),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "📝 $totalItemsCount ${if (totalItemsCount == 1) "Task" else "Tasks"} Listed",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                            if (showAllDates) {
+                                Spacer(Modifier.width(6.dp))
+                                Surface(shape = RoundedCornerShape(4.dp), color = Primary.copy(alpha = 0.1f)) {
+                                    Text("Showing All", fontSize = 10.sp, color = Primary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                                }
+                            }
+                        }
+
+                        Text(
+                            text = "$completedCount/$totalItemsCount Completed",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (completedCount == totalItemsCount && totalItemsCount > 0) Success else Primary
+                        )
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp)),
+                        color = if (completedCount == totalItemsCount && totalItemsCount > 0) Success else Primary,
+                        trackColor = Border
+                    )
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+        }
+
+        // ── Diary Cards Feed ─────────────────────────────────────────────
+        if (activeFilteredItems.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(
@@ -837,166 +1073,235 @@ fun ParentDiaryTab(
                         Icon(Icons.Filled.DateRange, contentDescription = null, tint = Primary, modifier = Modifier.size(32.dp))
                     }
                     Spacer(Modifier.height(14.dp))
-                    Text("No Diary Entries", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    Text("No Diary Entries for this date", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                     Spacer(Modifier.height(4.dp))
-                    Text("No homework logged for this period", color = TextSecondary, fontSize = 13.sp)
+                    Text("No homework or class alerts logged for $selectedDate", color = TextSecondary, fontSize = 13.sp)
+                    if (!showAllDates && diaryItems.isNotEmpty()) {
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedButton(onClick = { showAllDates = true }) {
+                            Text("View All Recent Entries (${diaryItems.size})")
+                        }
+                    }
                 }
             }
         } else {
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(diaryItems) { item ->
-                    DiaryCardItem(item)
-                }
-            }
-        }
-    }
-}
+            var selectedImageToView by remember { mutableStateOf<String?>(null) }
 
-@Composable
-fun DiaryCardItem(item: ParentDiaryItemDto) {
-    val (subjectColor, emoji) = when {
-        item.subjectName.contains("Math", ignoreCase = true) -> Pair(Color(0xFF6366F1), "🔢")
-        item.subjectName.contains("Sci", ignoreCase = true) -> Pair(Color(0xFF10B981), "🔬")
-        item.subjectName.contains("Eng", ignoreCase = true) -> Pair(Color(0xFFEC4899), "📚")
-        item.subjectName.contains("Soc", ignoreCase = true) || item.subjectName.contains("Hist", ignoreCase = true) -> Pair(Color(0xFFF59E0B), "🌍")
-        item.subjectName.contains("Hindi", ignoreCase = true) || item.subjectName.contains("Lang", ignoreCase = true) -> Pair(Color(0xFF8B5CF6), "✍️")
-        else -> Pair(Primary, "📝")
-    }
-
-    var selectedImageToView by remember { mutableStateOf<String?>(null) }
-
-    if (selectedImageToView != null) {
-        Dialog(onDismissRequest = { selectedImageToView = null }) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = Surface,
-                modifier = Modifier.fillMaxWidth().padding(16.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+            if (selectedImageToView != null) {
+                Dialog(onDismissRequest = { selectedImageToView = null }) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Surface,
+                        modifier = Modifier.fillMaxWidth().padding(16.dp)
                     ) {
-                        Text("Attachment Preview", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        IconButton(onClick = { selectedImageToView = null }) {
-                            Icon(Icons.Filled.Close, contentDescription = "Close")
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Attachment Preview", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                IconButton(onClick = { selectedImageToView = null }) {
+                                    Icon(Icons.Filled.Close, contentDescription = "Close")
+                                }
+                            }
+                            Spacer(Modifier.height(12.dp))
+                            AsyncImage(
+                                model = selectedImageToView,
+                                contentDescription = "Full Attachment",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 380.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                            )
                         }
                     }
-                    Spacer(Modifier.height(12.dp))
-                    AsyncImage(
-                        model = selectedImageToView,
-                        contentDescription = "Full Attachment",
-                        contentScale = ContentScale.Fit,
+                }
+            }
+
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = Surface,
+                border = BorderStroke(1.dp, Border),
+                tonalElevation = 1.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Ledger Header Row
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 350.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                    )
-                }
-            }
-        }
-    }
-
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            // Header Row: Subject Badge + Date
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = subjectColor.copy(alpha = 0.15f)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            .background(Primary.copy(alpha = 0.05f))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(emoji, fontSize = 12.sp)
-                        Spacer(Modifier.width(4.dp))
                         Text(
-                            item.subjectName,
-                            color = subjectColor,
+                            text = "SUBJECT",
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            fontSize = 12.sp
+                            color = Primary,
+                            modifier = Modifier.width(105.dp)
                         )
-                    }
-                }
-                Text(item.assignedDate, fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.Medium)
-            }
-
-            Spacer(Modifier.height(10.dp))
-
-            // Title / Topic
-            if (item.title.isNotBlank() || item.topic.isNotBlank()) {
-                Text(
-                    text = item.title.ifBlank { item.topic },
-                    fontSize = 15.sp,
-                    color = TextPrimary,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(Modifier.height(4.dp))
-            }
-
-            // Description / Content
-            if (item.content.isNotBlank()) {
-                Text(
-                    text = item.content,
-                    fontSize = 13.sp,
-                    color = if (item.title.isNotBlank() || item.topic.isNotBlank()) TextSecondary else TextPrimary,
-                    lineHeight = 19.sp,
-                    fontWeight = FontWeight.Normal
-                )
-            }
-
-            // Attached Images
-            val allAttachments = if (item.attachments.isNotEmpty()) {
-                item.attachments
-            } else if (!item.imageUrl.isNullOrBlank()) {
-                listOf(item.imageUrl)
-            } else {
-                emptyList()
-            }
-
-            if (allAttachments.isNotEmpty()) {
-                Spacer(Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    allAttachments.forEach { imgUrl ->
-                        AsyncImage(
-                            model = imgUrl,
-                            contentDescription = "Diary Attachment",
-                            contentScale = ContentScale.Crop,
+                        Box(
                             modifier = Modifier
-                                .size(110.dp, 80.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .border(1.dp, Border, RoundedCornerShape(10.dp))
-                                .clickable { selectedImageToView = imgUrl }
+                                .width(1.dp)
+                                .height(14.dp)
+                                .background(Border)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            text = "HOMEWORK / CLASSWORK DETAILS",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Primary,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            text = "STATUS",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextMuted
                         )
                     }
-                }
-            }
 
-            Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Person, contentDescription = null, tint = TextMuted, modifier = Modifier.size(14.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Assigned by: ${item.authorName}", fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.Medium)
+                    HorizontalDivider(color = Border)
+
+                    activeFilteredItems.forEachIndexed { index, item ->
+                        val isCompleted = completedHomeworkIds.contains(item.id)
+                        val (subjEmoji, subjColor) = getSubjectStyle(item.subjectName)
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            // Column 1: Subject Pill
+                            Box(
+                                modifier = Modifier.width(105.dp),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = subjColor.copy(alpha = 0.12f),
+                                    border = BorderStroke(0.5.dp, subjColor.copy(alpha = 0.35f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(subjEmoji, fontSize = 11.sp)
+                                        Spacer(Modifier.width(3.dp))
+                                        Text(
+                                            text = item.subjectName,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = subjColor,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Vertical Divider Line between columns
+                            Box(
+                                modifier = Modifier
+                                    .width(1.dp)
+                                    .height(36.dp)
+                                    .background(Border.copy(alpha = 0.6f))
+                            )
+
+                            Spacer(Modifier.width(10.dp))
+
+                            // Column 2: Homework Content
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = item.displayTitle,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isCompleted) TextMuted else TextPrimary,
+                                    lineHeight = 17.sp
+                                )
+
+                                if (item.displayDescription.isNotBlank()) {
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        text = item.displayDescription,
+                                        fontSize = 12.sp,
+                                        color = if (isCompleted) TextMuted.copy(alpha = 0.8f) else TextSecondary,
+                                        lineHeight = 16.sp
+                                    )
+                                }
+
+                                if (item.attachments.isNotEmpty()) {
+                                    Spacer(Modifier.height(6.dp))
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        modifier = Modifier.horizontalScroll(rememberScrollState())
+                                    ) {
+                                        item.attachments.forEach { imgUrl ->
+                                            AsyncImage(
+                                                model = imgUrl,
+                                                contentDescription = "Attachment",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .size(54.dp, 40.dp)
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .border(1.dp, Border, RoundedCornerShape(6.dp))
+                                                    .clickable { selectedImageToView = imgUrl }
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (item.authorName.isNotBlank()) {
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        text = "✍️ ${item.authorName}",
+                                        fontSize = 10.sp,
+                                        color = TextMuted,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+
+                            Spacer(Modifier.width(8.dp))
+
+                            // Column 3: Completion Toggle Button
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isCompleted) Success else Color.Transparent)
+                                    .border(1.5.dp, if (isCompleted) Success else Border, CircleShape)
+                                    .clickable {
+                                        onToggleHomeworkCompleted(item.id)
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isCompleted) {
+                                    Icon(
+                                        Icons.Filled.Check,
+                                        contentDescription = "Done",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        if (index < activeFilteredItems.lastIndex) {
+                            HorizontalDivider(
+                                color = Border.copy(alpha = 0.5f),
+                                modifier = Modifier.padding(horizontal = 8.dp)
+                            )
+                        }
+                    }
+                }
             }
         }
     }

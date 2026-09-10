@@ -30,6 +30,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.srgs.ems.data.SessionManager
@@ -41,6 +42,7 @@ import com.srgs.ems.viewmodel.ClassDetailViewModel
 import java.text.NumberFormat
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.util.Calendar
 import java.util.Locale
 
 private val currencyFmt = NumberFormat.getNumberInstance(Locale("en", "IN"))
@@ -53,7 +55,8 @@ fun ClassDetailScreen(
     onBack: () -> Unit,
     onNavigateToMemberDetail: (memberId: String) -> Unit,
     onNavigateToMemberAdd: (groupId: String) -> Unit,
-    onNavigateToAttendance: () -> Unit
+    onNavigateToAttendance: () -> Unit,
+    onNavigateToSubjects: () -> Unit = {}
 ) {
     val session = SessionManager.session
     val isAdmin = session?.isAdmin == true
@@ -72,11 +75,43 @@ fun ClassDetailScreen(
 
     val snackbar = remember { SnackbarHostState() }
     var showPostSheet by remember { mutableStateOf(false) }
+    var showPostSaveBroadcastPrompt by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         vm.snackbarEvent.collect { msg ->
             snackbar.showSnackbar(msg)
         }
+    }
+
+    if (showPostSaveBroadcastPrompt) {
+        AlertDialog(
+            onDismissRequest = { showPostSaveBroadcastPrompt = false },
+            title = {
+                Text("📢 Broadcast Diary to Parents?", fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text(
+                    "Diary entry saved successfully!\n\n" +
+                    "Would you like to send today's updated diary push notification to all parents of this class right now?"
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showPostSaveBroadcastPrompt = false
+                        vm.broadcastDailyDiary()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                ) {
+                    Text("📢 Broadcast Now", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPostSaveBroadcastPrompt = false }) {
+                    Text("Save Only", color = TextSecondary)
+                }
+            }
+        )
     }
 
     val group = details?.group
@@ -102,20 +137,54 @@ fun ClassDetailScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = group?.name ?: "Class Details",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
-                        color = TextPrimary
-                    )
+                    Column {
+                        Text(
+                            text = group?.name ?: "Class Details",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 17.sp,
+                            color = TextPrimary
+                        )
+                        if (group != null) {
+                            val teacher = group.classTeacher?.fullName
+                            val teacherText = if (!teacher.isNullOrBlank()) "Teacher: $teacher • " else ""
+                            Text(
+                                text = "$teacherText${group.occupiedCount}/${group.capacity} Enrolled",
+                                fontSize = 11.sp,
+                                color = TextSecondary,
+                                fontWeight = FontWeight.Normal
+                            )
+                        }
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Text("←", fontSize = 22.sp, color = TextPrimary, fontWeight = FontWeight.Bold)
                     }
                 },
+                actions = {
+                    IconButton(onClick = onNavigateToAttendance) {
+                        Icon(Icons.Filled.DateRange, contentDescription = "Attendance", tint = Primary)
+                    }
+                    IconButton(onClick = onNavigateToSubjects) {
+                        Text("📚", fontSize = 16.sp)
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Surface)
             )
+        },
+        floatingActionButton = {
+            if (activeTab == ClassDetailTab.DIARY) {
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        vm.startPostDiary()
+                        showPostSheet = true
+                    },
+                    icon = { Icon(Icons.Filled.Add, contentDescription = null, tint = Color.White) },
+                    text = { Text("Add Entry", fontWeight = FontWeight.Bold, color = Color.White) },
+                    containerColor = Primary,
+                    shape = RoundedCornerShape(16.dp)
+                )
+            }
         }
     ) { padding ->
         if (isLoading && details == null) {
@@ -132,107 +201,6 @@ fun ClassDetailScreen(
                     .fillMaxSize()
                     .padding(padding)
             ) {
-                // ── Hero Header ───────────────────────────────────────────
-                Surface(
-                    color = Surface,
-                    shadowElevation = 2.dp
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    text = group.name,
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = TextPrimary
-                                )
-                                if (!group.description.isNullOrBlank()) {
-                                    Spacer(Modifier.height(2.dp))
-                                    Text(
-                                        text = group.description,
-                                        fontSize = 13.sp,
-                                        color = TextSecondary
-                                    )
-                                }
-
-                                if (group.classTeacher != null) {
-                                    Spacer(Modifier.height(6.dp))
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Person,
-                                            contentDescription = null,
-                                            tint = Primary,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                        Spacer(Modifier.width(4.dp))
-                                        Text(
-                                            text = "Teacher: ${group.classTeacher.fullName}",
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = Primary
-                                        )
-                                    }
-                                }
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Primary.copy(alpha = 0.08f),
-                                border = BorderStroke(1.dp, Primary.copy(alpha = 0.2f))
-                            ) {
-                                Text(
-                                    text = "${group.occupiedCount}/${group.capacity} Enrolled",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Primary,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                )
-                            }
-                        }
-
-                        Spacer(Modifier.height(14.dp))
-
-                        // Quick Navigation Action Badges
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = onNavigateToAttendance,
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.weight(1f).height(38.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp)
-                            ) {
-                                Icon(Icons.Filled.DateRange, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("Attendance", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            }
-
-                            Button(
-                                onClick = {
-                                    vm.startPostDiary()
-                                    showPostSheet = true
-                                },
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                                modifier = Modifier.weight(1f).height(38.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp)
-                            ) {
-                                Icon(Icons.Filled.Edit, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("Post Diary", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            }
-                        }
-                    }
-                }
-
                 // ── Segmented Tabs ────────────────────────────────────────
                 TabRow(
                     selectedTabIndex = activeTab.ordinal,
@@ -274,12 +242,19 @@ fun ClassDetailScreen(
                         )
                     }
                     ClassDetailTab.DIARY -> {
+                        val selectedDiaryDate by vm.selectedDiaryDate.collectAsState()
                         ClassDiaryTab(
                             feed = diaryFeed,
+                            selectedDate = selectedDiaryDate,
+                            subjects = subjects,
                             isBroadcasting = vm.isBroadcasting.collectAsState().value,
+                            onDateSelect = { vm.selectDate(it) },
+                            onPrevDay = { vm.goToPreviousDay() },
+                            onNextDay = { vm.goToNextDay() },
+                            onToday = { vm.goToToday() },
                             onBroadcastClick = { vm.broadcastDailyDiary() },
-                            onPostClick = {
-                                vm.startPostDiary()
+                            onPostClick = { subjectId ->
+                                vm.startPostDiary(subjectId)
                                 showPostSheet = true
                             },
                             onEditClick = { diary ->
@@ -291,7 +266,8 @@ fun ClassDetailScreen(
                             },
                             onUpdateTracking = { diaryId, studentId, status ->
                                 vm.updateStudentTracking(diaryId, studentId, status)
-                            }
+                            },
+                            onNavigateToSubjects = onNavigateToSubjects
                         )
                     }
                     ClassDetailTab.FEES -> {
@@ -308,7 +284,14 @@ fun ClassDetailScreen(
             PostDiaryBottomSheet(
                 vm = vm,
                 subjects = subjects,
-                onDismiss = { showPostSheet = false }
+                selectedDate = vm.selectedDiaryDate.collectAsState().value,
+                onDismiss = { showPostSheet = false },
+                onNavigateToSubjects = onNavigateToSubjects,
+                onEntrySaved = { isNew ->
+                    if (isNew) {
+                        showPostSaveBroadcastPrompt = true
+                    }
+                }
             )
         }
     }
@@ -483,31 +466,121 @@ private fun StudentRosterCard(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  TAB 2: CLASS DIARY & HOMEWORK
+//  TAB 2: CLASS DIARY & HOMEWORK (DATE-CENTRIC DAILY SHEET)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 @Composable
 private fun ClassDiaryTab(
     feed: List<DiaryDto>,
+    selectedDate: String,
+    subjects: List<com.srgs.ems.data.api.SubjectDto>,
     isBroadcasting: Boolean,
+    onDateSelect: (String) -> Unit,
+    onPrevDay: () -> Unit,
+    onNextDay: () -> Unit,
+    onToday: () -> Unit,
     onBroadcastClick: () -> Unit,
-    onPostClick: () -> Unit,
+    onPostClick: (subjectId: String?) -> Unit,
     onEditClick: (DiaryDto) -> Unit,
     onDeleteClick: (DiaryDto) -> Unit,
-    onUpdateTracking: (diaryId: String, studentId: String, status: String) -> Unit
+    onUpdateTracking: (diaryId: String, studentId: String, status: String) -> Unit,
+    onNavigateToSubjects: () -> Unit = {}
 ) {
+    val context = LocalContext.current
     var showBroadcastConfirmDialog by remember { mutableStateOf(false) }
+    var previewImageUri by remember { mutableStateOf<String?>(null) }
+    var entryToDelete by remember { mutableStateOf<DiaryDto?>(null) }
+
+    val todayStr = LocalDate.now().toString()
+    val isToday = selectedDate == todayStr
+
+    val formattedDate = try {
+        val parsed = LocalDate.parse(selectedDate)
+        val pattern = if (isToday) "'Today' • EEE, dd MMM" else "EEE, dd MMM yyyy"
+        parsed.format(DateTimeFormatter.ofPattern(pattern, Locale.getDefault()))
+    } catch (_: Exception) {
+        selectedDate
+    }
+
+    val dayEntries = remember(feed, selectedDate) {
+        feed.filter { entry ->
+            val d = entry.date?.take(10) ?: entry.createdAt?.take(10)
+            d == selectedDate
+        }
+    }
+
+    // Image preview dialog
+    if (previewImageUri != null) {
+        Dialog(onDismissRequest = { previewImageUri = null }) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Surface,
+                modifier = Modifier.fillMaxWidth().padding(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Attachment Preview", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        IconButton(onClick = { previewImageUri = null }) {
+                            Icon(Icons.Filled.Close, contentDescription = "Close")
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    AsyncImage(
+                        model = previewImageUri,
+                        contentDescription = "Full Attachment",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 380.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                    )
+                }
+            }
+        }
+    }
+
+    // Delete confirmation dialog
+    if (entryToDelete != null) {
+        val diary = entryToDelete!!
+        AlertDialog(
+            onDismissRequest = { entryToDelete = null },
+            title = { Text("Delete Diary Entry", fontWeight = FontWeight.Bold) },
+            text = { Text("Are you sure you want to delete '${diary.title}'? This action cannot be undone.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDeleteClick(diary)
+                        entryToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Danger)
+                ) {
+                    Text("Delete", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { entryToDelete = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     if (showBroadcastConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showBroadcastConfirmDialog = false },
             title = {
-                Text("📢 Send Daily Diary to Parents?", fontWeight = FontWeight.Bold)
+                Text("📢 Broadcast Daily Diary?", fontWeight = FontWeight.Bold)
             },
             text = {
                 Text(
-                    "This will compile all ${feed.size} diary/homework entries for today into 1 consolidated push notification and send it to all parents of this class.\n\n" +
-                    "Do you want to broadcast now?"
+                    "Compile all ${dayEntries.size} subject task(s) for $formattedDate into 1 notification and send to all parents of this class?"
                 )
             },
             confirmButton = {
@@ -531,290 +604,327 @@ private fun ClassDiaryTab(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        // ── 1. Consolidated Date Navigation & Broadcast Strip ────────────────
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = Surface,
+                border = BorderStroke(1.dp, Border),
+                tonalElevation = 1.dp
             ) {
-                Text(
-                    text = "Daily Class Feed",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (feed.isNotEmpty()) {
-                        OutlinedButton(
-                            onClick = { showBroadcastConfirmDialog = true },
-                            enabled = !isBroadcasting,
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                            modifier = Modifier.height(34.dp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        IconButton(
+                            onClick = onPrevDay,
+                            modifier = Modifier.size(32.dp)
                         ) {
-                            if (isBroadcasting) {
-                                CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
-                            } else {
-                                Text("📢 Send Diary", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Primary)
+                            Icon(Icons.Filled.ArrowBack, contentDescription = "Previous Day", tint = TextPrimary, modifier = Modifier.size(18.dp))
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Primary.copy(alpha = 0.08f),
+                            border = BorderStroke(1.dp, Primary.copy(alpha = 0.2f)),
+                            modifier = Modifier.clickable {
+                                val cal = Calendar.getInstance()
+                                try {
+                                    val p = LocalDate.parse(selectedDate)
+                                    cal.set(p.year, p.monthValue - 1, p.dayOfMonth)
+                                } catch (_: Exception) {}
+                                android.app.DatePickerDialog(
+                                    context,
+                                    { _, year, month, dayOfMonth ->
+                                        val picked = String.format(Locale.getDefault(), "%04d-%02d-%02d", year, month + 1, dayOfMonth)
+                                        onDateSelect(picked)
+                                    },
+                                    cal.get(Calendar.YEAR),
+                                    cal.get(Calendar.MONTH),
+                                    cal.get(Calendar.DAY_OF_MONTH)
+                                ).show()
+                            }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Filled.DateRange, contentDescription = null, tint = Primary, modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = formattedDate,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Primary
+                                )
+                            }
+                        }
+
+                        IconButton(
+                            onClick = onNextDay,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(Icons.Filled.ArrowForward, contentDescription = "Next Day", tint = TextPrimary, modifier = Modifier.size(18.dp))
+                        }
+
+                        if (!isToday) {
+                            TextButton(
+                                onClick = onToday,
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text("Today", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Primary)
                             }
                         }
                     }
 
-                    Button(
-                        onClick = onPostClick,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                        modifier = Modifier.height(34.dp)
-                    ) {
-                        Icon(Icons.Filled.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Post Entry", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    }
-                }
-            }
-        }
-
-        if (feed.isEmpty()) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 40.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("📖", fontSize = 40.sp)
-                        Spacer(Modifier.height(10.dp))
-                        Text("No diary entries posted yet.", fontWeight = FontWeight.SemiBold, color = TextSecondary)
-                        Spacer(Modifier.height(12.dp))
-                        OutlinedButton(onClick = onPostClick) {
-                            Text("+ Post Today's First Entry")
+                    if (dayEntries.isNotEmpty()) {
+                        Button(
+                            onClick = { showBroadcastConfirmDialog = true },
+                            enabled = !isBroadcasting,
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            if (isBroadcasting) {
+                                CircularProgressIndicator(Modifier.size(12.dp), color = Color.White, strokeWidth = 2.dp)
+                            } else {
+                                Icon(Icons.Filled.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Broadcast (${dayEntries.size})", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
                         }
                     }
                 }
             }
-        } else {
-            items(feed, key = { it._id }) { diary ->
-                DiaryEntryCard(
-                    diary = diary,
-                    onEditClick = { onEditClick(diary) },
-                    onDeleteClick = { onDeleteClick(diary) }
-                )
-            }
         }
-    }
-}
 
-@Composable
-private fun DiaryEntryCard(
-    diary: DiaryDto,
-    onEditClick: () -> Unit,
-    onDeleteClick: () -> Unit
-) {
-    var showMenu by remember { mutableStateOf(false) }
-    var showDeleteDialog by remember { mutableStateOf(false) }
-
-    val typeColor = when (diary.type) {
-        "homework"     -> Primary
-        "announcement" -> AccentOrange
-        "test"         -> Danger
-        else           -> AccentBlue
-    }
-
-    val typeLabel = when (diary.type) {
-        "homework"     -> "HOMEWORK"
-        "announcement" -> "ANNOUNCEMENT"
-        "test"         -> "TEST ALERT"
-        else           -> "REMINDER"
-    }
-
-    if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Delete Diary Entry", fontWeight = FontWeight.Bold) },
-            text = { Text("Are you sure you want to delete '${diary.title}'? This action cannot be undone.") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showDeleteDialog = false
-                        onDeleteClick()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Danger)
-                ) {
-                    Text("Delete", color = Color.White)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = Surface,
-        border = BorderStroke(1.dp, Border),
-        tonalElevation = 1.dp,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            // Header Row: Category Badge + Subject + Date + Action Menu
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+        // ── 2. Authentic Two-Column School Diary Ledger Sheet ────────────────
+        item {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = Surface,
+                border = BorderStroke(1.dp, Border),
+                tonalElevation = 1.dp,
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = typeColor.copy(alpha = 0.1f),
-                        border = BorderStroke(0.5.dp, typeColor.copy(alpha = 0.3f))
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Ledger Header Row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Primary.copy(alpha = 0.05f))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = typeLabel,
-                            fontSize = 9.sp,
+                            text = "SUBJECT",
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = typeColor,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = Primary.copy(alpha = 0.08f)
-                    ) {
-                        Text(
-                            text = diary.subjectName,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
                             color = Primary,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            modifier = Modifier.width(105.dp)
                         )
-                    }
-                }
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    if (!diary.dueDate.isNullOrBlank()) {
-                        Text(
-                            text = "Due: ${diary.dueDate.take(10)}",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Danger
-                        )
-                    }
-
-                    Box {
-                        IconButton(
-                            onClick = { showMenu = true },
-                            modifier = Modifier.size(28.dp)
-                        ) {
-                            Icon(Icons.Filled.MoreVert, contentDescription = "Options", tint = TextMuted, modifier = Modifier.size(18.dp))
-                        }
-
-                        DropdownMenu(
-                            expanded = showMenu,
-                            onDismissRequest = { showMenu = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Edit Entry", fontSize = 13.sp) },
-                                leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null, tint = Primary, modifier = Modifier.size(16.dp)) },
-                                onClick = {
-                                    showMenu = false
-                                    onEditClick()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Delete Entry", fontSize = 13.sp, color = Danger) },
-                                leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = Danger, modifier = Modifier.size(16.dp)) },
-                                onClick = {
-                                    showMenu = false
-                                    showDeleteDialog = true
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(10.dp))
-
-            // Title
-            Text(
-                text = diary.title,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary
-            )
-
-            Spacer(Modifier.height(4.dp))
-
-            // Description
-            Text(
-                text = diary.description,
-                fontSize = 13.sp,
-                color = TextSecondary,
-                lineHeight = 18.sp
-            )
-
-            // Attachments Image Gallery
-            if (diary.attachments.isNotEmpty()) {
-                Spacer(Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    diary.attachments.forEach { imgUrl ->
-                        AsyncImage(
-                            model = imgUrl,
-                            contentDescription = "Attachment",
-                            contentScale = ContentScale.Crop,
+                        Box(
                             modifier = Modifier
-                                .size(100.dp, 75.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .border(1.dp, Border, RoundedCornerShape(8.dp))
+                                .width(1.dp)
+                                .height(14.dp)
+                                .background(Border)
                         )
-                    }
-                }
-            }
-
-            // Author stamp
-            if (diary.createdBy != null) {
-                Spacer(Modifier.height(10.dp))
-                HorizontalDivider(color = Border.copy(alpha = 0.5f))
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "✍️ Posted by: ${diary.createdBy.name}",
-                        fontSize = 11.sp,
-                        color = TextMuted,
-                        fontWeight = FontWeight.Medium
-                    )
-
-                    if (diary.studentTracking.isNotEmpty()) {
-                        val completedCount = diary.studentTracking.count { it.status == "completed" }
+                        Spacer(Modifier.width(10.dp))
                         Text(
-                            text = "$completedCount/${diary.studentTracking.size} Completed",
+                            text = "HOMEWORK / CLASSWORK DETAILS",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Primary,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            text = "${dayEntries.size} Task(s)",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Success
+                            color = TextMuted
                         )
+                    }
+
+                    HorizontalDivider(color = Border)
+
+                    if (dayEntries.isEmpty()) {
+                        // Empty Notebook Placeholder Rows
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 28.dp, horizontal = 16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("📖", fontSize = 36.sp)
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = "Diary is empty for $formattedDate",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextSecondary
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Button(
+                                onClick = { onPostClick(null) },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                            ) {
+                                Icon(Icons.Filled.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Write Entry", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                        }
+                    } else {
+                        dayEntries.forEachIndexed { index, diary ->
+                            val (subjEmoji, subjColor) = getSubjectStyle(diary.subjectName)
+                            var showRowMenu by remember { mutableStateOf(false) }
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onEditClick(diary) }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                // Column 1: Subject Pill
+                                Box(
+                                    modifier = Modifier.width(105.dp),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = subjColor.copy(alpha = 0.12f),
+                                        border = BorderStroke(0.5.dp, subjColor.copy(alpha = 0.35f))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(subjEmoji, fontSize = 11.sp)
+                                            Spacer(Modifier.width(3.dp))
+                                            Text(
+                                                text = diary.subjectName,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = subjColor,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Vertical Divider Line between columns
+                                Box(
+                                    modifier = Modifier
+                                        .width(1.dp)
+                                        .height(36.dp)
+                                        .background(Border.copy(alpha = 0.6f))
+                                )
+
+                                Spacer(Modifier.width(10.dp))
+
+                                // Column 2: Homework Content + Actions
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = diary.title,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextPrimary,
+                                        lineHeight = 17.sp
+                                    )
+
+                                    if (diary.description.isNotBlank()) {
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(
+                                            text = diary.description,
+                                            fontSize = 12.sp,
+                                            color = TextSecondary,
+                                            lineHeight = 16.sp
+                                        )
+                                    }
+
+                                    // Attachment thumbnails (if any)
+                                    if (diary.attachments.isNotEmpty()) {
+                                        Spacer(Modifier.height(6.dp))
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            modifier = Modifier.horizontalScroll(rememberScrollState())
+                                        ) {
+                                            diary.attachments.forEach { imgUrl ->
+                                                AsyncImage(
+                                                    model = imgUrl,
+                                                    contentDescription = "Attachment",
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier
+                                                        .size(54.dp, 40.dp)
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                        .border(1.dp, Border, RoundedCornerShape(6.dp))
+                                                        .clickable { previewImageUri = imgUrl }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Edit / Delete Menu trigger
+                                Box {
+                                    IconButton(
+                                        onClick = { showRowMenu = true },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.MoreVert,
+                                            contentDescription = "Options",
+                                            tint = TextMuted,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+
+                                    DropdownMenu(
+                                        expanded = showRowMenu,
+                                        onDismissRequest = { showRowMenu = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Edit Entry", fontSize = 13.sp) },
+                                            leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null, tint = Primary, modifier = Modifier.size(16.dp)) },
+                                            onClick = {
+                                                showRowMenu = false
+                                                onEditClick(diary)
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Delete", fontSize = 13.sp, color = Danger) },
+                                            leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = Danger, modifier = Modifier.size(16.dp)) },
+                                            onClick = {
+                                                showRowMenu = false
+                                                entryToDelete = diary
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Ruled line separator between rows (except last)
+                            if (index < dayEntries.lastIndex) {
+                                HorizontalDivider(
+                                    color = Border.copy(alpha = 0.7f),
+                                    modifier = Modifier.padding(start = 12.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -900,7 +1010,10 @@ private fun ClassFeesTab(feeStructures: List<com.srgs.ems.data.api.FeeStructureD
 private fun PostDiaryBottomSheet(
     vm: ClassDetailViewModel,
     subjects: List<com.srgs.ems.data.api.SubjectDto>,
-    onDismiss: () -> Unit
+    selectedDate: String,
+    onDismiss: () -> Unit,
+    onNavigateToSubjects: () -> Unit = {},
+    onEntrySaved: (isNew: Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
     val editingId by vm.editingDiaryId.collectAsState()
@@ -933,18 +1046,40 @@ private fun PostDiaryBottomSheet(
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 24.dp)
         ) {
-            Text(
-                if (editingId != null) "Edit Diary Entry" else "Post Class Diary Entry",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = TextPrimary
-            )
-            Text(
-                if (editingId != null) "Update homework or class notice" else "Assign homework, test alerts, or class notices",
-                fontSize = 13.sp,
-                color = TextSecondary
-            )
-            Spacer(Modifier.height(18.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        if (editingId != null) "Edit Diary Entry" else "Post Class Diary Entry",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = TextPrimary
+                    )
+                    Text(
+                        if (editingId != null) "Update homework or class notice" else "Assign homework, test alerts, or class notices",
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Primary.copy(alpha = 0.1f),
+                    border = BorderStroke(1.dp, Primary.copy(alpha = 0.25f))
+                ) {
+                    Text(
+                        text = "📅 $selectedDate",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Primary,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.height(16.dp))
 
             // Category Selector
             Text("Entry Type *", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.padding(bottom = 6.dp))
@@ -971,22 +1106,56 @@ private fun PostDiaryBottomSheet(
             }
             Spacer(Modifier.height(14.dp))
 
-            // Subject Selector
+            // Subject Selector with Manage Subjects link
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Subject", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Text(
+                    text = "⚙️ Manage Subjects",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Primary,
+                    modifier = Modifier.clickable {
+                        onDismiss()
+                        onNavigateToSubjects()
+                    }
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+
             if (subjects.isNotEmpty()) {
-                Text("Subject *", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.padding(bottom = 6.dp))
                 Row(
                     Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    // Option for General / No Subject
+                    val isNoneSel = postSubjectId == null
+                    FilterChip(
+                        selected = isNoneSel,
+                        onClick = { vm.postSubjectId.value = null },
+                        label = { Text("📢 General / All", fontSize = 12.sp, fontWeight = if (isNoneSel) FontWeight.Bold else FontWeight.Normal) },
+                        shape = RoundedCornerShape(8.dp)
+                    )
+
                     subjects.forEach { s ->
                         val isSel = postSubjectId == s._id
+                        val (subjEmoji, subjColor) = getSubjectStyle(s.name)
                         FilterChip(
                             selected = isSel,
                             onClick = { vm.postSubjectId.value = s._id },
-                            label = { Text(s.name, fontSize = 12.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal) },
+                            label = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(subjEmoji, fontSize = 12.sp)
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(s.name, fontSize = 12.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal)
+                                }
+                            },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = Primary,
-                                selectedLabelColor = Color.White,
+                                selectedContainerColor = subjColor.copy(alpha = 0.2f),
+                                selectedLabelColor = subjColor,
                                 containerColor = Surface,
                                 labelColor = TextPrimary
                             ),
@@ -994,10 +1163,34 @@ private fun PostDiaryBottomSheet(
                         )
                     }
                 }
-                Spacer(Modifier.height(14.dp))
+            } else {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFFFEF3C7),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("No subjects created yet", fontSize = 12.sp, color = Color(0xFF92400E))
+                        Text(
+                            "+ Add Subjects",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF92400E),
+                            modifier = Modifier.clickable {
+                                onDismiss()
+                                onNavigateToSubjects()
+                            }
+                        )
+                    }
+                }
             }
+            Spacer(Modifier.height(14.dp))
 
-            // Title
+            // Title / Topic (Mandatory)
             Text("Title / Topic *", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.padding(bottom = 6.dp))
             OutlinedTextField(
                 value = postTitle,
@@ -1010,20 +1203,20 @@ private fun PostDiaryBottomSheet(
             )
             Spacer(Modifier.height(14.dp))
 
-            // Instructions / Description
-            Text("Instructions / Homework Details *", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.padding(bottom = 6.dp))
+            // Instructions / Description (Optional)
+            Text("Instructions / Details (Optional)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.padding(bottom = 6.dp))
             OutlinedTextField(
                 value = postDescription,
                 onValueChange = { vm.postDescription.value = it },
-                modifier = Modifier.fillMaxWidth().height(100.dp),
-                placeholder = { Text("Write detailed instructions, page numbers, or questions...", fontSize = 13.sp) },
+                modifier = Modifier.fillMaxWidth().height(90.dp),
+                placeholder = { Text("Optional instructions, page numbers, or questions...", fontSize = 13.sp) },
                 shape = RoundedCornerShape(10.dp),
                 colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Border, focusedBorderColor = Primary)
             )
             Spacer(Modifier.height(16.dp))
 
             // Image Attachments Section
-            Text("Attach Photos / Images", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.padding(bottom = 6.dp))
+            Text("Attach Photos / Images (Optional)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.padding(bottom = 6.dp))
 
             // Photo picker button and loader
             Row(
@@ -1036,11 +1229,11 @@ private fun PostDiaryBottomSheet(
                     enabled = !isUploadingImage && !isPosting,
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                    modifier = Modifier.height(44.dp)
+                    modifier = Modifier.height(42.dp)
                 ) {
                     Icon(Icons.Filled.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("📸 Choose Photo from Gallery", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text("📸 Choose Photo", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 }
 
                 if (isUploadingImage) {
@@ -1127,7 +1320,15 @@ private fun PostDiaryBottomSheet(
             Spacer(Modifier.height(24.dp))
 
             Button(
-                onClick = { vm.submitDiaryEntry(onSuccess = onDismiss) },
+                onClick = {
+                    val isNew = editingId == null
+                    vm.submitDiaryEntry(
+                        onSuccess = {
+                            onDismiss()
+                            onEntrySaved(isNew)
+                        }
+                    )
+                },
                 enabled = !isPosting && !isUploadingImage,
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 shape = RoundedCornerShape(12.dp),
@@ -1135,7 +1336,7 @@ private fun PostDiaryBottomSheet(
             ) {
                 if (isPosting) CircularProgressIndicator(Modifier.size(20.dp), Color.White, 2.dp)
                 else Text(
-                    if (editingId != null) "💾  Update Diary Entry" else "✓  Post to Class Diary",
+                    if (editingId != null) "💾  Update Diary Entry" else "💾  Save Subject Entry",
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White

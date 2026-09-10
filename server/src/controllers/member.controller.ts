@@ -638,6 +638,8 @@ export const getStudentDashboard = async (req: AuthRequest, res: Response, next:
             title: d.title || d.topic || '',
             topic: d.title || d.topic || '',
             content: d.description || d.content || d.title || '',
+            type: d.type || 'homework',
+            dueDate: d.dueDate ? new Date(d.dueDate).toISOString().split('T')[0] : null,
             attachments: Array.isArray(d.attachments) ? d.attachments : [],
             imageUrl: Array.isArray(d.attachments) && d.attachments.length > 0 ? d.attachments[0] : (d.imageUrl || null),
             assignedDate: d.date ? new Date(d.date).toISOString().split('T')[0] : (d.createdAt ? new Date(d.createdAt).toISOString().split('T')[0] : ''),

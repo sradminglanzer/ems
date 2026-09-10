@@ -44,9 +44,9 @@ export const createDiaryEntry = async (req: Request, res: Response) => {
         const { classId, subjectId, academicYearId, type, title, description, dueDate, attachments } = req.body;
         console.log(`📝 [POST /api/diary] Creating entry: entityId=${entityId}, classId=${classId}, type=${type}, title="${title}"`);
 
-        if (!classId || !type || !title || !description) {
+        if (!classId || !type || !title) {
             console.warn(`⚠️ [POST /api/diary] Missing required fields in body:`, req.body);
-            return res.status(400).json(new AppError('Missing required fields', 400));
+            return res.status(400).json(new AppError('Missing required fields: classId, type and title are required', 400));
         }
 
         let studentTracking: any[] = [];
@@ -90,10 +90,11 @@ export const createDiaryEntry = async (req: Request, res: Response) => {
             classId: new ObjectId(classId),
             type,
             title,
-            description,
+            description: description || '',
             attachments: attachments || [],
             createdBy: new ObjectId(userId),
             studentTracking,
+            date: req.body.date ? new Date(req.body.date) : new Date(),
             createdAt: new Date(),
             updatedAt: new Date()
         };

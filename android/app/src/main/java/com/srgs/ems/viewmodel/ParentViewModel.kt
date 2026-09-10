@@ -35,11 +35,31 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
     private val _selectedDiaryDate = MutableStateFlow(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()))
     val selectedDiaryDate: StateFlow<String> = _selectedDiaryDate.asStateFlow()
 
+    private val prefs = application.getSharedPreferences("parent_diary_prefs", android.content.Context.MODE_PRIVATE)
+    private val _completedHomeworkIds = MutableStateFlow<Set<String>>(emptySet())
+    val completedHomeworkIds: StateFlow<Set<String>> = _completedHomeworkIds.asStateFlow()
+
+    init {
+        val saved = prefs.getStringSet("completed_homework", emptySet()) ?: emptySet()
+        _completedHomeworkIds.value = saved
+    }
+
     private val _selectedReportCard = MutableStateFlow<ParentExamResultDto?>(null)
     val selectedReportCard: StateFlow<ParentExamResultDto?> = _selectedReportCard.asStateFlow()
 
     private val _selectedReceipt = MutableStateFlow<ParentPaymentReceiptDto?>(null)
     val selectedReceipt: StateFlow<ParentPaymentReceiptDto?> = _selectedReceipt.asStateFlow()
+
+    fun toggleHomeworkCompleted(diaryId: String) {
+        val current = _completedHomeworkIds.value.toMutableSet()
+        if (current.contains(diaryId)) {
+            current.remove(diaryId)
+        } else {
+            current.add(diaryId)
+        }
+        _completedHomeworkIds.value = current
+        prefs.edit().putStringSet("completed_homework", current).apply()
+    }
 
     fun init(children: List<ParentChildDto>, parentPhone: String? = null) {
         _childrenList.value = children

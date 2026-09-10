@@ -274,6 +274,9 @@ interface ApiService {
     @POST("subjects")
     suspend fun createSubject(@Body request: CreateSubjectRequest): Response<SubjectDto>
 
+    @PUT("subjects/{id}")
+    suspend fun updateSubject(@Path("id") id: String, @Body request: CreateSubjectRequest): Response<Unit>
+
     @DELETE("subjects/{id}")
     suspend fun deleteSubject(@Path("id") id: String): Response<Unit>
 
@@ -1166,13 +1169,15 @@ data class SubjectDto(
     @SerializedName("_id") val _id: String = "",
     val name: String = "",
     val code: String? = null,
-    val description: String? = null
+    val description: String? = null,
+    val assignedClasses: List<String> = emptyList()
 )
 
 data class CreateSubjectRequest(
     val name: String,
     val code: String? = null,
-    val description: String? = null
+    val description: String? = null,
+    val assignedClasses: List<String> = emptyList()
 )
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1282,6 +1287,7 @@ data class DiaryDto(
     val type: String = "homework", // "homework" | "announcement" | "reminder" | "test"
     val title: String = "",
     val description: String = "",
+    val date: String? = null,
     val dueDate: String? = null,
     val attachments: List<String> = emptyList(),
     val createdBy: DiaryAuthorDto? = null,
@@ -1297,16 +1303,18 @@ data class CreateDiaryRequest(
     val academicYearId: String? = null,
     val type: String = "homework",
     val title: String,
-    val description: String,
+    val description: String = "",
+    val date: String? = null,
     val dueDate: String? = null,
     val attachments: List<String> = emptyList()
 )
 
 data class UpdateDiaryRequest(
     val title: String,
-    val description: String,
+    val description: String = "",
     val type: String = "homework",
     val subjectId: String? = null,
+    val date: String? = null,
     val dueDate: String? = null,
     val attachments: List<String> = emptyList()
 )
@@ -1408,12 +1416,17 @@ data class ParentDiaryItemDto(
     val title: String = "",
     val topic: String = "",
     val content: String = "",
+    val description: String = "",
+    val type: String = "homework",
+    val dueDate: String? = null,
     val attachments: List<String> = emptyList(),
     val imageUrl: String? = null,
     val assignedDate: String = "",
     val authorName: String = "Class Teacher"
 ) {
+    val id: String get() = _id
     val displayTitle: String get() = title.ifBlank { topic.ifBlank { subjectName } }
+    val displayDescription: String get() = description.ifBlank { content }
 }
 
 data class ParentExamResultDto(
