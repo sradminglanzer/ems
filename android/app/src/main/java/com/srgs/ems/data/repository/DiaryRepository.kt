@@ -1,6 +1,7 @@
 package com.srgs.ems.data.repository
 
 import android.content.Context
+import android.util.Log
 import com.srgs.ems.data.api.*
 
 class DiaryRepository(context: Context) {
@@ -8,17 +9,36 @@ class DiaryRepository(context: Context) {
 
     suspend fun getDiaryFeed(classId: String, academicYearId: String? = null): List<DiaryDto> {
         return try {
+            Log.d("DiaryRepo", "getDiaryFeed() sending GET /api/diary?classId=$classId&academicYearId=$academicYearId")
             val res = api.getDiaryFeed(classId, academicYearId)
-            if (res.isSuccessful) res.body() ?: emptyList() else emptyList()
-        } catch (_: Exception) { emptyList() }
+            if (res.isSuccessful) {
+                val list = res.body() ?: emptyList()
+                Log.d("DiaryRepo", "getDiaryFeed() returned ${list.size} entries (HTTP ${res.code()})")
+                list
+            } else {
+                Log.e("DiaryRepo", "getDiaryFeed() failed: HTTP ${res.code()} - ${res.errorBody()?.string()}")
+                emptyList()
+            }
+        } catch (e: Exception) {
+            Log.e("DiaryRepo", "getDiaryFeed() network exception: ${e.message}", e)
+            emptyList()
+        }
     }
 
     suspend fun createDiaryEntry(req: CreateDiaryRequest): SaveResult {
         return try {
+            Log.d("DiaryRepo", "createDiaryEntry() sending POST /api/diary: classId=${req.classId}, title=${req.title}")
             val res = api.createDiaryEntry(req)
-            if (res.isSuccessful) SaveResult.Success
-            else SaveResult.Error(res.errorBody()?.string() ?: "Failed to post diary entry")
+            if (res.isSuccessful) {
+                Log.d("DiaryRepo", "createDiaryEntry() succeeded (HTTP ${res.code()})")
+                SaveResult.Success
+            } else {
+                val err = res.errorBody()?.string() ?: "Failed to post diary entry"
+                Log.e("DiaryRepo", "createDiaryEntry() failed: HTTP ${res.code()} - $err")
+                SaveResult.Error(err)
+            }
         } catch (e: Exception) {
+            Log.e("DiaryRepo", "createDiaryEntry() exception: ${e.message}", e)
             SaveResult.Error(e.message ?: "Unknown error")
         }
     }

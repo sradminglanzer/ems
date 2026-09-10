@@ -248,4 +248,43 @@ class ExamsViewModel(application: Application) : AndroidViewModel(application) {
     fun closeReportCard() {
         activeReportCard.value = null
     }
+
+    val isNotifying = MutableStateFlow(false)
+
+    fun notifyTimetable(examId: String) {
+        viewModelScope.launch {
+            isNotifying.value = true
+            try {
+                val res = ApiClient.getApiService(getApplication<Application>().applicationContext).notifyExamTimetable(examId)
+                if (res.isSuccessful) {
+                    snackbarEvent.emit("📢 Exam timetable announced to parents!")
+                } else {
+                    snackbarEvent.emit("❌ Failed to send timetable notification")
+                }
+            } catch (e: Exception) {
+                snackbarEvent.emit("❌ Error: ${e.message}")
+            } finally {
+                isNotifying.value = false
+            }
+        }
+    }
+
+    fun publishResults(examId: String) {
+        viewModelScope.launch {
+            isNotifying.value = true
+            try {
+                val res = ApiClient.getApiService(getApplication<Application>().applicationContext).publishExamResults(examId)
+                if (res.isSuccessful && res.body()?.success == true) {
+                    snackbarEvent.emit("📊 ${res.body()?.message ?: "Exam results published and parents notified!"}")
+                } else {
+                    snackbarEvent.emit("❌ Failed to publish results")
+                }
+            } catch (e: Exception) {
+                snackbarEvent.emit("❌ Error: ${e.message}")
+            } finally {
+                isNotifying.value = false
+            }
+        }
+    }
 }
+

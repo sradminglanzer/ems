@@ -3,6 +3,8 @@ package com.srgs.ems.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import android.util.Log
+import com.srgs.ems.data.SessionManager
 import com.srgs.ems.data.api.*
 import com.srgs.ems.data.repository.ParentRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,13 +41,64 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
     private val _selectedReceipt = MutableStateFlow<ParentPaymentReceiptDto?>(null)
     val selectedReceipt: StateFlow<ParentPaymentReceiptDto?> = _selectedReceipt.asStateFlow()
 
-    fun init(children: List<ParentChildDto>) {
+    fun init(children: List<ParentChildDto>, parentPhone: String? = null) {
         _childrenList.value = children
         if (children.isNotEmpty()) {
             val current = _activeChild.value
             val target = if (current != null && children.any { it.memberId == current.memberId }) current else children.first()
             _activeChild.value = target
             loadDashboard(target.memberId)
+        }
+        val phone = parentPhone ?: SessionManager.session?.phone
+        Log.d("ParentFCM", "ParentViewModel.init() called. Param phone='$parentPhone', Session phone='${SessionManager.session?.phone}', Resolved phone='$phone'")
+        if (!phone.isNullOrBlank()) {
+            registerFcmToken(phone)
+        } else {
+            Log.w("ParentFCM", "⚠️ Cannot register FCM token: No parent phone found in session or parameters.")
+        }
+    }
+
+    fun registerFcmToken(parentPhone: String) {
+        Log.d("ParentFCM", "🔄 Attempting to fetch FCM Token for parent: $parentPhone")
+        viewModelScope.launch {
+            try {
+                com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                    if (!task.isSuccessful) {
+                        Log.e("ParentFCM", "❌ FirebaseMessaging.getInstance().token failed: ${task.exception?.message}", task.exception)
+                        return@addOnCompleteListener
+                    }
+                    val token = task.result
+                    if (token.isNullOrBlank()) {
+                        Log.w("ParentFCM", "⚠️ Firebase returned a null or blank token.")
+                        return@addOnCompleteListener
+                    }
+                    Log.d("ParentFCM", "✅ FCM Token fetched: ${token.take(15)}...${token.takeLast(10)}")
+                    viewModelScope.launch {
+                        try {
+                            val context = getApplication<Application>().applicationContext
+                            val deviceName = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
+                            Log.d("ParentFCM", "📡 Sending token to POST /api/auth/parent-fcm-token ($deviceName)...")
+                            val response = ApiClient.getApiService(context).registerParentFcmToken(
+                                RegisterFcmTokenRequest(
+                                    contactNumber = parentPhone,
+                                    fcmToken = token,
+                                    deviceName = deviceName
+                                )
+                            )
+                            if (response.isSuccessful) {
+                                Log.d("ParentFCM", "🎉 FCM Token registered successfully on backend! (HTTP ${response.code()})")
+                            } else {
+                                val errBody = response.errorBody()?.string()
+                                Log.e("ParentFCM", "❌ Backend rejected token registration: HTTP ${response.code()} - $errBody")
+                            }
+                        } catch (e: Exception) {
+                            Log.e("ParentFCM", "❌ Network error sending token to backend: ${e.message}", e)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ParentFCM", "❌ Exception initializing FirebaseMessaging: ${e.message}", e)
+            }
         }
     }
 

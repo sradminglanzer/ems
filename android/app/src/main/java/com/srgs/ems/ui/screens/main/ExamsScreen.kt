@@ -90,6 +90,8 @@ fun ExamsScreen(vm: ExamsViewModel = viewModel()) {
                 vm.loadMarksEntry(selectedExam!!)
                 showEnterMarksSheet = true
             },
+            onNotifyTimetable = { vm.notifyTimetable(selectedExam!!._id) },
+            onPublishResults = { vm.publishResults(selectedExam!!._id) },
             onViewReport = { vm.openReportCard(it) }
         )
 
@@ -232,10 +234,66 @@ private fun ExamDetailPane(
     canManage: Boolean,
     onBack: () -> Unit,
     onEnterMarks: () -> Unit,
+    onNotifyTimetable: () -> Unit,
+    onPublishResults: () -> Unit,
     onViewReport: (ExamResultDto) -> Unit
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabs = listOf("Timetable (${exam.subjects.size})", "Results (${results.size})", "🏆 Rank Sheet")
+    var showTimetableConfirm by remember { mutableStateOf(false) }
+    var showPublishResultsConfirm by remember { mutableStateOf(false) }
+
+    if (showTimetableConfirm) {
+        AlertDialog(
+            onDismissRequest = { showTimetableConfirm = false },
+            title = { Text("📢 Send Timetable Notification?") },
+            text = {
+                Text("Send push notification with the exam timetable to parents of students in ${exam.feeGroupName ?: "this exam"}?")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showTimetableConfirm = false
+                        onNotifyTimetable()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                ) {
+                    Text("Send Push Notification")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimetableConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showPublishResultsConfirm) {
+        AlertDialog(
+            onDismissRequest = { showPublishResultsConfirm = false },
+            title = { Text("📊 Publish & Notify Parents?") },
+            text = {
+                Text("Publish exam results and send individual report card summary push notifications to parents for ${results.size} students?")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showPublishResultsConfirm = false
+                        onPublishResults()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                ) {
+                    Text("Publish & Send Push")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPublishResultsConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     Scaffold(
         containerColor = Background,
@@ -294,8 +352,17 @@ private fun ExamDetailPane(
                 }
             } else {
                 when (selectedTab) {
-                    0 -> SubjectsTab(exam.subjects)
-                    1 -> ResultsTab(results, onViewReport)
+                    0 -> SubjectsTab(
+                        subjects = exam.subjects,
+                        canManage = canManage,
+                        onNotifyTimetableClick = { showTimetableConfirm = true }
+                    )
+                    1 -> ResultsTab(
+                        results = results,
+                        canManage = canManage,
+                        onPublishResultsClick = { showPublishResultsConfirm = true },
+                        onViewReport = onViewReport
+                    )
                     2 -> RankSheetTab(rankSheet, results, onViewReport)
                 }
             }
@@ -305,7 +372,11 @@ private fun ExamDetailPane(
 
 // ── Subjects Tab ──────────────────────────────────────────────────────────────
 @Composable
-private fun SubjectsTab(subjects: List<ExamSubjectDto>) {
+private fun SubjectsTab(
+    subjects: List<ExamSubjectDto>,
+    canManage: Boolean = false,
+    onNotifyTimetableClick: () -> Unit = {}
+) {
     if (subjects.isEmpty()) {
         Box(Modifier.fillMaxSize(), Alignment.Center) {
             Text("No subjects listed for this exam.", color = TextSecondary)
@@ -317,6 +388,18 @@ private fun SubjectsTab(subjects: List<ExamSubjectDto>) {
         verticalArrangement  = Arrangement.spacedBy(8.dp),
         modifier             = Modifier.fillMaxSize()
     ) {
+        if (canManage) {
+            item {
+                Button(
+                    onClick = onNotifyTimetableClick,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                ) {
+                    Text("📢 Notify Timetable to Parents", fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
         itemsIndexed(subjects) { idx, sub ->
             Card(
                 Modifier.fillMaxWidth(),
@@ -357,6 +440,8 @@ private fun SubjectsTab(subjects: List<ExamSubjectDto>) {
 @Composable
 private fun ResultsTab(
     results: List<ExamResultDto>,
+    canManage: Boolean = false,
+    onPublishResultsClick: () -> Unit = {},
     onViewReport: (ExamResultDto) -> Unit
 ) {
     if (results.isEmpty()) {
@@ -375,6 +460,18 @@ private fun ResultsTab(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier            = Modifier.fillMaxSize()
     ) {
+        if (canManage) {
+            item {
+                Button(
+                    onClick = onPublishResultsClick,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                ) {
+                    Text("📊 Publish Results & Notify Parents", fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
         items(results, key = { it._id }) { r ->
             ResultCard(r, onClick = { onViewReport(r) })
         }

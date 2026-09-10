@@ -39,7 +39,22 @@ export const setParentPin = async (req: Request, res: Response, next: NextFuncti
             { $set: { parentPin: cleanPin } }
         );
 
-        return res.status(HTTP_STATUS.OK).json({ message: '4-digit security PIN updated successfully' });
+        return res.status(HTTP_STATUS.OK).json({ success: true, message: 'Parent PIN updated successfully' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const registerParentFcmToken = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const { contactNumber, fcmToken, entityId, deviceName } = req.body;
+        if (!contactNumber || !fcmToken) {
+            throw new AppError('contactNumber and fcmToken are required', HTTP_STATUS.BAD_REQUEST);
+        }
+
+        const notificationService = (await import('../services/notification.service')).default;
+        await notificationService.registerToken(contactNumber, fcmToken, entityId, deviceName);
+        return res.status(HTTP_STATUS.OK).json({ success: true, message: 'FCM Token registered' });
     } catch (error) {
         next(error);
     }

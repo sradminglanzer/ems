@@ -1,5 +1,5 @@
 import express from 'express';
-import { getDiaryFeed, createDiaryEntry, updateDiaryEntry, deleteDiaryEntry, updateTracking, getMemberDiaryFeed } from '../controllers/diary.controller';
+import { getDiaryFeed, createDiaryEntry, updateDiaryEntry, deleteDiaryEntry, updateTracking, getMemberDiaryFeed, broadcastDailyDiary, getDiaryStatusToday } from '../controllers/diary.controller';
 import { authenticateToken } from '../middleware/auth.middleware';
 
 const router = express.Router();
@@ -10,9 +10,14 @@ router.route('/')
     .get(getDiaryFeed)
     .post(createDiaryEntry);
 
+router.post('/broadcast', broadcastDailyDiary);
+router.get('/status-today', getDiaryStatusToday);
+
+
 router.route('/:id')
     .put(updateDiaryEntry)
     .delete(deleteDiaryEntry);
+
 
 router.route('/:id/tracking')
     .put(updateTracking);

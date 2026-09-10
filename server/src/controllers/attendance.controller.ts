@@ -205,3 +205,77 @@ export const getMemberAttendance = async (req: Request, res: Response) => {
         res.status(500).json(new AppError(error.message, 500));
     }
 };
+
+export const sendAttendanceAlerts = async (req: Request, res: Response) => {
+    try {
+        const { entityId } = (req as any).user;
+        const { classId, date, memberIds, type } = req.body; // type: 'absent' | 'late' | 'all'
+
+        if (!classId || !date) {
+            return res.status(400).json(new AppError('classId and date are required', 400));
+        }
+
+        const normalizedDate = normalizeDate(date as string);
+        const dateFormatted = new Date(normalizedDate).toLocaleDateString('en-IN', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric'
+        });
+
+        const attendance = await attendanceService.getAttendanceWithMembers({
+            entityId: new ObjectId(entityId),
+            classId: new ObjectId(classId),
+            date: normalizedDate
+        });
+
+        if (!attendance || !attendance.records || attendance.records.length === 0) {
+            return res.status(404).json(new AppError('No attendance record found for this date', 404));
+        }
+
+        const notificationService = (await import('../services/notification.service')).default;
+
+        let sentCount = 0;
+        const targetRecords = attendance.records.filter((r: any) => {
+            const mId = r.memberId?._id ? r.memberId._id.toString() : r.memberId?.toString();
+            if (memberIds && Array.isArray(memberIds) && memberIds.length > 0) {
+                return memberIds.includes(mId);
+            }
+            if (type === 'absent') return r.status === 'absent';
+            if (type === 'late') return r.status === 'late';
+            return r.status === 'absent' || r.status === 'late';
+        });
+
+        for (const rec of targetRecords) {
+            const student = rec.memberId;
+            if (!student) continue;
+            const studentName = `${student.firstName || ''} ${student.lastName || ''}`.trim() || 'Student';
+            const studentId = student._id ? student._id.toString() : student.toString();
+
+            const isAbsent = rec.status === 'absent';
+            const title = isAbsent ? `⚠️ Absence Alert - ${studentName}` : `⏰ Late Arrival - ${studentName}`;
+            const body = isAbsent
+                ? `${studentName} was marked absent from class today (${dateFormatted}). If this was not planned, please contact the school.`
+                : `${studentName} arrived late to class today (${dateFormatted}).`;
+
+            await notificationService.sendToStudentsParents([studentId], {
+                title,
+                body,
+                data: {
+                    type: 'attendance_alert',
+                    studentId,
+                    date: date.toString(),
+                    status: rec.status
+                }
+            }, entityId);
+            sentCount++;
+        }
+
+        res.status(200).json({
+            success: true,
+            sentCount,
+            message: `Attendance alerts sent to parents of ${sentCount} student(s)`
+        });
+    } catch (error: any) {
+        res.status(500).json(new AppError(error.message, 500));
+    }
+};

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "274805938939",
+    "project_id": "srgs-ems",
+    "storage_bucket": "srgs-ems.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:274805938939:android:b7f2482cf0c472cb5f2e5e",
+        "android_client_info": {
+          "package_name": "com.srgs.lakeshoreschool"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAl65ICynp5b7ysSUsdw3df5BB54FXhwj0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

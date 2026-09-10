@@ -1,6 +1,7 @@
 package com.srgs.ems.viewmodel
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.srgs.ems.data.AcademicYearManager
@@ -67,6 +68,7 @@ class ClassDetailViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun initClass(id: String) {
+        Log.d("ClassDetailVM", "initClass() invoked with id='$id' (current classId='${_classId.value}')")
         if (_classId.value != id) {
             _classId.value = id
             loadClassData(id)
@@ -74,10 +76,15 @@ class ClassDetailViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun loadClassData(id: String = _classId.value) {
-        if (id.isEmpty()) return
+        Log.d("ClassDetailVM", "loadClassData() requested for id='$id'")
+        if (id.isEmpty()) {
+            Log.w("ClassDetailVM", "⚠️ loadClassData() aborted: class id is empty!")
+            return
+        }
         viewModelScope.launch {
             _isLoading.value = true
             val yearId = AcademicYearManager.selectedYearId
+            Log.d("ClassDetailVM", "📡 Fetching details & diary feed for classId='$id', academicYearId='$yearId'")
             val detailsJob = async { feeGroupRepo.getGroupDetails(id, yearId) }
             val diaryJob = async { diaryRepo.getDiaryFeed(id, yearId) }
             val subjectsJob = async { diaryRepo.getSubjects() }
@@ -85,6 +92,7 @@ class ClassDetailViewModel(application: Application) : AndroidViewModel(applicat
             _details.value = detailsJob.await()
             _diaryFeed.value = diaryJob.await()
             _subjects.value = subjectsJob.await()
+            Log.d("ClassDetailVM", "✅ Loaded ${_diaryFeed.value.size} diary entries and ${_subjects.value.size} subjects for classId='$id'")
             _isLoading.value = false
         }
     }
@@ -261,6 +269,47 @@ class ClassDetailViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    val isBroadcasting = MutableStateFlow(false)
+
+    fun broadcastDailyDiary() {
+        val cId = _classId.value
+        if (cId.isEmpty()) {
+            Log.w("ClassDetailVM", "⚠️ Cannot broadcast diary: _classId is empty!")
+            return
+        }
+        val yearId = AcademicYearManager.selectedYearId
+        Log.d("ClassDetailVM", "📢 broadcastDailyDiary() triggered for classId='$cId', yearId='$yearId'")
+        viewModelScope.launch {
+            isBroadcasting.value = true
+            try {
+                val payload = BroadcastDiaryRequest(classId = cId, academicYearId = yearId)
+                Log.d("ClassDetailVM", "📡 Sending POST /api/diary/broadcast payload: classId=${payload.classId}, academicYearId=${payload.academicYearId}")
+                val res = ApiClient.getApiService(getApplication<Application>().applicationContext).broadcastDailyDiary(payload)
+                if (res.isSuccessful && res.body()?.success == true) {
+                    val msg = res.body()?.message ?: "Daily diary broadcasted to parents!"
+                    Log.d("ClassDetailVM", "🎉 Broadcast succeeded: HTTP ${res.code()} - $msg")
+                    snackbarEvent.emit("📢 $msg")
+                    loadClassData(cId)
+                } else {
+                    val errBody = res.errorBody()?.string()
+                    Log.e("ClassDetailVM", "❌ Broadcast failed: HTTP ${res.code()} - $errBody")
+                    val parsedMsg = try {
+                        val obj = org.json.JSONObject(errBody ?: "")
+                        obj.optString("message", "Failed to broadcast diary")
+                    } catch (_: Exception) {
+                        "Failed to broadcast diary"
+                    }
+                    snackbarEvent.emit("❌ $parsedMsg")
+                }
+            } catch (e: Exception) {
+                Log.e("ClassDetailVM", "❌ Broadcast exception: ${e.message}", e)
+                snackbarEvent.emit("❌ Error: ${e.message}")
+            } finally {
+                isBroadcasting.value = false
+            }
+        }
+    }
+
     private inline fun <T> List<T>.findIndex(predicate: (T) -> Boolean): Int {
         for (i in indices) {
             if (predicate(this[i])) return i
@@ -268,3 +317,4 @@ class ClassDetailViewModel(application: Application) : AndroidViewModel(applicat
         return -1
     }
 }
+

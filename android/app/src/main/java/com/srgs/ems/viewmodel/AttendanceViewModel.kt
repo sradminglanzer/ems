@@ -6,7 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.srgs.ems.data.api.FeeGroupDto
+import com.srgs.ems.data.api.*
 import com.srgs.ems.data.repository.AttendanceRecord
 import com.srgs.ems.data.repository.AttendanceRepository
 import kotlinx.coroutines.flow.*
@@ -31,6 +31,7 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
         private set
 
     val saveResult = MutableSharedFlow<Boolean>()
+    val alertMessage = MutableSharedFlow<String>()
 
     init {
         loadFeeGroups()
@@ -97,4 +98,25 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
             isSaving.value = false
         }
     }
+
+    fun sendAttendanceAlerts(type: String = "all") {
+        val classId = selectedGroupId.value ?: return
+        viewModelScope.launch {
+            try {
+                val res = ApiClient.getApiService(getApplication<Application>().applicationContext).sendAttendanceAlerts(
+                    SendAttendanceAlertsRequest(
+                        classId = classId,
+                        date = selectedDate.value,
+                        type = type
+                    )
+                )
+                if (res.isSuccessful && res.body()?.success == true) {
+                    alertMessage.emit(res.body()?.message ?: "Alerts sent to parents")
+                }
+            } catch (e: Exception) {
+                alertMessage.emit(e.message ?: "Failed to send alerts")
+            }
+        }
+    }
 }
+

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getExams, createExam, getResults, addResult, getMemberResults, getClassRankSheet, getMemberReportCard } from '../controllers/exam.controller';
+import { getExams, createExam, getResults, addResult, getMemberResults, getClassRankSheet, getMemberReportCard, notifyExamTimetable, publishExamResults } from '../controllers/exam.controller';
 import { authenticateToken, requireRole } from '../middleware/auth.middleware';
 
 const router = Router();
@@ -16,9 +16,13 @@ router.use(requireRole(['owner', 'admin', 'teacher']));
 router.get('/', getExams);
 router.post('/', createExam);
 
+router.post('/:examId/notify-timetable', notifyExamTimetable);
+router.post('/:examId/publish-results', publishExamResults);
+
 router.get('/:examId/results', getResults);
 router.post('/:examId/results', addResult);
 router.get('/:examId/rank-sheet', getClassRankSheet);
 
 export default router;
+
 

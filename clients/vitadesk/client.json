@@ -1,0 +1,9 @@
+{
+  "id": "vitadesk",
+  "appName": "VitaDesk",
+  "applicationId": "com.srgs.vitadesk",
+  "entityId": "",
+  "apiUrl": "https://smsapi.srglanzsoftware.com/api",
+  "versionCode": 6,
+  "versionName": "1.0.6"
+}

@@ -3,16 +3,52 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "com.srgs.ems"
     compileSdk = 35
 
+    // Read active client config if switched for Android Studio IDE run
+    val activeConfigFile = file("active-client.json")
+    var defaultAppId     = "com.srgs.ems"
+    var defaultAppName   = "EMS"
+    var defaultApiUrl    = "https://smsapi.srglanzsoftware.com/api"
+    var defaultEntityId  = ""
+    var defaultVerCode   = 6
+    var defaultVerName   = "1.0.6"
+
+    if (activeConfigFile.exists()) {
+        try {
+            val json = groovy.json.JsonSlurper().parseText(activeConfigFile.readText()) as Map<*, *>
+            defaultAppId     = (json["applicationId"] as? String) ?: defaultAppId
+            defaultAppName   = (json["appName"] as? String) ?: defaultAppName
+            defaultApiUrl    = (json["apiUrl"] as? String) ?: defaultApiUrl
+            defaultEntityId  = (json["entityId"] as? String) ?: defaultEntityId
+            defaultVerCode   = (json["versionCode"] as? Number)?.toInt() ?: defaultVerCode
+            defaultVerName   = (json["versionName"] as? String) ?: defaultVerName
+        } catch (_: Exception) {}
+    }
+
+    val clientAppId     = project.findProperty("clientAppId") as String? ?: defaultAppId
+    val clientAppName   = project.findProperty("clientAppName") as String? ?: defaultAppName
+    val clientApiUrl    = project.findProperty("clientApiUrl") as String? ?: defaultApiUrl
+    val clientEntityId  = project.findProperty("clientEntityId") as String? ?: defaultEntityId
+    val clientVerCode   = (project.findProperty("clientVersionCode") as String?)?.toIntOrNull() ?: defaultVerCode
+    val clientVerName   = (project.findProperty("clientVersionName") as String?) ?: defaultVerName
+
     defaultConfig {
-        applicationId = "com.srgs.ems"
+        applicationId = clientAppId
         minSdk = 26
         targetSdk = 36
-        versionCode = 6
-        versionName = "1.0.6"
+        versionCode = clientVerCode
+        versionName = clientVerName
+
+        resValue("string", "app_name", clientAppName)
+        buildConfigField("String", "API_URL", "\"$clientApiUrl\"")
+        buildConfigField("String", "ENTITY_ID", "\"$clientEntityId\"")
 
         vectorDrawables { useSupportLibrary = true }
     }
@@ -24,34 +60,7 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
         debug {
-            // Keep debug fast — no minification
             isMinifyEnabled = false
-        }
-    }
-
-    flavorDimensions += "client"
-
-    productFlavors {
-        create("vitadesk") {
-            dimension = "client"
-            applicationId = "com.srgs.vitadesk"
-            resValue("string", "app_name", "VitaDesk")
-            buildConfigField("String", "API_URL", "\"https://smsapi.srglanzsoftware.com/api\"")
-            buildConfigField("String", "ENTITY_ID", "\"\"")
-        }
-        create("lakeshore") {
-            dimension = "client"
-            applicationId = "com.srgs.lakeshoreschool"
-            resValue("string", "app_name", "Lakeshore School")
-            buildConfigField("String", "API_URL", "\"https://smsapi.srglanzsoftware.com/api\"")
-            buildConfigField("String", "ENTITY_ID", "\"69a3240d669273408df1969f\"")
-        }
-        create("revilation") {
-            dimension = "client"
-            applicationId = "com.revilation.app"
-            resValue("string", "app_name", "Revilation Fitness")
-            buildConfigField("String", "API_URL", "\"https://smsapi.srglanzsoftware.com/api\"")
-            buildConfigField("String", "ENTITY_ID", "\"<entity_id>\"")
         }
     }
 
@@ -94,6 +103,9 @@ dependencies {
 
     // Local storage
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+
+    // Firebase Cloud Messaging (Push Notifications)
+    implementation("com.google.firebase:firebase-messaging:24.1.0")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation(platform("androidx.compose:compose-bom:2024.06.00"))

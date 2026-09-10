@@ -18,6 +18,8 @@ export interface IDiary {
     attachments: string[];
     createdBy: ObjectId;
     studentTracking: IDiaryTracking[];
+    isPublished?: boolean;
+    publishedAt?: Date;
     createdAt?: Date;
     updatedAt?: Date;
 }

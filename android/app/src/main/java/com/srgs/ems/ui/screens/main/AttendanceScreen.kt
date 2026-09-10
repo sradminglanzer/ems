@@ -43,15 +43,65 @@ fun AttendanceScreen(vm: AttendanceViewModel = viewModel()) {
     val drawerState = LocalDrawerState.current
     val scope       = rememberCoroutineScope()
 
+    var showPromptAlertsDialog by remember { mutableStateOf(false) }
+    var pendingAlertCounts by remember { mutableStateOf(Pair(0, 0)) } // absent, late
+
     // Snackbar for save result
     val snackbarHost = remember { SnackbarHostState() }
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     LaunchedEffect(Unit) {
         vm.saveResult.collect { success ->
-            snackbarHost.showSnackbar(
-                if (success) "✅ Attendance saved!" else "❌ Failed to save. Try again."
-            )
+            if (success) {
+                val absent = records.count { it.status == "absent" }
+                val late = records.count { it.status == "late" }
+                if (isNew && (absent > 0 || late > 0)) {
+                    pendingAlertCounts = Pair(absent, late)
+                    showPromptAlertsDialog = true
+                } else {
+                    snackbarHost.showSnackbar("✅ Attendance saved!")
+                }
+            } else {
+                snackbarHost.showSnackbar("❌ Failed to save. Try again.")
+            }
         }
+    }
+
+    LaunchedEffect(Unit) {
+        vm.alertMessage.collect { msg ->
+            snackbarHost.showSnackbar(msg)
+        }
+    }
+
+    if (showPromptAlertsDialog) {
+        AlertDialog(
+            onDismissRequest = { showPromptAlertsDialog = false },
+            title = {
+                Text("📢 Send Attendance Alerts?", fontWeight = FontWeight.Bold)
+            },
+            text = {
+                val (absent, late) = pendingAlertCounts
+                Text(
+                    "You marked $absent absent and $late late student(s).\n\n" +
+                    "Would you like to send instant push notification alerts to their parents now?"
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showPromptAlertsDialog = false
+                        vm.sendAttendanceAlerts("all")
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                ) {
+                    Text("Send Alerts", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPromptAlertsDialog = false }) {
+                    Text("Skip", color = TextSecondary)
+                }
+            }
+        )
     }
 
     Scaffold(

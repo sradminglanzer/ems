@@ -276,6 +276,8 @@ fun ClassDetailScreen(
                     ClassDetailTab.DIARY -> {
                         ClassDiaryTab(
                             feed = diaryFeed,
+                            isBroadcasting = vm.isBroadcasting.collectAsState().value,
+                            onBroadcastClick = { vm.broadcastDailyDiary() },
                             onPostClick = {
                                 vm.startPostDiary()
                                 showPostSheet = true
@@ -487,11 +489,46 @@ private fun StudentRosterCard(
 @Composable
 private fun ClassDiaryTab(
     feed: List<DiaryDto>,
+    isBroadcasting: Boolean,
+    onBroadcastClick: () -> Unit,
     onPostClick: () -> Unit,
     onEditClick: (DiaryDto) -> Unit,
     onDeleteClick: (DiaryDto) -> Unit,
     onUpdateTracking: (diaryId: String, studentId: String, status: String) -> Unit
 ) {
+    var showBroadcastConfirmDialog by remember { mutableStateOf(false) }
+
+    if (showBroadcastConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showBroadcastConfirmDialog = false },
+            title = {
+                Text("📢 Send Daily Diary to Parents?", fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text(
+                    "This will compile all ${feed.size} diary/homework entries for today into 1 consolidated push notification and send it to all parents of this class.\n\n" +
+                    "Do you want to broadcast now?"
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showBroadcastConfirmDialog = false
+                        onBroadcastClick()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                ) {
+                    Text("Broadcast Now", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBroadcastConfirmDialog = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -510,16 +547,34 @@ private fun ClassDiaryTab(
                     color = TextPrimary
                 )
 
-                Button(
-                    onClick = onPostClick,
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                    modifier = Modifier.height(34.dp)
-                ) {
-                    Icon(Icons.Filled.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Post Entry", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (feed.isNotEmpty()) {
+                        OutlinedButton(
+                            onClick = { showBroadcastConfirmDialog = true },
+                            enabled = !isBroadcasting,
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.height(34.dp)
+                        ) {
+                            if (isBroadcasting) {
+                                CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                            } else {
+                                Text("📢 Send Diary", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Primary)
+                            }
+                        }
+                    }
+
+                    Button(
+                        onClick = onPostClick,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.height(34.dp)
+                    ) {
+                        Icon(Icons.Filled.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Post Entry", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
                 }
             }
         }

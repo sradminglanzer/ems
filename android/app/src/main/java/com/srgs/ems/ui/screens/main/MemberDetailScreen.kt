@@ -190,6 +190,7 @@ fun MemberDetailScreen(
     var showCheckoutSheet by remember { mutableStateOf(false) }
     var showCheckoutSuccessDialog by remember { mutableStateOf(false) }
     var lastCheckoutDetails by remember { mutableStateOf<CheckoutDetailsDto?>(null) }
+    var paymentToSendPush by remember { mutableStateOf<FeePaymentDto?>(null) }
 
     LaunchedEffect(Unit) {
         vm.collectResult.collect { result ->
@@ -411,11 +412,51 @@ fun MemberDetailScreen(
                     ) {
                         Text("💬 Share via WhatsApp", color = Color(0xFF128C7E), fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
+                    OutlinedButton(
+                        onClick = {
+                            val lastPay = payments.maxByOrNull { it.paymentDate }
+                            if (lastPay != null) {
+                                paymentToSendPush = lastPay
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, Primary)
+                    ) {
+                        Text("📲 Send Push Notification to Parent", color = Primary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
                 }
             },
             confirmButton = {
                 TextButton(onClick = { showReceiptDialog = false }) {
                     Text("Done", color = Primary, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
+    if (paymentToSendPush != null) {
+        val p = paymentToSendPush!!
+        AlertDialog(
+            onDismissRequest = { paymentToSendPush = null },
+            title = { Text("📲 Send Fee Receipt Push?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text("Send fee receipt notification of ${inrFmt(p.amount)} to parent/guardian of ${member?.firstName ?: "student"}?")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        vm.sendReceiptNotification(p._id)
+                        paymentToSendPush = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                ) {
+                    Text("Send Push")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { paymentToSendPush = null }) {
+                    Text("Cancel")
                 }
             }
         )
@@ -535,7 +576,8 @@ fun MemberDetailScreen(
                                 member          = m,
                                 isAdmin         = session?.isAdmin ?: false,
                                 onEditNextDate  = { paymentToEditDate = it },
-                                onDeletePayment = { paymentToDelete = it }
+                                onDeletePayment = { paymentToDelete = it },
+                                onSendPush      = { paymentToSendPush = it }
                             )
                         }
                     }
@@ -1025,7 +1067,8 @@ private fun PaymentCard(
     member: MemberDetailDto? = null,
     isAdmin: Boolean = false,
     onEditNextDate: ((FeePaymentDto) -> Unit)? = null,
-    onDeletePayment: ((FeePaymentDto) -> Unit)? = null
+    onDeletePayment: ((FeePaymentDto) -> Unit)? = null,
+    onSendPush: ((FeePaymentDto) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val structName = structures.find { it._id == p.feeStructureId }?.name ?: "Fee Payment"
@@ -1081,12 +1124,22 @@ private fun PaymentCard(
 
             HorizontalDivider(Modifier.padding(top = 8.dp), color = Border.copy(alpha = 0.5f))
 
-            // Action row: WhatsApp Share + Delete
+            // Action row: Push + WhatsApp Share + Delete
             Row(
                 Modifier.fillMaxWidth().padding(top = 4.dp),
                 Arrangement.End,
                 Alignment.CenterVertically
             ) {
+                if (isAdmin && onSendPush != null) {
+                    TextButton(
+                        onClick = { onSendPush(p) },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        Text("📲 Push", fontSize = 11.sp, color = Primary, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                }
+
                 TextButton(
                     onClick = {
                         shareWhatsAppReceipt(

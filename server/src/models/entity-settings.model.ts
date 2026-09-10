@@ -78,11 +78,22 @@ export const DEFAULT_SCHOOL_STAFF_ROLES: StaffRoleSetting[] = [
     { label: 'Staff', code: 'staff', enable_login: false }
 ];
 
+export interface EntityFirebaseConfig {
+    enabled: boolean;
+    projectId?: string;
+    clientEmail?: string;
+    privateKey?: string;
+    senderId?: string;
+    appName?: string;
+    updatedAt?: Date;
+}
+
 export class EntitySettings {
     _id?: ObjectId;
     entityType: string;
     labels: EntityLabelsSetting;
     staffRoles: StaffRoleSetting[];
+    firebaseConfig?: EntityFirebaseConfig;
     createdAt?: Date;
     updatedAt?: Date;
 
@@ -103,6 +114,9 @@ export class EntitySettings {
         this.staffRoles = Array.isArray(data.staffRoles) && data.staffRoles.length > 0
             ? data.staffRoles
             : defaultRoles;
+        if (data.firebaseConfig) {
+            this.firebaseConfig = data.firebaseConfig;
+        }
         this.createdAt = data.createdAt || new Date();
         this.updatedAt = data.updatedAt || new Date();
     }

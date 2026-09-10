@@ -2,6 +2,7 @@ import app from './app';
 import { connectDB } from './config/db';
 import { initExpiryAlertJob } from './jobs/expiry-alert.job';
 import { initRecurringExpenseJob } from './jobs/recurring-expense.job';
+import { initDiaryReminderJob } from './jobs/diary-reminder.job';
 import dotenv from 'dotenv';
 
 dotenv.config({ path: `.${process.env.N_ENV}.env` });
@@ -12,6 +13,7 @@ const startServer = async () => {
     await connectDB();
     // initExpiryAlertJob(); // Disabled 8:00 AM subscription expiry cron job
     initRecurringExpenseJob();
+    initDiaryReminderJob();
 
     app.listen(PORT, () => {
         console.log(`Server is running on port ${PORT}`);

@@ -146,3 +146,92 @@ export const deleteFeePayment = async (req: AuthRequest, res: Response, next: Ne
         next(error);
     }
 };
+
+export const sendReceiptNotification = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const id = req.params.id;
+        const payment = await feePaymentService.getOne({
+            _id: new ObjectId(id as string),
+            entityId: new ObjectId(req.user!.entityId.toString())
+        });
+
+        if (!payment) {
+            throw new AppError('Fee payment not found', HTTP_STATUS.NOT_FOUND);
+        }
+
+        const student = await memberService.getOne({
+            _id: payment.memberId,
+            entityId: new ObjectId(req.user!.entityId.toString())
+        });
+
+        const studentName = student ? `${student.firstName || ''} ${student.lastName || ''}`.trim() : 'Student';
+        const dateFormatted = payment.paymentDate ? new Date(payment.paymentDate).toLocaleDateString('en-IN', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric'
+        }) : 'Today';
+
+        const entityId = req.user!.entityId.toString();
+        const notificationService = (await import('../services/notification.service')).default;
+
+        await notificationService.sendToStudentsParents([payment.memberId.toString()], {
+            title: `🧾 Fee Payment Received - ₹${payment.amount}`,
+            body: `Fee payment of ₹${payment.amount} (Receipt #${payment.receiptNo || 'N/A'}) for ${studentName} was successfully recorded on ${dateFormatted}.`,
+            data: {
+                type: 'fee_receipt',
+                paymentId: id as string,
+                memberId: payment.memberId.toString(),
+                amount: (payment.amount || 0).toString()
+            }
+        }, entityId);
+
+        res.status(HTTP_STATUS.OK).json({ success: true, message: 'Fee receipt notification sent to parent successfully' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const sendDueReminders = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const { studentIds, amount, remarks } = req.body;
+        const entityId = req.user!.entityId.toString();
+
+        if (!studentIds || !Array.isArray(studentIds) || studentIds.length === 0) {
+            throw new AppError('studentIds array is required', HTTP_STATUS.BAD_REQUEST);
+        }
+
+        const notificationService = (await import('../services/notification.service')).default;
+        let sentCount = 0;
+
+        for (const studentId of studentIds) {
+            const student = await memberService.getOne({
+                _id: new ObjectId(studentId),
+                entityId: new ObjectId(entityId)
+            });
+            if (!student) continue;
+
+            const studentName = `${student.firstName || ''} ${student.lastName || ''}`.trim() || 'Student';
+            const amountText = amount ? ` of ₹${amount}` : '';
+            const remarksText = remarks ? ` (${remarks})` : '';
+
+            await notificationService.sendToStudentsParents([studentId], {
+                title: `🔔 Fee Reminder - ${studentName}`,
+                body: `Dear Parent, school fee payment${amountText} for ${studentName} is pending. Please complete the payment at the earliest.${remarksText}`,
+                data: {
+                    type: 'fee_reminder',
+                    studentId
+                }
+            }, entityId);
+            sentCount++;
+        }
+
+        res.status(HTTP_STATUS.OK).json({
+            success: true,
+            sentCount,
+            message: `Fee due reminders sent to parents of ${sentCount} student(s)`
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+

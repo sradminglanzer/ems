@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.srgs.ems.data.api.ApiClient
 import com.srgs.ems.data.api.FeeGroupDto
 import com.srgs.ems.data.api.FeePaymentDto
 import com.srgs.ems.data.api.FeeStructureDto
@@ -304,6 +305,22 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
             paymentActionResult.emit(ok to if (ok) "Payment deleted" else "Failed to delete payment")
         }
     }
+
+    fun sendReceiptNotification(paymentId: String) {
+        viewModelScope.launch {
+            try {
+                val res = ApiClient.getApiService(getApplication<Application>().applicationContext).sendReceiptNotification(paymentId)
+                if (res.isSuccessful) {
+                    paymentActionResult.emit(true to "🧾 Fee receipt push sent to parent!")
+                } else {
+                    paymentActionResult.emit(false to "Failed to send receipt push")
+                }
+            } catch (e: Exception) {
+                paymentActionResult.emit(false to (e.message ?: "Failed to send receipt push"))
+            }
+        }
+    }
+
 
     // ── Date calculation ──────────────────────────────────────────────────────
     private fun calcNextDate(frequency: String, lastDateStr: String?): String {

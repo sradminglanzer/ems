@@ -322,8 +322,36 @@ interface ApiService {
     @POST("auth/parent-set-pin")
     suspend fun parentSetPin(@Body request: ParentSetPinRequest): Response<Unit>
 
+    @POST("auth/parent-fcm-token")
+    suspend fun registerParentFcmToken(@Body request: RegisterFcmTokenRequest): Response<Unit>
+
     @GET("parent/student/{memberId}/dashboard")
     suspend fun getChildDashboard(@Path("memberId") memberId: String): Response<ParentDashboardDto>
+
+    // ── Push Notification Triggers (Manual with Confirmation) ─────────────────
+    @POST("attendance/send-alerts")
+    suspend fun sendAttendanceAlerts(@Body request: SendAttendanceAlertsRequest): Response<SendAttendanceAlertsResponse>
+
+    @POST("diary/broadcast")
+    suspend fun broadcastDailyDiary(@Body request: BroadcastDiaryRequest): Response<BroadcastDiaryResponse>
+
+    @GET("diary/status-today")
+    suspend fun getDiaryStatusToday(
+        @Query("academicYearId") academicYearId: String? = null,
+        @Query("date") date: String? = null
+    ): Response<List<DiaryStatusDto>>
+
+    @POST("fee-payments/{id}/send-receipt-notification")
+    suspend fun sendReceiptNotification(@Path("id") id: String): Response<Unit>
+
+    @POST("fee-payments/send-due-reminders")
+    suspend fun sendDueReminders(@Body request: SendDueRemindersRequest): Response<SendDueRemindersResponse>
+
+    @POST("exams/{examId}/notify-timetable")
+    suspend fun notifyExamTimetable(@Path("examId") examId: String): Response<Unit>
+
+    @POST("exams/{examId}/publish-results")
+    suspend fun publishExamResults(@Path("examId") examId: String): Response<PublishResultsResponse>
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1439,3 +1467,66 @@ data class ParentDashboardDto(
     val fees: ParentFeesDto = ParentFeesDto(),
     val notices: List<ParentNoticeDto> = emptyList()
 )
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  PUSH NOTIFICATIONS & FCM DTOs
+// ═══════════════════════════════════════════════════════════════════════════════
+
+data class RegisterFcmTokenRequest(
+    val contactNumber: String,
+    val fcmToken: String,
+    val entityId: String? = null,
+    val deviceName: String? = null
+)
+
+data class SendAttendanceAlertsRequest(
+    val classId: String,
+    val date: String,
+    val memberIds: List<String>? = null,
+    val type: String? = "all" // "absent" | "late" | "all"
+)
+
+data class SendAttendanceAlertsResponse(
+    val success: Boolean = false,
+    val sentCount: Int = 0,
+    val message: String = ""
+)
+
+data class BroadcastDiaryRequest(
+    val classId: String,
+    val academicYearId: String? = null,
+    val date: String? = null
+)
+
+data class BroadcastDiaryResponse(
+    val success: Boolean = false,
+    val entriesCount: Int = 0,
+    val message: String = ""
+)
+
+data class DiaryStatusDto(
+    val classId: String = "",
+    val className: String = "",
+    val entryCount: Int = 0,
+    val isPublished: Boolean = false,
+    val needsBroadcast: Boolean = false
+)
+
+data class SendDueRemindersRequest(
+    val studentIds: List<String>,
+    val amount: Double? = null,
+    val remarks: String? = null
+)
+
+data class SendDueRemindersResponse(
+    val success: Boolean = false,
+    val sentCount: Int = 0,
+    val message: String = ""
+)
+
+data class PublishResultsResponse(
+    val success: Boolean = false,
+    val sentCount: Int = 0,
+    val message: String = ""
+)
+

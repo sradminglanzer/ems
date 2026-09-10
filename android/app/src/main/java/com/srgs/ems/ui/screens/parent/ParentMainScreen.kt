@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.srgs.ems.data.SessionManager
 import com.srgs.ems.data.api.*
 import com.srgs.ems.ui.theme.*
 import com.srgs.ems.viewmodel.ParentViewModel
@@ -53,7 +54,7 @@ fun ParentMainScreen(
     viewModel: ParentViewModel = viewModel()
 ) {
     LaunchedEffect(initialChildren) {
-        viewModel.init(initialChildren)
+        viewModel.init(initialChildren, SessionManager.session?.phone)
     }
 
     val activeChild by viewModel.activeChild.collectAsState()

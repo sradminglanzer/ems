@@ -206,3 +206,98 @@ export const getMemberReportCard = async (req: AuthRequest, res: Response, next:
         next(error);
     }
 };
+
+export const notifyExamTimetable = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const examId = req.params.examId as string;
+        const entityId = req.user!.entityId.toString();
+
+        const exam = await examService.getOne({ _id: new ObjectId(examId), entityId: new ObjectId(entityId) });
+        if (!exam) throw new AppError('Exam not found', HTTP_STATUS.NOT_FOUND);
+
+        const notificationService = (await import('../services/notification.service')).default;
+
+        const payload = {
+            title: `📝 Exam Timetable Announced: ${exam.name}`,
+            body: `${exam.name} schedule is published (${exam.subjects.length} subjects from ${exam.startDate} to ${exam.endDate}). Check the timetable in the app for complete details.`,
+            data: {
+                type: 'exam_timetable',
+                examId: examId,
+                startDate: exam.startDate,
+                endDate: exam.endDate
+            }
+        };
+
+        if (exam.feeGroupId) {
+            await notificationService.sendToClassParents(
+                exam.feeGroupId.toString(),
+                payload,
+                entityId,
+                exam.academicYearId?.toString()
+            );
+        } else {
+            await notificationService.sendToEntityParents(entityId, payload);
+        }
+
+        res.status(HTTP_STATUS.OK).json({
+            success: true,
+            message: `Exam timetable notification sent to parents successfully`
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const publishExamResults = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const examId = req.params.examId as string;
+        const entityId = req.user!.entityId.toString();
+
+        const [exam, results, allMembers] = await Promise.all([
+            examService.getOne({ _id: new ObjectId(examId), entityId: new ObjectId(entityId) }),
+            examResultService.getByExam(examId),
+            memberService.getByEntity(entityId)
+        ]);
+
+        if (!exam) throw new AppError('Exam not found', HTTP_STATUS.NOT_FOUND);
+        if (!results || results.length === 0) {
+            throw new AppError('No results found for this exam to publish', HTTP_STATUS.BAD_REQUEST);
+        }
+
+        const memberMap = new Map(allMembers.map((m: any) => [m._id.toString(), m]));
+        const notificationService = (await import('../services/notification.service')).default;
+
+        let sentCount = 0;
+        for (const r of results) {
+            const member = memberMap.get(r.memberId.toString());
+            const studentName = member ? `${member.firstName || ''} ${member.lastName || ''}`.trim() : 'Student';
+
+            const totalScore = r.marks.reduce((sum: number, m: any) => sum + (m.score || 0), 0);
+            const totalMax = r.marks.reduce((sum: number, m: any) => sum + (m.maxScore || 0), 0);
+            const percentage = totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : 0;
+            const grade = getGrade(percentage);
+
+            await notificationService.sendToStudentsParents([r.memberId.toString()], {
+                title: `📊 ${exam.name} Results Published - ${studentName}`,
+                body: `${studentName} scored ${totalScore}/${totalMax} (${percentage}% - Grade ${grade}) in ${exam.name}. Tap to view full report card.`,
+                data: {
+                    type: 'exam_result',
+                    examId: examId,
+                    memberId: r.memberId.toString(),
+                    percentage: percentage.toString(),
+                    grade: grade
+                }
+            }, entityId);
+            sentCount++;
+        }
+
+        res.status(HTTP_STATUS.OK).json({
+            success: true,
+            sentCount,
+            message: `Exam results published and notifications sent to parents of ${sentCount} student(s)`
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
