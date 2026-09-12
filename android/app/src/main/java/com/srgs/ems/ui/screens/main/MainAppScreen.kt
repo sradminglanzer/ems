@@ -326,6 +326,7 @@ private fun MainNavHost(navController: NavHostController, onSignOut: () -> Unit)
             DashboardScreen(
                 onNavigateToMembers      = { navController.navigate(MainRoute.Members) },
                 onNavigateToPlans        = { navController.navigate(MainRoute.FeeStructures) },
+                onNavigateToGroups       = { navController.navigate(MainRoute.FeeGroups) },
                 onNavigateToReports      = { navController.navigate(MainRoute.Reports) },
                 onNavigateToExpenses     = { navController.navigate(MainRoute.Expenses) },
                 onNavigateToMemberDetail = { id -> navController.navigate("main_member_detail/$id") },
@@ -404,7 +405,7 @@ private fun MainNavHost(navController: NavHostController, onSignOut: () -> Unit)
                 classId = classId,
                 onBack = { navController.popBackStack() },
                 onNavigateToMemberDetail = { id -> navController.navigate("main_member_detail/$id") },
-                onNavigateToMemberAdd = { groupId -> navController.navigate("main_add_member?groupId=$groupId") },
+                onNavigateToMemberAdd = { groupId -> navController.navigate("main_add_member?feeGroupId=$groupId") },
                 onNavigateToAttendance = { navController.navigate(MainRoute.Attendance) },
                 onNavigateToSubjects = { navController.navigate(MainRoute.Subjects) }
             )

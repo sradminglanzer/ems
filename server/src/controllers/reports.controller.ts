@@ -13,16 +13,20 @@ function parseDateFilter(startDate?: string, endDate?: string) {
     if (startDate && endDate) {
         const start = new Date(startDate);
         const end = new Date(endDate);
+        const startDayStr = startDate.slice(0, 10);
+        const endDayStr = endDate.slice(0, 10);
 
         dateFilter.$or = [
             { paymentDate: { $gte: start, $lte: end } },
-            { paymentDate: { $gte: startDate, $lte: endDate } },
+            { paymentDate: { $gte: startDayStr, $lte: endDayStr + 'T23:59:59.999Z' } },
+            { paymentDate: { $gte: startDayStr, $lte: endDayStr } },
             { createdAt: { $gte: start, $lte: end } }
         ];
 
         expenseDateFilter.$or = [
             { expenseDate: { $gte: start, $lte: end } },
-            { expenseDate: { $gte: startDate, $lte: endDate } },
+            { expenseDate: { $gte: startDayStr, $lte: endDayStr + 'T23:59:59.999Z' } },
+            { expenseDate: { $gte: startDayStr, $lte: endDayStr } },
             { createdAt: { $gte: start, $lte: end } }
         ];
     }
@@ -36,6 +40,23 @@ function sanitizeAcademicYearId(academicYearId?: string, entityId?: string): str
     return academicYearId;
 }
 
+function buildExpenseFilter(entityId: string, academicYearId?: string, expenseDateFilter: any = {}) {
+    const conditions: any[] = [{ entityId: new ObjectId(entityId) }];
+    if (expenseDateFilter.$or) {
+        conditions.push({ $or: expenseDateFilter.$or });
+    }
+    if (academicYearId) {
+        conditions.push({
+            $or: [
+                { academicYearId: new ObjectId(academicYearId) },
+                { academicYearId: null },
+                { academicYearId: { $exists: false } }
+            ]
+        });
+    }
+    return conditions.length > 1 ? { $and: conditions } : conditions[0];
+}
+
 /** 1. GET /api/reports/summary — Light KPI Card Aggregation */
 export const getReportSummary = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
@@ -45,8 +66,7 @@ export const getReportSummary = async (req: AuthRequest, res: Response, next: Ne
         const endDate = req.query.endDate as string | undefined;
 
         const { dateFilter, expenseDateFilter } = parseDateFilter(startDate, endDate);
-        const expenseFilter: any = { entityId: new ObjectId(entityId), ...expenseDateFilter };
-        if (academicYearId) expenseFilter.academicYearId = new ObjectId(academicYearId);
+        const expenseFilter = buildExpenseFilter(entityId, academicYearId, expenseDateFilter);
 
         const [feePayments, expenses] = await Promise.all([
             feePaymentService.getByEntity(entityId, academicYearId, dateFilter),
@@ -210,8 +230,7 @@ export const getExpenseBreakdownReport = async (req: AuthRequest, res: Response,
         const endDate = req.query.endDate as string | undefined;
 
         const { expenseDateFilter } = parseDateFilter(startDate, endDate);
-        const expenseFilter: any = { entityId: new ObjectId(entityId), ...expenseDateFilter };
-        if (academicYearId) expenseFilter.academicYearId = new ObjectId(academicYearId);
+        const expenseFilter = buildExpenseFilter(entityId, academicYearId, expenseDateFilter);
 
         const expenses = await expenseService.get(expenseFilter);
 

@@ -37,7 +37,7 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
     val religion           = MutableStateFlow("Hindu")
     val casteCategory      = MutableStateFlow("General") // "General" | "OBC" | "SC" | "ST" | "EWS"
     val subCaste           = MutableStateFlow("")
-    val bloodGroup         = MutableStateFlow("O+")
+    val bloodGroup         = MutableStateFlow("N/A")
     val medicalNotes       = MutableStateFlow("")
     val identificationMarks= MutableStateFlow("")
 
@@ -255,7 +255,7 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
             religion.value            = m.religion ?: "Hindu"
             casteCategory.value       = m.casteCategory ?: "General"
             subCaste.value            = m.subCaste ?: ""
-            bloodGroup.value          = m.bloodGroup ?: "O+"
+            bloodGroup.value          = m.bloodGroup ?: "N/A"
             medicalNotes.value        = m.medicalNotes ?: ""
             identificationMarks.value = m.identificationMarks ?: ""
 
@@ -379,6 +379,17 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
 
         if (fn.isEmpty() || ln.isEmpty()) {
             viewModelScope.launch { saveResult.emit(SaveResult.Error("First Name and Last Name are required")) }
+            return
+        }
+
+        val fPh = fatherPhone.value.trim()
+        if (isSchool && fPh.isNotEmpty() && fPh.length != 10) {
+            viewModelScope.launch { saveResult.emit(SaveResult.Error("Father's mobile number must be 10 digits")) }
+            return
+        }
+        val primPh = contact.value.trim()
+        if (!isSchool && primPh.isNotEmpty() && primPh.length != 10) {
+            viewModelScope.launch { saveResult.emit(SaveResult.Error("Primary phone number must be 10 digits")) }
             return
         }
 

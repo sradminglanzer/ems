@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.srgs.ems.data.SessionManager
 import com.srgs.ems.data.repository.SaveResult
@@ -210,6 +211,39 @@ fun AddMemberScreen(
         )
     }
 
+    if (isSubmitting) {
+        Dialog(onDismissRequest = {}) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Surface,
+                tonalElevation = 6.dp,
+                modifier = Modifier.padding(24.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(24.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    CircularProgressIndicator(color = Primary, strokeWidth = 3.dp, modifier = Modifier.size(36.dp))
+                    Column {
+                        Text(
+                            text = if (vm.isEditing) "Updating Student..." else "Creating Student...",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = TextPrimary
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Please wait a moment",
+                            fontSize = 12.sp,
+                            color = TextSecondary
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     Scaffold(
         snackbarHost   = { SnackbarHost(snackbar) },
         containerColor = Background,
@@ -224,7 +258,7 @@ fun AddMemberScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = onBack, enabled = !isSubmitting) {
                         Text("←", fontSize = 22.sp, color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 },
@@ -269,7 +303,7 @@ fun AddMemberScreen(
                             if (isSchool) {
                                 TField("Admission / SR No *", admNo, { vm.admissionNo.value = it }, "e.g. ADM-2025-0042")
                                 TField("Class Roll Number", rollNo, { vm.rollNo.value = it }, "e.g. 14")
-                                TField("Student Aadhaar Card No (12 Digits)", aadhaarNo, { vm.aadhaarNo.value = it.filter { c -> c.isDigit() } }, "12-digit Aadhaar UID", KeyboardType.Number)
+                                TField("Student Aadhaar Card No (12 Digits)", aadhaarNo, { vm.aadhaarNo.value = it.filter { c -> c.isDigit() }.take(12) }, "12-digit Aadhaar UID", KeyboardType.Number)
                                 TField("APAAR / PEN / National Student ID", apaarId, { vm.apaarId.value = it })
                             } else {
                                 TField(if (isBusiness) "${session?.labels?.memberSingle ?: "Tenant"} ID (Optional)" else "Roll / Student ID *", kId, { vm.knownId.value = it })
@@ -302,7 +336,7 @@ fun AddMemberScreen(
                                 // Blood Group Selector
                                 Text("Blood Group", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextSecondary, modifier = Modifier.padding(bottom = 6.dp))
                                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    listOf("A+", "B+", "O+", "AB+", "A-", "B-", "O-", "AB-").forEach { bg ->
+                                    listOf("N/A", "A+", "B+", "O+", "AB+", "A-", "B-", "O-", "AB-").forEach { bg ->
                                         val isSel = bloodGroup == bg
                                         FilterChip(
                                             selected = isSel,
@@ -372,12 +406,12 @@ fun AddMemberScreen(
                                 Text("FATHER'S PROFILE", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = Primary, letterSpacing = 0.5.sp)
                                 Spacer(Modifier.height(8.dp))
                                 TField("Father's Full Name *", fNameParent, { vm.fatherName.value = it })
-                                TField("Father's Mobile Number (WhatsApp) *", fPhone, { vm.fatherPhone.value = it }, "10-digit phone", KeyboardType.Phone)
-                                TField("Father's Occupation", fOcc, { vm.fatherOccupation.value = it }, "e.g. Business, Engineer, Govt Service")
+                                TField("Father's Mobile Number (WhatsApp) *", fPhone, { vm.fatherPhone.value = it.filter { c -> c.isDigit() }.take(10) }, "10-digit phone", KeyboardType.Phone)
+                                TField("Father's Occupation", fOcc, { vm.fatherOccupation.value = it.filter { c -> c.isLetterOrDigit() || c.isWhitespace() || c in ".,/-&()" } }, "e.g. Business, Engineer, Govt Service")
                                 TField("Father's Qualification", fQual, { vm.fatherQualification.value = it }, "e.g. B.Tech, M.Com, 10th")
-                                TField("Father's Aadhaar No", fAadhaar, { vm.fatherAadhaar.value = it.filter { c -> c.isDigit() } }, "12-digit Aadhaar", KeyboardType.Number)
+                                TField("Father's Aadhaar No", fAadhaar, { vm.fatherAadhaar.value = it.filter { c -> c.isDigit() }.take(12) }, "12-digit Aadhaar", KeyboardType.Number)
                                 TField("Father's Email", fEmail, { vm.fatherEmail.value = it }, "e.g. parent@gmail.com", KeyboardType.Email)
-                                TField("Father's Annual Income", fIncome, { vm.fatherIncome.value = it }, "e.g. ₹5,00,000")
+                                TField("Father's Annual Income", fIncome, { vm.fatherIncome.value = it.filter { c -> c.isDigit() } }, "e.g. 500000", KeyboardType.Number)
 
                                 Spacer(Modifier.height(16.dp))
                                 HorizontalDivider(color = Border.copy(alpha = 0.6f))
@@ -387,11 +421,12 @@ fun AddMemberScreen(
                                 Text("MOTHER'S PROFILE", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = Primary, letterSpacing = 0.5.sp)
                                 Spacer(Modifier.height(8.dp))
                                 TField("Mother's Full Name", mNameParent, { vm.motherName.value = it })
-                                TField("Mother's Mobile Number", mPhone, { vm.motherPhone.value = it }, "10-digit phone", KeyboardType.Phone)
-                                TField("Mother's Occupation", mOcc, { vm.motherOccupation.value = it }, "e.g. Homemaker, Teacher, Doctor")
+                                TField("Mother's Mobile Number", mPhone, { vm.motherPhone.value = it.filter { c -> c.isDigit() }.take(10) }, "10-digit phone", KeyboardType.Phone)
+                                TField("Mother's Occupation", mOcc, { vm.motherOccupation.value = it.filter { c -> c.isLetterOrDigit() || c.isWhitespace() || c in ".,/-&()" } }, "e.g. Homemaker, Teacher, Doctor")
                                 TField("Mother's Qualification", mQual, { vm.motherQualification.value = it })
-                                TField("Mother's Aadhaar No", mAadhaar, { vm.motherAadhaar.value = it.filter { c -> c.isDigit() } }, "12-digit Aadhaar", KeyboardType.Number)
+                                TField("Mother's Aadhaar No", mAadhaar, { vm.motherAadhaar.value = it.filter { c -> c.isDigit() }.take(12) }, "12-digit Aadhaar", KeyboardType.Number)
                                 TField("Mother's Email", mEmail, { vm.motherEmail.value = it }, "", KeyboardType.Email)
+                                TField("Mother's Annual Income", mIncome, { vm.motherIncome.value = it.filter { c -> c.isDigit() } }, "e.g. 300000", KeyboardType.Number)
 
                                 Spacer(Modifier.height(16.dp))
                                 HorizontalDivider(color = Border.copy(alpha = 0.6f))
@@ -402,7 +437,7 @@ fun AddMemberScreen(
                                 Spacer(Modifier.height(8.dp))
                                 TField("Guardian Name", gName, { vm.guardianName.value = it })
                                 TField("Relationship with Student", gRel, { vm.guardianRelation.value = it }, "e.g. Uncle, Grandfather")
-                                TField("Guardian Phone Number", gPhone, { vm.guardianPhone.value = it }, "", KeyboardType.Phone)
+                                TField("Guardian Phone Number", gPhone, { vm.guardianPhone.value = it.filter { c -> c.isDigit() }.take(10) }, "", KeyboardType.Phone)
                             }
                         }
                     }
@@ -417,8 +452,8 @@ fun AddMemberScreen(
                             Column(Modifier.padding(16.dp)) {
                                 Text("📞 Contact Details", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                                 Spacer(Modifier.height(12.dp))
-                                TField("Primary Phone Number *", contact, { vm.contact.value = it }, "", KeyboardType.Phone)
-                                TField("Parent / Emergency Contact", altContact, { vm.altContact.value = it }, "", KeyboardType.Phone)
+                                TField("Primary Phone Number *", contact, { vm.contact.value = it.filter { c -> c.isDigit() }.take(10) }, "", KeyboardType.Phone)
+                                TField("Parent / Emergency Contact", altContact, { vm.altContact.value = it.filter { c -> c.isDigit() }.take(10) }, "", KeyboardType.Phone)
                                 TField("Email Address", email, { vm.email.value = it }, "", KeyboardType.Email)
                             }
                         }
@@ -447,7 +482,7 @@ fun AddMemberScreen(
                             TField("City / Town", city, { vm.city.value = it })
                             TField("District", district, { vm.district.value = it })
                             TField("State", state, { vm.state.value = it }, "e.g. Telangana, Maharashtra, Karnataka")
-                            TField("PIN Code", pincode, { vm.pincode.value = it.filter { c -> c.isDigit() } }, "6-digit PIN Code", KeyboardType.Number)
+                            TField("PIN Code", pincode, { vm.pincode.value = it.filter { c -> c.isDigit() }.take(6) }, "6-digit PIN Code", KeyboardType.Number)
 
                             if (isSchool) {
                                 Spacer(Modifier.height(8.dp))
@@ -475,7 +510,7 @@ fun AddMemberScreen(
                                 Text("EMERGENCY CONTACT", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = Danger, letterSpacing = 0.5.sp)
                                 Spacer(Modifier.height(8.dp))
                                 TField("Emergency Contact Name", emName, { vm.emergencyName.value = it })
-                                TField("Emergency Phone Number", emPhone, { vm.emergencyPhone.value = it }, "", KeyboardType.Phone)
+                                TField("Emergency Phone Number", emPhone, { vm.emergencyPhone.value = it.filter { c -> c.isDigit() }.take(10) }, "", KeyboardType.Phone)
                                 TField("Relationship with Student", emRel, { vm.emergencyRelation.value = it }, "e.g. Father, Mother, Neighbor")
                             }
                         }

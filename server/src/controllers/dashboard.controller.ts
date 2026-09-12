@@ -146,22 +146,38 @@ export const getComprehensiveFinancials = async (req: AuthRequest, res: Response
         if (startDate && endDate) {
             const start = new Date(startDate);
             const end = new Date(endDate);
+            const startDayStr = startDate.slice(0, 10);
+            const endDayStr = endDate.slice(0, 10);
 
             dateFilter.$or = [
                 { paymentDate: { $gte: start, $lte: end } },
-                { paymentDate: { $gte: startDate, $lte: endDate } },
+                { paymentDate: { $gte: startDayStr, $lte: endDayStr + 'T23:59:59.999Z' } },
+                { paymentDate: { $gte: startDayStr, $lte: endDayStr } },
                 { createdAt: { $gte: start, $lte: end } }
             ];
 
             expenseDateFilter.$or = [
                 { expenseDate: { $gte: start, $lte: end } },
-                { expenseDate: { $gte: startDate, $lte: endDate } },
+                { expenseDate: { $gte: startDayStr, $lte: endDayStr + 'T23:59:59.999Z' } },
+                { expenseDate: { $gte: startDayStr, $lte: endDayStr } },
                 { createdAt: { $gte: start, $lte: end } }
             ];
         }
 
-        const expenseFilter: any = { entityId: new ObjectId(entityId), ...expenseDateFilter };
-        if (academicYearId) expenseFilter.academicYearId = new ObjectId(academicYearId);
+        const expenseConditions: any[] = [{ entityId: new ObjectId(entityId) }];
+        if (expenseDateFilter.$or) {
+            expenseConditions.push({ $or: expenseDateFilter.$or });
+        }
+        if (academicYearId) {
+            expenseConditions.push({
+                $or: [
+                    { academicYearId: new ObjectId(academicYearId) },
+                    { academicYearId: null },
+                    { academicYearId: { $exists: false } }
+                ]
+            });
+        }
+        const expenseFilter = expenseConditions.length > 1 ? { $and: expenseConditions } : expenseConditions[0];
 
         const [members, feeStructures, feePayments, expenses] = await Promise.all([
             memberService.getByEntity(entityId),

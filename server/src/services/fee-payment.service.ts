@@ -8,10 +8,20 @@ class FeePaymentService extends BaseService<FeePayment> {
     }
 
     async getByEntity(entityId: string | ObjectId, academicYearId?: string, customFilter: any = {}) {
-        const query: any = { entityId: new ObjectId(entityId), ...customFilter };
-        if (academicYearId && academicYearId !== 'null' && academicYearId !== 'undefined' && academicYearId.toString() !== entityId.toString()) {
-            query.academicYearId = new ObjectId(academicYearId);
+        const conditions: any[] = [{ entityId: new ObjectId(entityId) }];
+        if (customFilter && Object.keys(customFilter).length > 0) {
+            conditions.push(customFilter);
         }
+        if (academicYearId && academicYearId !== 'null' && academicYearId !== 'undefined' && academicYearId.toString() !== entityId.toString()) {
+            conditions.push({
+                $or: [
+                    { academicYearId: new ObjectId(academicYearId) },
+                    { academicYearId: null },
+                    { academicYearId: { $exists: false } }
+                ]
+            });
+        }
+        const query = conditions.length > 1 ? { $and: conditions } : conditions[0];
         return this.get(query);
     }
 

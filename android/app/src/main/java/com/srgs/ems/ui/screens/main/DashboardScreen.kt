@@ -45,6 +45,7 @@ fun DashboardScreen(
     vm: DashboardViewModel = viewModel(),
     onNavigateToMembers: () -> Unit = {},
     onNavigateToPlans: () -> Unit = {},
+    onNavigateToGroups: () -> Unit = {},
     onNavigateToReports: () -> Unit = {},
     onNavigateToExpenses: () -> Unit = {},
     onNavigateToMemberDetail: (memberId: String) -> Unit = {},
@@ -113,7 +114,8 @@ fun DashboardScreen(
                         s = s,
                         session = session,
                         onMembersClick = onNavigateToMembers,
-                        onPlansClick = onNavigateToPlans
+                        onPlansClick = onNavigateToPlans,
+                        onGroupsClick = onNavigateToGroups
                     )
                 }
 
@@ -221,7 +223,8 @@ private fun StatChips(
     s: DashboardStatsDto,
     session: UserSession?,
     onMembersClick: () -> Unit,
-    onPlansClick: () -> Unit
+    onPlansClick: () -> Unit,
+    onGroupsClick: () -> Unit
 ) {
     val labels = session?.labels ?: com.srgs.ems.data.api.EntityLabelsDto()
     val isGym = session?.isGym ?: false
@@ -230,7 +233,7 @@ private fun StatChips(
         Triple(labels.groupIcon, labels.groupPlural,
             if (isGym) s.totalFeeStructures.toString() else s.totalFeeGroups.toString())
     )
-    val actions = listOf(onMembersClick, onPlansClick)
+    val actions = listOf(onMembersClick, if (isGym) onPlansClick else onGroupsClick)
     val accents = listOf(AccentBlue, AccentPurple)
 
     Row(

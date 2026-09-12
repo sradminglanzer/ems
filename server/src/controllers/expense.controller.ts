@@ -48,7 +48,8 @@ export const createExpense = async (req: Request, res: Response, next: NextFunct
         const { entityId, userId } = getUser(req);
         const {
             title, category, amount, expenseDate, paymentMethod,
-            vendor, notes, receiptUrl, isRecurring, recurringFrequency
+            vendor, notes, receiptUrl, isRecurring, recurringFrequency,
+            academicYearId
         } = req.body;
 
         if (!title || !category || !amount) {
@@ -65,6 +66,7 @@ export const createExpense = async (req: Request, res: Response, next: NextFunct
 
         const newExpense: any = {
             entityId: new ObjectId(String(entityId)),
+            academicYearId: academicYearId ? new ObjectId(String(academicYearId)) : undefined,
             title,
             category,
             amount: Number(amount),
