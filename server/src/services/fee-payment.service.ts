@@ -64,48 +64,61 @@ class FeePaymentService extends BaseService<FeePayment> {
 
     /**
      * Returns collectionToday, collectionThisMonth, collectionLastMonth
-     * using a single $facet aggregation — no payment documents fetched into memory.
+     * computed reliably from entity fee payments.
      */
-    async getCollectionStats(entityId: string, academicYearId?: string): Promise<{
+    async getCollectionStats(entityId: string | ObjectId, academicYearId?: string): Promise<{
         collectionToday: number;
         collectionThisMonth: number;
         collectionLastMonth: number;
     }> {
-        const collection = this.getCollection();
+        const payments = await this.getByEntity(entityId, academicYearId);
         const today = new Date();
+        const currentYear = today.getFullYear();
+        const currentMonth = today.getMonth();
+        const currentDate = today.getDate();
 
-        const todayStart     = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-        const todayEnd       = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
-        const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-        const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        let collectionToday = 0;
+        let collectionThisMonth = 0;
+        let collectionLastMonth = 0;
 
-        const match: any = { entityId: new ObjectId(entityId) };
-        if (academicYearId) match.academicYearId = new ObjectId(academicYearId);
+        const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+        const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
 
-        const [result] = await collection.aggregate([
-            { $match: match },
-            {
-                $facet: {
-                    today: [
-                        { $match: { paymentDate: { $gte: todayStart, $lt: todayEnd } } },
-                        { $group: { _id: null, total: { $sum: '$amount' } } }
-                    ],
-                    thisMonth: [
-                        { $match: { paymentDate: { $gte: thisMonthStart } } },
-                        { $group: { _id: null, total: { $sum: '$amount' } } }
-                    ],
-                    lastMonth: [
-                        { $match: { paymentDate: { $gte: lastMonthStart, $lt: thisMonthStart } } },
-                        { $group: { _id: null, total: { $sum: '$amount' } } }
-                    ]
-                }
+        for (const p of payments) {
+            const amount = Number(p.amount) || 0;
+            if (!amount) continue;
+
+            const rawDate = p.paymentDate || (p as any).createdAt;
+            if (!rawDate) {
+                collectionThisMonth += amount;
+                continue;
             }
-        ]).toArray() as any[];
+
+            const d = new Date(rawDate);
+            if (isNaN(d.getTime())) {
+                collectionThisMonth += amount;
+                continue;
+            }
+
+            const pYear = d.getFullYear();
+            const pMonth = d.getMonth();
+            const pDate = d.getDate();
+
+            if (pYear === currentYear && pMonth === currentMonth && pDate === currentDate) {
+                collectionToday += amount;
+            }
+            if (pYear === currentYear && pMonth === currentMonth) {
+                collectionThisMonth += amount;
+            }
+            if (pYear === lastMonthYear && pMonth === lastMonth) {
+                collectionLastMonth += amount;
+            }
+        }
 
         return {
-            collectionToday:     result?.today?.[0]?.total     ?? 0,
-            collectionThisMonth: result?.thisMonth?.[0]?.total ?? 0,
-            collectionLastMonth: result?.lastMonth?.[0]?.total ?? 0,
+            collectionToday,
+            collectionThisMonth,
+            collectionLastMonth,
         };
     }
 }

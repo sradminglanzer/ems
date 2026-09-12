@@ -12,7 +12,10 @@ import { getDB } from '../config/db';
 export const getDashboardStats = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
         const entityId = req.user!.entityId.toString();
-        const academicYearId = req.query.academicYearId as string | undefined;
+        let academicYearId = req.query.academicYearId as string | undefined;
+        if (!academicYearId || academicYearId === 'null' || academicYearId === 'undefined' || academicYearId === entityId) {
+            academicYearId = undefined;
+        }
         const [{ collectionToday, collectionThisMonth, collectionLastMonth }, totalMembers, totalFeeGroups, totalFeeStructures, expiringMembers] =
             await Promise.all([
                 feePaymentService.getCollectionStats(entityId, academicYearId),
@@ -41,7 +44,10 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
 export const getDashboardReports = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
         const entityId = req.user!.entityId.toString();
-        const academicYearId = req.query.academicYearId as string | undefined;
+        let academicYearId = req.query.academicYearId as string | undefined;
+        if (!academicYearId || academicYearId === 'null' || academicYearId === 'undefined' || academicYearId === entityId) {
+            academicYearId = undefined;
+        }
 
         const [members, feeStructures, feePayments] = await Promise.all([
             memberService.getByEntity(entityId),
