@@ -14,86 +14,119 @@ class MemberService extends BaseService<Member> {
 
     /**
      * Returns only members who are overdue (latestNextPaymentDate < today),
-     * excluding members on hold. Uses an aggregation pipeline with $lookup
-     * so only the relevant subset is fetched from the DB.
+     * excluding members on hold / checked out / inactive.
      */
     async getOverdueMembers(entityId: string, today: Date): Promise<any[]> {
         const collection = this.getCollection();
-        return collection.aggregate([
-            { $match: { entityId: new ObjectId(entityId), status: { $ne: 'on_hold' } } },
-            {
-                $lookup: {
-                    from: 'fee_payments',
-                    localField: '_id',
-                    foreignField: 'memberId',
-                    as: 'payments'
-                }
-            },
-            {
-                $addFields: {
-                    latestNextDate: { $max: '$payments.nextPaymentDate' }
-                }
-            },
-            {
-                $match: {
-                    latestNextDate: { $lt: today }
-                }
-            },
-            {
-                // Drop the payments array — we only needed it to compute latestNextDate
-                $project: { payments: 0 }
-            }
-        ]).toArray();
-    }
-    /**
-     * Returns members who are overdue or have a renewal due within the next 7 days.
-     * Members with no payments (null latestNextDate) are excluded.
-     */
-    async getExpiringMembers(entityId: string): Promise<any[]> {
-        const collection = this.getCollection();
-        const today = new Date();
-        const nextWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 7);
-
         const members = await collection.aggregate([
-            { $match: { entityId: new ObjectId(entityId), status: { $ne: 'on_hold' } } },
+            { $match: { entityId: new ObjectId(entityId), status: { $nin: ['on_hold', 'checked_out', 'inactive'] } } },
             {
                 $lookup: {
                     from: 'fee_payments',
-                    localField: '_id',
-                    foreignField: 'memberId',
-                    as: 'payments'
+                    let: { memberId: '$_id' },
+                    pipeline: [
+                        { $match: { $expr: { $eq: ['$memberId', '$$memberId'] }, nextPaymentDate: { $ne: null } } },
+                        { $sort: { paymentDate: -1, createdAt: -1 } },
+                        { $limit: 1 }
+                    ],
+                    as: 'latestPayment'
                 }
             },
             {
                 $addFields: {
-                    latestNextDate: { $max: '$payments.nextPaymentDate' }
+                    latestPaymentDoc: { $arrayElemAt: ['$latestPayment', 0] }
                 }
             },
             {
-                // Exclude members with no payments (latestNextDate would be null)
-                // Include only overdue or expiring within 7 days
                 $match: {
-                    latestNextDate: { $ne: null, $lt: nextWeek }
+                    latestPaymentDoc: { $exists: true, $ne: null }
                 }
             },
             {
                 $project: {
-                    payments: 0
+                    _id: 1,
+                    firstName: 1,
+                    lastName: 1,
+                    knownId: 1,
+                    contact: 1,
+                    nextPaymentDate: '$latestPaymentDoc.nextPaymentDate'
                 }
-            },
-            { $sort: { latestNextDate: 1 } }
+            }
         ]).toArray();
 
-        // Add isOverdue flag in Node.js
-        return members.map(m => ({
-            _id: m._id,
-            firstName: m.firstName,
-            lastName: m.lastName,
-            knownId: m.knownId,
-            contact: m.contact,
-            nextPaymentDate: m.latestNextDate,
-            isOverdue: new Date(m.latestNextDate) < today
-        }));
+        return members.filter(m => {
+            if (!m.nextPaymentDate) return false;
+            const d = new Date(m.nextPaymentDate);
+            return !isNaN(d.getTime()) && d < today;
+        });
+    }
+
+    /**
+     * Returns members who are overdue or have a renewal due within the next 7 days,
+     * based on their most recent payment renewal date.
+     */
+    async getExpiringMembers(entityId: string): Promise<any[]> {
+        const collection = this.getCollection();
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+        const nextWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7, 23, 59, 59, 999);
+
+        const members = await collection.aggregate([
+            { $match: { entityId: new ObjectId(entityId), status: { $nin: ['on_hold', 'checked_out', 'inactive'] } } },
+            {
+                $lookup: {
+                    from: 'fee_payments',
+                    let: { memberId: '$_id' },
+                    pipeline: [
+                        { $match: { $expr: { $eq: ['$memberId', '$$memberId'] }, nextPaymentDate: { $ne: null } } },
+                        { $sort: { paymentDate: -1, createdAt: -1 } },
+                        { $limit: 1 }
+                    ],
+                    as: 'latestPayment'
+                }
+            },
+            {
+                $addFields: {
+                    latestPaymentDoc: { $arrayElemAt: ['$latestPayment', 0] }
+                }
+            },
+            {
+                $match: {
+                    latestPaymentDoc: { $exists: true, $ne: null }
+                }
+            },
+            {
+                $project: {
+                    _id: 1,
+                    firstName: 1,
+                    lastName: 1,
+                    knownId: 1,
+                    contact: 1,
+                    nextPaymentDate: '$latestPaymentDoc.nextPaymentDate'
+                }
+            }
+        ]).toArray();
+
+        const result = [];
+        for (const m of members) {
+            if (!m.nextPaymentDate) continue;
+            const d = new Date(m.nextPaymentDate);
+            if (isNaN(d.getTime())) continue;
+
+            if (d <= nextWeek) {
+                result.push({
+                    _id: m._id,
+                    firstName: m.firstName,
+                    lastName: m.lastName,
+                    knownId: m.knownId,
+                    contact: m.contact,
+                    nextPaymentDate: d,
+                    isOverdue: d < today
+                });
+            }
+        }
+
+        return result.sort((a, b) => new Date(a.nextPaymentDate).getTime() - new Date(b.nextPaymentDate).getTime());
     }
 }
 

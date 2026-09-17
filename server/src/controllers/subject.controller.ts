@@ -6,7 +6,19 @@ import { ObjectId } from 'mongodb';
 export const getSubjects = async (req: Request, res: Response) => {
     try {
         const { entityId } = (req as any).user;
-        const subjects = await subjectService.get({ entityId: new ObjectId(entityId) }, { sort: { name: 1 } });
+        const targetClassId = (req.query.feeGroupId || req.query.classId) as string;
+
+        let query: any = { entityId: new ObjectId(entityId) };
+        if (targetClassId) {
+            const classObjId = new ObjectId(targetClassId);
+            query.$or = [
+                { assignedClasses: { $exists: false } },
+                { assignedClasses: { $size: 0 } },
+                { assignedClasses: classObjId }
+            ];
+        }
+
+        const subjects = await subjectService.get(query, { sort: { name: 1 } });
         res.status(200).json(subjects);
     } catch (error: any) {
         res.status(500).json(new AppError(error.message, 500));

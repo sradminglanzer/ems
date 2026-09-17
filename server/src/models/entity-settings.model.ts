@@ -78,6 +78,30 @@ export const DEFAULT_SCHOOL_STAFF_ROLES: StaffRoleSetting[] = [
     { label: 'Staff', code: 'staff', enable_login: false }
 ];
 
+export interface AdmissionNumberSetting {
+    prefix: string;          // e.g. "ADM-" or "DPS-"
+    includeYear: boolean;    // e.g. true -> "ADM-2025-0001"
+    startingNumber: number;  // e.g. 1 or 1001
+    paddingDigits: number;   // e.g. 4 -> "0001"
+    autoGenerate: boolean;   // default true
+}
+
+export const DEFAULT_SCHOOL_ADMISSION_CONFIG: AdmissionNumberSetting = {
+    prefix: 'ADM-',
+    includeYear: true,
+    startingNumber: 1,
+    paddingDigits: 4,
+    autoGenerate: true
+};
+
+export const DEFAULT_BUSINESS_ADMISSION_CONFIG: AdmissionNumberSetting = {
+    prefix: 'TEN-',
+    includeYear: false,
+    startingNumber: 1,
+    paddingDigits: 4,
+    autoGenerate: true
+};
+
 export interface EntityFirebaseConfig {
     enabled: boolean;
     projectId?: string;
@@ -93,6 +117,7 @@ export class EntitySettings {
     entityType: string;
     labels: EntityLabelsSetting;
     staffRoles: StaffRoleSetting[];
+    admissionConfig: AdmissionNumberSetting;
     firebaseConfig?: EntityFirebaseConfig;
     createdAt?: Date;
     updatedAt?: Date;
@@ -110,10 +135,17 @@ export class EntitySettings {
             ? DEFAULT_PG_STAFF_ROLES
             : (typeLower === 'gym' ? DEFAULT_GYM_STAFF_ROLES : DEFAULT_SCHOOL_STAFF_ROLES);
 
+        const defaultAdmissionConfig = (typeLower === 'school')
+            ? DEFAULT_SCHOOL_ADMISSION_CONFIG
+            : DEFAULT_BUSINESS_ADMISSION_CONFIG;
+
         this.labels = data.labels ? { ...defaultLabels, ...data.labels } : defaultLabels;
         this.staffRoles = Array.isArray(data.staffRoles) && data.staffRoles.length > 0
             ? data.staffRoles
             : defaultRoles;
+        this.admissionConfig = data.admissionConfig
+            ? { ...defaultAdmissionConfig, ...data.admissionConfig }
+            : defaultAdmissionConfig;
         if (data.firebaseConfig) {
             this.firebaseConfig = data.firebaseConfig;
         }

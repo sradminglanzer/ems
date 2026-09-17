@@ -1,11 +1,13 @@
 import { Router } from 'express';
-import { getMembers, getMemberById, getStudentDashboard, createMember, updateMember, updateMemberFeeDetails, deleteMember, holdMember, resumeMember, checkoutMember } from '../controllers/member.controller';
+import { getMembers, getMemberById, getStudentDashboard, createMember, updateMember, updateMemberFeeDetails, deleteMember, holdMember, resumeMember, checkoutMember, getNextAdmissionNo, getNextRollNo } from '../controllers/member.controller';
 import { authenticateToken, requireRole } from '../middleware/auth.middleware';
 
 const router = Router();
 
 router.use(authenticateToken);
 router.get('/', requireRole(['owner', 'admin', 'staff', 'teacher', 'parent']), getMembers);
+router.get('/next-admission-no', requireRole(['owner', 'admin', 'staff', 'teacher']), getNextAdmissionNo);
+router.get('/next-roll-no', requireRole(['owner', 'admin', 'staff', 'teacher']), getNextRollNo);
 router.get('/:id/dashboard', requireRole(['owner', 'admin', 'staff', 'teacher', 'parent']), getStudentDashboard);
 router.get('/:id', requireRole(['owner', 'admin', 'staff', 'teacher', 'parent']), getMemberById);
 router.post('/', requireRole(['owner', 'admin', 'staff', 'teacher']), createMember);

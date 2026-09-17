@@ -71,9 +71,13 @@ class ClassDetailViewModel(application: Application) : AndroidViewModel(applicat
 
     fun initClass(id: String) {
         Log.d("ClassDetailVM", "initClass() invoked with id='$id' (current classId='${_classId.value}')")
-        if (_classId.value != id) {
-            _classId.value = id
-            loadClassData(id)
+        _classId.value = id
+        loadClassData(id)
+    }
+
+    fun refresh() {
+        if (_classId.value.isNotEmpty()) {
+            loadClassData(_classId.value)
         }
     }
 
@@ -109,12 +113,15 @@ class ClassDetailViewModel(application: Application) : AndroidViewModel(applicat
             Log.d("ClassDetailVM", "📡 Fetching details & diary feed for classId='$id', academicYearId='$yearId'")
             val detailsJob = async { feeGroupRepo.getGroupDetails(id, yearId) }
             val diaryJob = async { diaryRepo.getDiaryFeed(id, yearId) }
-            val subjectsJob = async { diaryRepo.getSubjects() }
+            val subjectsJob = async { diaryRepo.getSubjects(id) }
 
             _details.value = detailsJob.await()
             _diaryFeed.value = diaryJob.await()
-            _subjects.value = subjectsJob.await()
-            Log.d("ClassDetailVM", "✅ Loaded ${_diaryFeed.value.size} diary entries and ${_subjects.value.size} subjects for classId='$id'")
+            val rawSubjects = subjectsJob.await()
+            _subjects.value = rawSubjects.filter { s ->
+                s.assignedClasses.isEmpty() || s.assignedClasses.contains(id)
+            }
+            Log.d("ClassDetailVM", "✅ Loaded ${_diaryFeed.value.size} diary entries and ${_subjects.value.size} class-filtered subjects for classId='$id'")
             _isLoading.value = false
         }
     }

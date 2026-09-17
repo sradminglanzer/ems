@@ -69,6 +69,9 @@ export const MemberService = {
   getAll: (params?: { search?: string; feeGroupId?: string; status?: string }) =>
     api.get('/members', { params }),
   getById: (id: string) => api.get(`/members/${id}`),
+  getNextAdmissionNo: () => api.get('/members/next-admission-no'),
+  getNextRollNo: (params: { feeGroupId: string; academicYearId?: string }) =>
+    api.get('/members/next-roll-no', { params }),
   create: (data: any) => api.post('/members', data),
   update: (id: string, data: any) => api.put(`/members/${id}`, data),
   delete: (id: string) => api.delete(`/members/${id}`),

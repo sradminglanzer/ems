@@ -116,6 +116,7 @@ export const StudentEnrollment: React.FC<StudentEnrollmentProps> = ({
   const [selectedPlanId, setSelectedPlanId] = useState<string>('');
   const [addonFeeIds, setAddonFeeIds] = useState<string[]>([]);
   const [concessionType, setConcessionType] = useState('none');
+  const [concessionMode, setConcessionMode] = useState<'fixed' | 'percentage'>('fixed');
   const [concessionValue, setConcessionValue] = useState('');
   const [concessionReason, setConcessionReason] = useState('');
 
@@ -210,6 +211,7 @@ export const StudentEnrollment: React.FC<StudentEnrollmentProps> = ({
           setSelectedPlanId(editStudent.feeStructureId || '');
           setAddonFeeIds(editStudent.addonFeeIds || []);
           setConcessionType(editStudent.concessionType || 'none');
+          setConcessionMode(editStudent.concessionMode || (editStudent.concessionValue && Number(editStudent.concessionValue) <= 100 ? 'percentage' : 'fixed'));
           setConcessionValue(editStudent.concessionValue ? String(editStudent.concessionValue) : '');
           setConcessionReason(editStudent.concessionReason || '');
 
@@ -218,8 +220,15 @@ export const StudentEnrollment: React.FC<StudentEnrollmentProps> = ({
           if (initialFeeGroupId) {
             setFeeGroupId(initialFeeGroupId);
           }
-          if (!admissionNo) {
-            setAdmissionNo(`ADM-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`);
+          try {
+            const nextRes = await MemberService.getNextAdmissionNo();
+            if (nextRes?.data?.nextAdmissionNo) {
+              setAdmissionNo(nextRes.data.nextAdmissionNo);
+            }
+          } catch (e) {
+            if (!admissionNo) {
+              setAdmissionNo(`ADM-${new Date().getFullYear()}-0001`);
+            }
           }
         }
       } catch (err) {
@@ -231,6 +240,19 @@ export const StudentEnrollment: React.FC<StudentEnrollmentProps> = ({
 
     loadMasterData();
   }, [editStudent, initialFeeGroupId]);
+
+  // Load next roll number when class is selected for new enrollment
+  useEffect(() => {
+    if (!editStudent && feeGroupId) {
+      MemberService.getNextRollNo({ feeGroupId })
+        .then((res) => {
+          if (res?.data?.nextRollNo) {
+            setRollNo(res.data.nextRollNo);
+          }
+        })
+        .catch((e) => console.error('Error fetching next roll no:', e));
+    }
+  }, [feeGroupId, editStudent]);
 
   // Filter fee structures
   const primaryStructures = feeStructures.filter((s) => !s.isAddon);
@@ -356,6 +378,7 @@ export const StudentEnrollment: React.FC<StudentEnrollmentProps> = ({
         feeStructureId: selectedPlanId || undefined,
         addonFeeIds: addonFeeIds.length > 0 ? addonFeeIds : undefined,
         concessionType: concessionType !== 'none' ? concessionType : undefined,
+        concessionMode: concessionType !== 'none' ? concessionMode : undefined,
         concessionValue: concessionValue ? Number(concessionValue) : undefined,
         concessionReason: concessionReason.trim() || undefined,
         documents: documents.length > 0 ? documents : undefined,
@@ -1551,7 +1574,7 @@ export const StudentEnrollment: React.FC<StudentEnrollmentProps> = ({
                   <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-main)', marginBottom: '12px' }}>
                     🎁 Scholarship / Fee Concession
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: concessionType !== 'none' ? '1fr 1fr 1fr' : '1fr', gap: '14px' }}>
                     <div>
                       <label className="field-label">Concession Type</label>
                       <select
@@ -1569,11 +1592,11 @@ export const StudentEnrollment: React.FC<StudentEnrollmentProps> = ({
                     {concessionType !== 'none' && (
                       <>
                         <div>
-                          <label className="field-label">Concession Value (₹ or %)</label>
+                          <label className="field-label">Concession Amount (₹)</label>
                           <input
                             type="text"
                             className="input-field"
-                            placeholder="e.g. 5000 or 15"
+                            placeholder="e.g. 1000"
                             value={concessionValue}
                             onChange={(e) => setConcessionValue(e.target.value)}
                           />
@@ -1583,7 +1606,7 @@ export const StudentEnrollment: React.FC<StudentEnrollmentProps> = ({
                           <input
                             type="text"
                             className="input-field"
-                            placeholder="e.g. Principal approved 10%"
+                            placeholder="e.g. Sibling discount approved"
                             value={concessionReason}
                             onChange={(e) => setConcessionReason(e.target.value)}
                           />

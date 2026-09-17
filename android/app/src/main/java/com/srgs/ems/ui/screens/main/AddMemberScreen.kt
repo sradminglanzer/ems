@@ -629,11 +629,31 @@ fun AddMemberScreen(
                                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     groups.forEach { g ->
                                         val isSel = selGroupId == g._id
+                                        val isRoomFull = !isSchool && g.isFull && !isSel
+                                        val labelText = if (isSchool) {
+                                            g.name
+                                        } else {
+                                            if (g.isFull) "${g.name} (Full)" else "${g.name} (${g.vacantCount}/${g.capacity} beds)"
+                                        }
                                         FilterChip(
                                             selected = isSel,
-                                            onClick = { vm.onGroupSelected(g._id) },
-                                            label = { Text(g.name, fontSize = 12.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal) },
-                                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Primary, selectedLabelColor = Color.White, containerColor = Surface, labelColor = TextPrimary),
+                                            enabled = !isRoomFull,
+                                            onClick = { if (!isRoomFull) vm.onGroupSelected(g._id) },
+                                            label = {
+                                                Text(
+                                                    labelText,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
+                                                )
+                                            },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = Primary,
+                                                selectedLabelColor = Color.White,
+                                                containerColor = Surface,
+                                                labelColor = if (isRoomFull) TextMuted else TextPrimary,
+                                                disabledContainerColor = Surface.copy(alpha = 0.5f),
+                                                disabledLabelColor = TextMuted
+                                            ),
                                             shape = RoundedCornerShape(8.dp)
                                         )
                                     }
@@ -683,8 +703,8 @@ fun AddMemberScreen(
                                 }
                                 if (concType != "none") {
                                     Spacer(Modifier.height(8.dp))
-                                    TField("Concession Amount / Percentage", concVal, { vm.concessionValue.value = it }, "e.g. 10 for 10% or 5000", KeyboardType.Number)
-                                    TField("Concession Reason / Notes", concReason, { vm.concessionReason.value = it })
+                                    TField("Concession Amount (₹)", concVal, { vm.concessionValue.value = it }, "e.g. 1000", KeyboardType.Number)
+                                    TField("Concession Reason / Notes", concReason, { vm.concessionReason.value = it }, "e.g. Sibling discount")
                                 }
                             }
                         }

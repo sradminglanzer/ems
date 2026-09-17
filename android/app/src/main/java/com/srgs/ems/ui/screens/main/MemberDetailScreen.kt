@@ -887,7 +887,11 @@ private fun PersonalDetails(
                         Text("Fee Concession / Scholarship", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Success)
                     }
                     Spacer(Modifier.height(6.dp))
-                    Text("Type: ${m.concessionType.replaceFirstChar { it.uppercase() }} ${if (m.concessionValue != null && m.concessionValue > 0) "(${m.concessionValue.toInt()}% Off)" else ""}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    val discountBadge = if (m.concessionValue != null && m.concessionValue > 0) {
+                        val valFormatted = if (m.concessionValue % 1.0 == 0.0) m.concessionValue.toInt().toString() else m.concessionValue.toString()
+                        " (₹$valFormatted Off)"
+                    } else ""
+                    Text("Type: ${m.concessionType.replaceFirstChar { it.uppercase() }}$discountBadge", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                     if (!m.concessionReason.isNullOrBlank()) Text("Reason: ${m.concessionReason}", fontSize = 12.sp, color = TextSecondary)
                 }
             }

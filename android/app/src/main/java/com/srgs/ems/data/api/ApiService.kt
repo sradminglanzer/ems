@@ -33,6 +33,15 @@ interface ApiService {
     @GET("members/{id}/dashboard")
     suspend fun getStudentDashboard(@Path("id") id: String): Response<ParentDashboardDto>
 
+    @GET("members/next-admission-no")
+    suspend fun getNextAdmissionNo(): Response<NextAdmissionNoDto>
+
+    @GET("members/next-roll-no")
+    suspend fun getNextRollNo(
+        @Query("feeGroupId") feeGroupId: String,
+        @Query("academicYearId") academicYearId: String? = null
+    ): Response<NextRollNoDto>
+
     @POST("members")
     suspend fun createMember(@Body request: CreateMemberRequest): Response<CreateMemberResponse>
 
@@ -54,6 +63,12 @@ interface ApiService {
     @PUT("members/{id}/checkout")
     suspend fun checkoutMember(@Path("id") id: String, @Body body: CheckoutMemberRequest): Response<Unit>
 
+    // ── Entity Settings ─────────────────────────────────────────────────────────
+    @GET("entity-settings")
+    suspend fun getEntitySettings(): Response<EntitySettingsDto>
+
+    @PUT("entity-settings")
+    suspend fun updateEntitySettings(@Body body: UpdateEntitySettingsRequest): Response<Unit>
 
     // ── Fee Payments ──────────────────────────────────────────────────────────
     @GET("fee-payments")
@@ -170,12 +185,6 @@ interface ApiService {
     @PATCH("staff/{id}/toggle-login")
     suspend fun toggleStaffLogin(@Path("id") id: String): Response<ToggleLoginResponseDto>
 
-    @GET("entity-settings")
-    suspend fun getEntitySettings(): Response<EntitySettingsDto>
-
-    @PUT("entity-settings")
-    suspend fun updateEntitySettings(@Body settings: EntitySettingsDto): Response<EntitySettingsDto>
-
     // ── Salary Payments & Payroll ──────────────────────────────────────────────
     @GET("salary-payments")
     suspend fun getMonthlyPayroll(
@@ -269,7 +278,7 @@ interface ApiService {
 
     // ── Subjects ──────────────────────────────────────────────────────────────
     @GET("subjects")
-    suspend fun getSubjects(): Response<List<SubjectDto>>
+    suspend fun getSubjects(@Query("feeGroupId") feeGroupId: String? = null): Response<List<SubjectDto>>
 
     @POST("subjects")
     suspend fun createSubject(@Body request: CreateSubjectRequest): Response<SubjectDto>
@@ -533,6 +542,7 @@ data class MemberDetailDto(
     val tcDate: String?           = null,
     val previousPercentage: String? = null,
     val concessionType: String?   = null,
+    val concessionMode: String?   = null,
     val concessionValue: Double?  = null,
     val concessionReason: String? = null,
     val documents: List<MemberDocumentDto> = emptyList(),
@@ -664,6 +674,7 @@ data class CreateMemberRequest(
     val tcDate: String?           = null,
     val previousPercentage: String? = null,
     val concessionType: String?   = null,
+    val concessionMode: String?   = null,
     val concessionValue: Double?  = null,
     val concessionReason: String? = null,
     val documents: List<MemberDocumentDto> = emptyList(),
@@ -1053,8 +1064,10 @@ data class StaffRoleSettingDto(
 data class EntitySettingsDto(
     @SerializedName("_id") val _id: String = "",
     val entityId: String = "",
+    val entityType: String = "school",
     val staffRoles: List<StaffRoleSettingDto> = emptyList(),
-    val labels: EntityLabelsDto? = null
+    val labels: EntityLabelsDto? = null,
+    val admissionConfig: AdmissionNumberSettingDto = AdmissionNumberSettingDto()
 )
 
 data class ToggleLoginResponseDto(
@@ -1542,4 +1555,31 @@ data class PublishResultsResponse(
     val sentCount: Int = 0,
     val message: String = ""
 )
+
+data class NextAdmissionNoDto(
+    val nextAdmissionNo: String = "",
+    val prefix: String = "ADM-",
+    val includeYear: Boolean = true,
+    val startingNumber: Int = 1,
+    val paddingDigits: Int = 4,
+    val totalMembers: Int = 0
+)
+
+data class AdmissionNumberSettingDto(
+    val prefix: String = "ADM-",
+    val includeYear: Boolean = true,
+    val startingNumber: Int = 1,
+    val paddingDigits: Int = 4,
+    val autoGenerate: Boolean = true
+)
+
+data class NextRollNoDto(
+    val nextRollNo: String = "1",
+    val totalInClass: Int = 0
+)
+
+data class UpdateEntitySettingsRequest(
+    val admissionConfig: AdmissionNumberSettingDto? = null
+)
+
 

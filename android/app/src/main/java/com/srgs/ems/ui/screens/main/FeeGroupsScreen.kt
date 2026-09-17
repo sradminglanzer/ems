@@ -60,9 +60,18 @@ fun FeeGroupsScreen(
 
     val snackbar = remember { SnackbarHostState() }
     var showSheet by remember { mutableStateOf(false) }
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
 
-    LaunchedEffect(selectedYear) {
-        vm.loadGroups()
+    DisposableEffect(lifecycleOwner, selectedYear) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                vm.loadGroups()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     LaunchedEffect(Unit) {

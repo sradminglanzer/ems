@@ -120,11 +120,16 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
             if (isChecked && !s.isAddon) {
                 hasCheckedPrimary = true
             }
+            val finalAmt = if (!s.isAddon && !m.concessionType.isNullOrBlank() && m.concessionType != "none" && m.concessionValue != null && m.concessionValue > 0) {
+                maxOf(0.0, s.amount - m.concessionValue)
+            } else {
+                s.amount
+            }
             CartItemState(
                 feeStructureId = s._id,
                 name           = s.name,
                 defaultAmount  = s.amount,
-                amount         = s.amount.toInt().toString(),
+                amount         = finalAmt.toInt().toString(),
                 checked        = isChecked,
                 nextDateStr    = calcNextDate(s.frequency, lastPayment?.paymentDate),
                 frequency      = s.frequency,
@@ -324,6 +329,7 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
 
     // ── Date calculation ──────────────────────────────────────────────────────
     private fun calcNextDate(frequency: String, lastDateStr: String?): String {
+        if (frequency == "one-time") return ""
         val cal = Calendar.getInstance()
         if (!lastDateStr.isNullOrEmpty()) {
             for (fmt in listOf("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", "yyyy-MM-dd")) {
@@ -338,6 +344,7 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
             "annual", "yearly"     -> cal.add(Calendar.YEAR, 1)
             "weekly"               -> cal.add(Calendar.WEEK_OF_YEAR, 1)
             "daily"                -> cal.add(Calendar.DAY_OF_YEAR, 1)
+            else                   -> return ""
         }
         return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
     }

@@ -98,6 +98,7 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
     val addonFeeIds        = MutableStateFlow<List<String>>(emptyList())
 
     val concessionType     = MutableStateFlow("none") // "none" | "sibling" | "staff" | "merit" | "custom"
+    val concessionMode     = MutableStateFlow("fixed") // "fixed" (₹) | "percentage" (%)
     val concessionValue    = MutableStateFlow("")
     val concessionReason   = MutableStateFlow("")
 
@@ -204,7 +205,36 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
             isGroupLocked.value = true
         }
         loadFeeData(feeGroupIdParam)
-        if (editMemberId != null) loadMember(editMemberId)
+        if (editMemberId != null) {
+            loadMember(editMemberId)
+        } else {
+            loadNextAdmissionNo()
+            if (!feeGroupIdParam.isNullOrEmpty()) {
+                loadNextRollNo(feeGroupIdParam)
+            }
+        }
+    }
+
+    private fun loadNextAdmissionNo() {
+        viewModelScope.launch {
+            val nextNo = repository.getNextAdmissionNo()
+            if (!nextNo.isNullOrBlank() && admissionNo.value.isBlank()) {
+                admissionNo.value = nextNo
+                knownId.value = nextNo
+            }
+        }
+    }
+
+    private var _autoAssignedRoll = false
+
+    fun loadNextRollNo(groupId: String) {
+        viewModelScope.launch {
+            val nextRoll = repository.getNextRollNo(groupId, AcademicYearManager.selectedYearId)
+            if (!nextRoll.isNullOrBlank() && (rollNo.value.isBlank() || _autoAssignedRoll)) {
+                rollNo.value = nextRoll
+                _autoAssignedRoll = true
+            }
+        }
     }
 
     private fun loadFeeData(fixedGroupId: String?) {
@@ -307,7 +337,8 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
             selectedPlanId.value      = m.feeStructureId
             addonFeeIds.value         = m.addonFeeIds ?: emptyList()
             concessionType.value      = m.concessionType ?: "none"
-            concessionValue.value     = m.concessionValue?.toString() ?: ""
+            concessionMode.value      = m.concessionMode ?: if (m.concessionValue != null && m.concessionValue <= 100.0) "percentage" else "fixed"
+            concessionValue.value     = m.concessionValue?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } ?: ""
             concessionReason.value    = m.concessionReason ?: ""
             documents.value           = m.documents ?: emptyList()
         }
@@ -318,6 +349,9 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
         feeGroupId.value = groupId
         if (groupId != null) {
             autoMatchRoomRent(groupId)
+            if (!isEditing && (rollNo.value.isBlank() || _autoAssignedRoll)) {
+                loadNextRollNo(groupId)
+            }
         }
     }
 
@@ -472,6 +506,7 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
                 feeStructureId           = selectedPlanId.value,
                 addonFeeIds              = addonFeeIds.value.ifEmpty { null },
                 concessionType           = concessionType.value.ifEmpty { null },
+                concessionMode           = if (concessionType.value != "none") concessionMode.value else null,
                 concessionValue          = concessionValue.value.toDoubleOrNull(),
                 concessionReason         = concessionReason.value.trim().ifEmpty { null },
                 documents                = documents.value,

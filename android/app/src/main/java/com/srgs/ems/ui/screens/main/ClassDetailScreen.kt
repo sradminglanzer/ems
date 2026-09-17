@@ -61,9 +61,18 @@ fun ClassDetailScreen(
     val session = SessionManager.session
     val isAdmin = session?.isAdmin == true
     val context = LocalContext.current
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
 
-    LaunchedEffect(classId) {
-        vm.initClass(classId)
+    DisposableEffect(lifecycleOwner, classId) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                vm.initClass(classId)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     val details by vm.details.collectAsState()
@@ -1025,9 +1034,6 @@ private fun PostDiaryBottomSheet(
     val isUploadingImage by vm.isUploadingImage.collectAsState()
     val isPosting by vm.isPosting.collectAsState()
 
-    var showUrlInput by remember { mutableStateOf(false) }
-    var newImageUrl by remember { mutableStateOf("") }
-
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -1269,50 +1275,6 @@ private fun PostDiaryBottomSheet(
                                 Icon(Icons.Filled.Close, contentDescription = "Remove", tint = Color.White, modifier = Modifier.size(12.dp))
                             }
                         }
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(10.dp))
-
-            // Secondary: Or paste URL
-            Text(
-                text = if (showUrlInput) "− Hide image link input" else "+ Or enter image web link",
-                fontSize = 12.sp,
-                color = Primary,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.clickable { showUrlInput = !showUrlInput }
-            )
-
-            if (showUrlInput) {
-                Spacer(Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = newImageUrl,
-                        onValueChange = { newImageUrl = it },
-                        modifier = Modifier.weight(1f),
-                        placeholder = { Text("Paste image URL (https://...)", fontSize = 12.sp) },
-                        singleLine = true,
-                        shape = RoundedCornerShape(10.dp),
-                        colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Border, focusedBorderColor = Primary)
-                    )
-                    Button(
-                        onClick = {
-                            if (newImageUrl.isNotBlank()) {
-                                vm.addAttachment(newImageUrl)
-                                newImageUrl = ""
-                            }
-                        },
-                        enabled = newImageUrl.isNotBlank(),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                        modifier = Modifier.height(52.dp)
-                    ) {
-                        Text("Attach", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

@@ -30,6 +30,9 @@ export class EntitySettingsService extends BaseService<EntitySettings> {
             if (Array.isArray(entityDoc.customSettings.staffRoles) && entityDoc.customSettings.staffRoles.length > 0) {
                 resolvedSettings.staffRoles = entityDoc.customSettings.staffRoles;
             }
+            if (entityDoc.customSettings.admissionConfig) {
+                resolvedSettings.admissionConfig = { ...resolvedSettings.admissionConfig, ...entityDoc.customSettings.admissionConfig };
+            }
             if (entityDoc.customSettings.firebaseConfig) {
                 const fb = entityDoc.customSettings.firebaseConfig;
                 resolvedSettings.firebaseConfig = {
@@ -46,11 +49,12 @@ export class EntitySettingsService extends BaseService<EntitySettings> {
         return resolvedSettings;
     }
 
-    async updateByEntity(entityIdStr: string, updateData: { staffRoles?: any[]; labels?: any }): Promise<boolean> {
+    async updateByEntity(entityIdStr: string, updateData: { staffRoles?: any[]; labels?: any; admissionConfig?: any }): Promise<boolean> {
         const entityIdObj = new ObjectId(entityIdStr);
         const customSettingsData: any = {};
         if (updateData.staffRoles) customSettingsData['customSettings.staffRoles'] = updateData.staffRoles;
         if (updateData.labels) customSettingsData['customSettings.labels'] = updateData.labels;
+        if (updateData.admissionConfig) customSettingsData['customSettings.admissionConfig'] = updateData.admissionConfig;
         customSettingsData.updatedAt = new Date();
 
         // Write custom white-label overrides directly to the tenant's entities document

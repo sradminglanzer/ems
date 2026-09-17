@@ -73,9 +73,9 @@ class DiaryRepository(context: Context) {
         }
     }
 
-    suspend fun getSubjects(): List<SubjectDto> {
+    suspend fun getSubjects(feeGroupId: String? = null): List<SubjectDto> {
         return try {
-            val res = api.getSubjects()
+            val res = api.getSubjects(feeGroupId)
             if (res.isSuccessful) res.body() ?: emptyList() else emptyList()
         } catch (_: Exception) { emptyList() }
     }

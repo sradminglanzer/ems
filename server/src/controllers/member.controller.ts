@@ -17,7 +17,134 @@ import attendanceService from '../services/attendance.service';
 import diaryService from '../services/diary.service';
 import examService from '../services/exam.service';
 import examResultService from '../services/exam-result.service';
+import entitySettingsService from '../services/entity-settings.service';
 import { getDB } from '../config/db';
+
+export const getNextAdmissionNo = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const entityId = req.user!.entityId.toString();
+        const settings = await entitySettingsService.getByEntity(entityId);
+        const config = settings.admissionConfig || {
+            prefix: 'ADM-',
+            includeYear: true,
+            startingNumber: 1,
+            paddingDigits: 4,
+            autoGenerate: true
+        };
+
+        const currentYear = new Date().getFullYear();
+        const yearPrefix = config.includeYear ? `${currentYear}-` : '';
+        const basePrefix = `${config.prefix || 'ADM-'}${yearPrefix}`;
+
+        // Get all members for this entity
+        const members = await getDB().collection('members').find(
+            { entityId: new ObjectId(entityId) },
+            { projection: { admissionNo: 1, knownId: 1 } }
+        ).toArray();
+
+        let maxSeq = Math.max(0, (config.startingNumber || 1) - 1);
+
+        members.forEach((m: any) => {
+            const no = (m.admissionNo || m.knownId || '').trim();
+            if (no) {
+                const match = no.match(/(\d+)$/);
+                if (match) {
+                    const num = parseInt(match[1], 10);
+                    if (!isNaN(num) && num > maxSeq) {
+                        maxSeq = num;
+                    }
+                }
+            }
+        });
+
+        const nextSeq = maxSeq + 1;
+        const padding = config.paddingDigits || 4;
+        const nextAdmissionNo = `${basePrefix}${String(nextSeq).padStart(padding, '0')}`;
+
+        res.status(HTTP_STATUS.OK).json({
+            nextAdmissionNo,
+            prefix: config.prefix,
+            includeYear: config.includeYear,
+            startingNumber: config.startingNumber,
+            paddingDigits: config.paddingDigits,
+            totalMembers: members.length
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getNextRollNo = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const entityId = req.user!.entityId.toString();
+        const feeGroupId = req.query.feeGroupId as string;
+        const academicYearId = req.query.academicYearId as string;
+
+        if (!feeGroupId) {
+            return res.status(HTTP_STATUS.OK).json({
+                nextRollNo: '1',
+                totalInClass: 0
+            });
+        }
+
+        const entityIdObj = new ObjectId(entityId);
+        const groupIdObj = new ObjectId(feeGroupId);
+
+        // Find group to check members / rosters
+        const group = await feeGroupService.getOne({ _id: groupIdObj, entityId: entityIdObj });
+        let memberIdsInClass: ObjectId[] = [];
+
+        if (group) {
+            if (academicYearId && group.yearlyRosters) {
+                const roster = group.yearlyRosters.find((r: any) => r.academicYearId && r.academicYearId.toString() === academicYearId);
+                if (roster && Array.isArray(roster.members)) {
+                    memberIdsInClass = roster.members.map((id: any) => typeof id === 'string' ? new ObjectId(id) : id);
+                }
+            } else if (Array.isArray(group.members)) {
+                memberIdsInClass = group.members.map((id: any) => typeof id === 'string' ? new ObjectId(id) : id);
+            }
+        }
+
+        // Also query members where feeGroupId matches directly
+        const conditions: any = {
+            entityId: entityIdObj,
+            $or: [
+                { feeGroupId: groupIdObj }
+            ]
+        };
+        if (memberIdsInClass.length > 0) {
+            conditions.$or.push({ _id: { $in: memberIdsInClass } });
+        }
+
+        const classMembers = await getDB().collection('members').find(
+            conditions,
+            { projection: { rollNo: 1, firstName: 1, lastName: 1 } }
+        ).toArray();
+
+        let maxRoll = 0;
+        classMembers.forEach((m: any) => {
+            const r = (m.rollNo || '').trim();
+            if (r) {
+                const match = r.match(/(\d+)$/);
+                if (match) {
+                    const num = parseInt(match[1], 10);
+                    if (!isNaN(num) && num > maxRoll) {
+                        maxRoll = num;
+                    }
+                }
+            }
+        });
+
+        const nextRollNo = (maxRoll + 1).toString();
+
+        res.status(HTTP_STATUS.OK).json({
+            nextRollNo,
+            totalInClass: classMembers.length
+        });
+    } catch (error) {
+        next(error);
+    }
+};
 
 export const getMembers = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
@@ -195,6 +322,43 @@ export const createMember = async (req: AuthRequest, res: Response, next: NextFu
             throw new AppError('Invalid member data. First Name, Last Name and Known ID are required.', HTTP_STATUS.BAD_REQUEST);
         }
 
+        // Check uniqueness of admissionNo / knownId within the entity
+        const admNoToCheck = (member.admissionNo || member.knownId || '').trim();
+        if (admNoToCheck) {
+            const existing = await getDB().collection('members').findOne({
+                entityId: entityIdObj,
+                $or: [
+                    { admissionNo: admNoToCheck },
+                    { knownId: admNoToCheck }
+                ]
+            });
+            if (existing) {
+                const existingName = `${existing.firstName || ''} ${existing.lastName || ''}`.trim() || 'another student';
+                throw new AppError(
+                    `Admission / ID number "${admNoToCheck}" is already assigned to ${existingName}.`,
+                    HTTP_STATUS.BAD_REQUEST
+                );
+            }
+        }
+
+        // Check uniqueness of rollNo within the feeGroupId/class
+        const targetRollNo = (member.rollNo || '').trim();
+        const targetGroupId = req.body.feeGroupId ? new ObjectId(req.body.feeGroupId as string) : member.feeGroupId;
+        if (targetRollNo && targetGroupId) {
+            const existingRoll = await getDB().collection('members').findOne({
+                entityId: entityIdObj,
+                feeGroupId: targetGroupId,
+                rollNo: targetRollNo
+            });
+            if (existingRoll) {
+                const existingName = `${existingRoll.firstName || ''} ${existingRoll.lastName || ''}`.trim() || 'another student';
+                throw new AppError(
+                    `Roll number "${targetRollNo}" is already assigned to student ${existingName} in this class.`,
+                    HTTP_STATUS.BAD_REQUEST
+                );
+            }
+        }
+
         // Room capacity check for PG/Hostel
         if (req.body.feeGroupId) {
             const groupId = new ObjectId(req.body.feeGroupId as string);
@@ -329,7 +493,7 @@ export const updateMember = async (req: AuthRequest, res: Response, next: NextFu
             'address', 'presentAddress', 'permanentAddress', 'city', 'district', 'state', 'pincode',
             'emergencyContactName', 'emergencyContactPhone', 'emergencyContactRelation',
             'previousSchoolName', 'previousBoard', 'previousClassPassed', 'tcNumber', 'tcDate', 'previousPercentage',
-            'concessionType', 'concessionValue', 'concessionReason',
+            'concessionType', 'concessionMode', 'concessionValue', 'concessionReason',
             'feeGroupId', 'feeStructureId', 'addonFeeIds', 'profilePicUrl', 'academicYearId', 'status', 'documents'
         ];
         let updateData: any = { $set: {} };
@@ -349,6 +513,84 @@ export const updateMember = async (req: AuthRequest, res: Response, next: NextFu
             delete updateData.$set;
         }
 
+        // If admissionNo or knownId is being updated, check uniqueness
+        const updatedAdmNo = (updateData.$set?.admissionNo || updateData.$set?.knownId || '').trim();
+        if (updatedAdmNo) {
+            const existing = await getDB().collection('members').findOne({
+                entityId: new ObjectId(req.user!.entityId),
+                _id: { $ne: new ObjectId(id as string) },
+                $or: [
+                    { admissionNo: updatedAdmNo },
+                    { knownId: updatedAdmNo }
+                ]
+            });
+            if (existing) {
+                const existingName = `${existing.firstName || ''} ${existing.lastName || ''}`.trim() || 'another student';
+                throw new AppError(
+                    `Admission / ID number "${updatedAdmNo}" is already assigned to ${existingName}.`,
+                    HTTP_STATUS.BAD_REQUEST
+                );
+            }
+        }
+
+        // If rollNo or feeGroupId is being updated, check uniqueness within that class
+        const targetRollNo = (updateData.$set?.rollNo !== undefined ? updateData.$set.rollNo : req.body.rollNo || '').trim();
+        if (targetRollNo) {
+            let targetGroupId = updateData.$set?.feeGroupId;
+            if (!targetGroupId) {
+                const currentMember = await memberService.getOne({ _id: new ObjectId(id as string), entityId: new ObjectId(req.user!.entityId) });
+                targetGroupId = currentMember?.feeGroupId;
+            }
+            if (targetGroupId) {
+                const existingRoll = await getDB().collection('members').findOne({
+                    entityId: new ObjectId(req.user!.entityId),
+                    _id: { $ne: new ObjectId(id as string) },
+                    feeGroupId: targetGroupId,
+                    rollNo: targetRollNo
+                });
+                if (existingRoll) {
+                    const existingName = `${existingRoll.firstName || ''} ${existingRoll.lastName || ''}`.trim() || 'another student';
+                    throw new AppError(
+                        `Roll number "${targetRollNo}" is already assigned to student ${existingName} in this class.`,
+                        HTTP_STATUS.BAD_REQUEST
+                    );
+                }
+            }
+        }
+
+        // Room capacity check for PG/Hostel if feeGroupId is updated or member status changed to active
+        if (updateData.$set?.feeGroupId !== undefined || updateData.$set?.status === 'active') {
+            const currentMember = await memberService.getOne({ _id: new ObjectId(id as string), entityId: new ObjectId(req.user!.entityId) });
+            const targetGroupId = updateData.$set?.feeGroupId !== undefined ? updateData.$set.feeGroupId : currentMember?.feeGroupId;
+            const targetStatus = updateData.$set?.status !== undefined ? updateData.$set.status : currentMember?.status || 'active';
+
+            if (targetGroupId && targetStatus === 'active') {
+                const isGroupChanging = !currentMember?.feeGroupId || currentMember.feeGroupId.toString() !== targetGroupId.toString();
+                const isReactivating = currentMember?.status !== 'active' && targetStatus === 'active';
+
+                if (isGroupChanging || isReactivating) {
+                    const entityIdObj = new ObjectId(req.user!.entityId);
+                    const [group, entityDoc, roomActiveMembers] = await Promise.all([
+                        feeGroupService.getOne({ _id: targetGroupId, entityId: entityIdObj }),
+                        getDB().collection('entities').findOne({ _id: entityIdObj }),
+                        memberService.get({
+                            entityId: entityIdObj,
+                            feeGroupId: targetGroupId,
+                            status: 'active',
+                            _id: { $ne: new ObjectId(id as string) }
+                        } as any)
+                    ]);
+
+                    if (group && (entityDoc?.type === 'pg' || entityDoc?.type === 'hostel')) {
+                        const capacity = group.capacity || 1;
+                        if (roomActiveMembers.length >= capacity) {
+                            throw new AppError(`Room ${group.name} is fully occupied (${capacity}/${capacity} beds taken)`, HTTP_STATUS.BAD_REQUEST);
+                        }
+                    }
+                }
+            }
+        }
+
         const result = await memberService.update(
             { _id: new ObjectId(id as string), entityId: new ObjectId(req.user!.entityId) },
             updateData
@@ -364,6 +606,35 @@ export const updateMemberFeeDetails = async (req: AuthRequest, res: Response, ne
     try {
         const id = req.params.id;
         const { feeGroupId, feeStructureId, addonFeeIds } = req.body;
+
+        const entityIdObj = new ObjectId(req.user!.entityId);
+        const memberIdObj = new ObjectId(id as string);
+
+        // Room capacity check for PG/Hostel if feeGroupId is changing
+        if (feeGroupId) {
+            const targetGroupId = new ObjectId(feeGroupId as string);
+            const currentMember = await memberService.getOne({ _id: memberIdObj, entityId: entityIdObj });
+
+            if (!currentMember?.feeGroupId || currentMember.feeGroupId.toString() !== targetGroupId.toString()) {
+                const [group, entityDoc, roomActiveMembers] = await Promise.all([
+                    feeGroupService.getOne({ _id: targetGroupId, entityId: entityIdObj }),
+                    getDB().collection('entities').findOne({ _id: entityIdObj }),
+                    memberService.get({
+                        entityId: entityIdObj,
+                        feeGroupId: targetGroupId,
+                        status: 'active',
+                        _id: { $ne: memberIdObj }
+                    } as any)
+                ]);
+
+                if (group && (entityDoc?.type === 'pg' || entityDoc?.type === 'hostel')) {
+                    const capacity = group.capacity || 1;
+                    if (roomActiveMembers.length >= capacity) {
+                        throw new AppError(`Room ${group.name} is fully occupied (${capacity}/${capacity} beds taken)`, HTTP_STATUS.BAD_REQUEST);
+                    }
+                }
+            }
+        }
 
         let updateData: any = { $set: {} };
 
@@ -439,6 +710,29 @@ export const resumeMember = async (req: AuthRequest, res: Response, next: NextFu
         }
         if (member.status !== 'on_hold') {
             return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: 'Member is not on hold' });
+        }
+
+        // Room capacity check for PG/Hostel when resuming
+        if (member.feeGroupId) {
+            const groupId = new ObjectId(member.feeGroupId);
+            const entityIdObj = new ObjectId(entityId);
+            const [group, entityDoc, roomActiveMembers] = await Promise.all([
+                feeGroupService.getOne({ _id: groupId, entityId: entityIdObj }),
+                getDB().collection('entities').findOne({ _id: entityIdObj }),
+                memberService.get({
+                    entityId: entityIdObj,
+                    feeGroupId: groupId,
+                    status: 'active',
+                    _id: { $ne: new ObjectId(id) }
+                } as any)
+            ]);
+
+            if (group && (entityDoc?.type === 'pg' || entityDoc?.type === 'hostel')) {
+                const capacity = group.capacity || 1;
+                if (roomActiveMembers.length >= capacity) {
+                    throw new AppError(`Room ${group.name} is fully occupied (${capacity}/${capacity} beds taken). Please shift to another room before resuming.`, HTTP_STATUS.BAD_REQUEST);
+                }
+            }
         }
 
         // Build updated hold history

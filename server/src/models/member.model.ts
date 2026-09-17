@@ -91,6 +91,7 @@ export class Member {
     feeStructureId?: ObjectId; // Primary Fee Package
     addonFeeIds?: ObjectId[];
     concessionType?: string;   // Sibling, Staff Child, Merit, Custom
+    concessionMode?: string;   // 'fixed' | 'percentage'
     concessionValue?: number;  // % or fixed amount
     concessionReason?: string;
 
@@ -196,6 +197,7 @@ export class Member {
             this.addonFeeIds = data.addonFeeIds.map((id: any) => typeof id === 'string' ? new ObjectId(id) : id);
         }
         this.concessionType = data.concessionType || data.concession_type;
+        this.concessionMode = data.concessionMode || data.concession_mode || (data.concessionValue && Number(data.concessionValue) <= 100 ? 'percentage' : 'fixed');
         this.concessionValue = Number(data.concessionValue) || 0;
         this.concessionReason = data.concessionReason || data.concession_reason;
 

@@ -73,17 +73,29 @@ export const FeeCounter: React.FC = () => {
     setSuccessReceipt(null);
 
     // Auto-select student's assigned fee structure if available
+    let baseAmount = 0;
     if (student.feeGroupId) {
       const match = structures.find((st) => st.feeGroupId === student.feeGroupId);
       if (match) {
         setSelectedStructures([match._id]);
-        setPaymentAmount(match.amount || 0);
-        return;
+        baseAmount = match.amount || 0;
+        setPaymentAmount(baseAmount);
+      } else if (structures.length > 0) {
+        setSelectedStructures([structures[0]._id]);
+        baseAmount = structures[0].amount || 0;
+        setPaymentAmount(baseAmount);
       }
-    }
-    if (structures.length > 0) {
+    } else if (structures.length > 0) {
       setSelectedStructures([structures[0]._id]);
-      setPaymentAmount(structures[0].amount || 0);
+      baseAmount = structures[0].amount || 0;
+      setPaymentAmount(baseAmount);
+    }
+
+    // Auto-calculate concession discount if student has concession
+    if (student.concessionType && student.concessionType !== 'none' && student.concessionValue > 0) {
+      setDiscountAmount(Math.min(baseAmount, Number(student.concessionValue)));
+    } else {
+      setDiscountAmount(0);
     }
   };
 

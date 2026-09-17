@@ -1,8 +1,8 @@
 {
-  "id": "lakeshore",
-  "appName": "Lakeshore School",
-  "applicationId": "com.srgs.lakeshoreschool",
-  "entityId": "69a3240d669273408df1969f",
+  "id": "vitadesk",
+  "appName": "VitaDesk",
+  "applicationId": "com.srgs.vitadesk",
+  "entityId": "",
   "apiUrl": "https://smsapi.srglanzsoftware.com/api",
   "versionCode": 6,
   "versionName": "1.0.6"

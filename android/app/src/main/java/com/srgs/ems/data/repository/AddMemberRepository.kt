@@ -34,6 +34,20 @@ class AddMemberRepository(context: Context) {
         } catch (_: Exception) { null }
     }
 
+    suspend fun getNextAdmissionNo(): String? {
+        return try {
+            val r = api.getNextAdmissionNo()
+            if (r.isSuccessful) r.body()?.nextAdmissionNo else null
+        } catch (_: Exception) { null }
+    }
+
+    suspend fun getNextRollNo(feeGroupId: String, academicYearId: String? = null): String? {
+        return try {
+            val r = api.getNextRollNo(feeGroupId, academicYearId)
+            if (r.isSuccessful) r.body()?.nextRollNo else null
+        } catch (_: Exception) { null }
+    }
+
     suspend fun createMember(request: CreateMemberRequest): SaveResult {
         return try {
             val r = api.createMember(request)
