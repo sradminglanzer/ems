@@ -71,6 +71,7 @@ fun StaffScreen(vm: StaffViewModel = viewModel()) {
     }
 
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
+    val isSchool = session?.isSchool ?: true
 
     // ── Official Salary Slip Dialog ───────────────────────────────────────────
     activePayslip?.let { payslip ->
@@ -107,7 +108,7 @@ fun StaffScreen(vm: StaffViewModel = viewModel()) {
         containerColor = Background,
         topBar = {
             Column {
-                EmsTopBar(title = "Teachers & Staff", scrollBehavior = scrollBehavior)
+                EmsTopBar(title = if (isSchool) "Teachers & Staff" else "Staff Management", scrollBehavior = scrollBehavior)
                 // Tab Bar Switcher
                 TabRow(
                     selectedTabIndex = selectedTab,
@@ -118,12 +119,12 @@ fun StaffScreen(vm: StaffViewModel = viewModel()) {
                     Tab(
                         selected = selectedTab == 0,
                         onClick = { vm.selectedTab.value = 0 },
-                        text = { Text("👥 Teachers & Staff", fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+                        text = { Text(if (isSchool) "👥 Teachers & Staff" else "👥 Staff Directory", fontWeight = FontWeight.Bold, fontSize = 13.sp) }
                     )
                     Tab(
                         selected = selectedTab == 1,
                         onClick = { vm.selectedTab.value = 1; vm.loadPayroll() },
-                        text = { Text("💰 School Payroll", fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+                        text = { Text(if (isSchool) "💰 School Payroll" else "💰 Staff Payroll", fontWeight = FontWeight.Bold, fontSize = 13.sp) }
                     )
                 }
             }
@@ -152,7 +153,7 @@ fun StaffScreen(vm: StaffViewModel = viewModel()) {
         } else {
             when (selectedTab) {
                 0 -> {
-                    // ── Tab 1: Teachers & Staff Hub ───────────────────────────
+                    // ── Tab 1: Staff Directory / Hub ───────────────────────────
                     val filteredStaff = if (roleFilter == "all") staffList else staffList.filter { it.role == roleFilter }
 
                     LazyColumn(
@@ -165,11 +166,25 @@ fun StaffScreen(vm: StaffViewModel = viewModel()) {
                     ) {
                         item {
                             // Role filters
+                            val roleFilters = if (isSchool) {
+                                listOf("all" to "All Staff (${staffList.size})", "teacher" to "Teachers", "admin" to "Admin", "staff" to "Support Staff")
+                            } else {
+                                listOf(
+                                    "all" to "All (${staffList.size})",
+                                    "warden" to "Warden / Manager",
+                                    "cook" to "Cook / Kitchen",
+                                    "cleaning" to "Housekeeping",
+                                    "security" to "Security",
+                                    "maintenance" to "Maintenance",
+                                    "admin" to "Admin",
+                                    "staff" to "Support Staff"
+                                )
+                            }
                             Row(
                                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                listOf("all" to "All Staff (${staffList.size})", "teacher" to "Teachers", "admin" to "Admin", "staff" to "Support Staff").forEach { (code, label) ->
+                                roleFilters.forEach { (code, label) ->
                                     val isSel = roleFilter == code
                                     FilterChip(
                                         selected = isSel,
@@ -190,7 +205,7 @@ fun StaffScreen(vm: StaffViewModel = viewModel()) {
                                         Text("👥", fontSize = 48.sp)
                                         Spacer(Modifier.height(8.dp))
                                         Text("No staff members found", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                                        Text("Tap + to add a teacher or staff member", fontSize = 13.sp, color = TextSecondary)
+                                        Text(if (isSchool) "Tap + to add a teacher or staff member" else "Tap + to add a staff member", fontSize = 13.sp, color = TextSecondary)
                                     }
                                 }
                             }
@@ -199,7 +214,7 @@ fun StaffScreen(vm: StaffViewModel = viewModel()) {
                                 val classTeacherGroup = feeGroups.firstOrNull { it._id == staff.assignedClassTeacherGroupId }
                                 StaffMemberCard(
                                     staff               = staff,
-                                    classTeacherGroup   = classTeacherGroup?.name,
+                                    classTeacherGroup   = if (isSchool) classTeacherGroup?.name else null,
                                     canManage           = canManage,
                                     onEdit              = {
                                         vm.startEditStaff(staff)
@@ -213,7 +228,7 @@ fun StaffScreen(vm: StaffViewModel = viewModel()) {
                 }
 
                 1 -> {
-                    // ── Tab 2: School Payroll ─────────────────────────────────
+                    // ── Tab 2: Payroll ─────────────────────────────────────────
                     PayrollTabContent(
                         vm         = vm,
                         payroll    = monthlyPayroll,
@@ -229,6 +244,7 @@ fun StaffScreen(vm: StaffViewModel = viewModel()) {
         if (showFormSheet) {
             StaffFormSheet(
                 vm         = vm,
+                isSchool   = isSchool,
                 feeGroups  = feeGroups,
                 subjects   = subjects,
                 onDismiss  = { showFormSheet = false }
@@ -755,6 +771,7 @@ private fun ProcessSalarySheet(
 @Composable
 private fun StaffFormSheet(
     vm: StaffViewModel,
+    isSchool: Boolean = true,
     feeGroups: List<FeeGroupDto>,
     subjects: List<SubjectDto>,
     onDismiss: () -> Unit
@@ -789,6 +806,20 @@ private fun StaffFormSheet(
     var selectedAllocGroupId by remember { mutableStateOf(feeGroups.firstOrNull()?._id ?: "") }
     var selectedAllocSubName by remember { mutableStateOf(subjects.firstOrNull()?.name ?: "") }
 
+    val roleOptions = if (isSchool) {
+        listOf("teacher" to "👩‍🏫 Teacher", "admin" to "🛡️ Admin", "accountant" to "📊 Accountant", "librarian" to "📚 Librarian", "driver" to "🚌 Driver", "staff" to "Support Staff")
+    } else {
+        listOf(
+            "warden" to "🏢 Warden / Manager",
+            "cook" to "🍳 Cook / Chef",
+            "cleaning" to "🧹 Housekeeping",
+            "security" to "🛡️ Security",
+            "maintenance" to "🔧 Maintenance",
+            "admin" to "💻 Admin",
+            "staff" to "Support Staff"
+        )
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = Surface
@@ -800,7 +831,7 @@ private fun StaffFormSheet(
         ) {
             item {
                 Text(
-                    if (editId != null) "Edit Staff Profile" else "Add Teacher / Staff Member",
+                    if (editId != null) "Edit Staff Profile" else (if (isSchool) "Add Teacher / Staff Member" else "Add Staff Member"),
                     fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary
                 )
                 Spacer(Modifier.height(4.dp))
@@ -823,7 +854,7 @@ private fun StaffFormSheet(
                 Text("Role *", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
                 Spacer(Modifier.height(4.dp))
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("teacher" to "👩‍🏫 Teacher", "admin" to "🛡️ Admin", "accountant" to "📊 Accountant", "librarian" to "📚 Librarian", "driver" to "🚌 Driver", "staff" to "Support Staff").forEach { (rKey, rLabel) ->
+                    roleOptions.forEach { (rKey, rLabel) ->
                         val isSel = role == rKey
                         FilterChip(
                             selected = isSel,
@@ -837,7 +868,13 @@ private fun StaffFormSheet(
             }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Box(Modifier.weight(1f)) { SheetInputField("Designation", des, placeholder = "e.g. Senior PGT Maths") { vm.designation.value = it } }
+                    Box(Modifier.weight(1f)) {
+                        SheetInputField(
+                            "Designation",
+                            des,
+                            placeholder = if (isSchool) "e.g. Senior PGT Maths" else "e.g. Day Warden / Chef / Security"
+                        ) { vm.designation.value = it }
+                    }
                     Box(Modifier.weight(1f)) {
                         EmsDateField(label = "Date of Birth", value = dob, onValueChange = { vm.dob.value = it })
                     }
@@ -848,14 +885,14 @@ private fun StaffFormSheet(
             item {
                 HorizontalDivider(color = Border)
                 Spacer(Modifier.height(4.dp))
-                Text("2. 🎓 QUALIFICATIONS & SPECIALIZATION", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = Primary, letterSpacing = 0.5.sp)
+                Text("2. 🎓 QUALIFICATIONS & DETAILS", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = Primary, letterSpacing = 0.5.sp)
             }
             item {
-                SheetInputField("Qualifications", qual, placeholder = "e.g. M.Sc, B.Ed, CTET") { vm.qualificationsInput.value = it }
+                SheetInputField("Qualifications", qual, placeholder = if (isSchool) "e.g. M.Sc, B.Ed, CTET" else "e.g. High School, Diploma, B.Com") { vm.qualificationsInput.value = it }
             }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Box(Modifier.weight(0.7f)) { SheetInputField("Specialization", spec, placeholder = "e.g. Maths, Physics") { vm.specializationInput.value = it } }
+                    Box(Modifier.weight(0.7f)) { SheetInputField("Specialization", spec, placeholder = if (isSchool) "e.g. Maths, Physics" else "e.g. South Indian Cuisine / CCTV") { vm.specializationInput.value = it } }
                     Box(Modifier.weight(0.3f)) { SheetInputField("Exp (Yrs)", exp, KeyboardType.Number) { vm.experienceYears.value = it } }
                 }
             }
@@ -866,8 +903,8 @@ private fun StaffFormSheet(
                 }
             }
 
-            // ── Section 3: Class & Subject Allocations (Only for Teachers) ──
-            if (role == "teacher") {
+            // ── Section 3: Class & Subject Allocations (Only for Teachers in School Mode) ──
+            if (isSchool && role == "teacher") {
                 item {
                     HorizontalDivider(color = Border)
                     Spacer(Modifier.height(4.dp))

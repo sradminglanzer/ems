@@ -111,6 +111,11 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
             val lastPayment = _payments.value
                 .filter { p -> p.feeStructureId == s._id }
                 .maxByOrNull { p -> p.paymentDate }
+            val baseDateStr = if (!lastPayment?.nextPaymentDate.isNullOrEmpty()) {
+                lastPayment?.nextPaymentDate
+            } else {
+                lastPayment?.paymentDate
+            }
             val grpName = when {
                 s.isAddon              -> null
                 s.groupDetails != null -> s.groupDetails.name
@@ -131,7 +136,7 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
                 defaultAmount  = s.amount,
                 amount         = finalAmt.toInt().toString(),
                 checked        = isChecked,
-                nextDateStr    = calcNextDate(s.frequency, lastPayment?.paymentDate),
+                nextDateStr    = calcNextDate(s.frequency, baseDateStr),
                 frequency      = s.frequency,
                 isAddon        = s.isAddon,
                 groupName      = grpName
@@ -332,9 +337,11 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
         if (frequency == "one-time") return ""
         val cal = Calendar.getInstance()
         if (!lastDateStr.isNullOrEmpty()) {
-            for (fmt in listOf("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", "yyyy-MM-dd")) {
-                try { cal.time = SimpleDateFormat(fmt, Locale.US).parse(lastDateStr)!!; break }
-                catch (_: Exception) {}
+            for (fmt in listOf("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", "yyyy-MM-dd'T'HH:mm:ss'Z'", "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd")) {
+                try {
+                    cal.time = SimpleDateFormat(fmt, Locale.US).parse(lastDateStr)!!
+                    break
+                } catch (_: Exception) {}
             }
         }
         when (frequency) {

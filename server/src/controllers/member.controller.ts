@@ -268,12 +268,15 @@ export const getMemberById = async (req: AuthRequest, res: Response, next: NextF
 
         const mId = m._id!.toString();
         let group;
-        if (academicYearIdStr) {
+        if (m.feeGroupId) {
+            group = feeGroups.find(g => g._id!.toString() === m.feeGroupId!.toString());
+        }
+        if (!group && academicYearIdStr) {
             group = feeGroups.find(g => {
                 const roster = g.yearlyRosters?.find((r: any) => r.academicYearId.toString() === academicYearIdStr);
                 return roster && roster.members && roster.members.some((id: any) => id.toString() === mId);
             });
-        } else {
+        } else if (!group) {
             group = feeGroups.find(g => {
                 return (g.members && g.members.some((id: any) => id.toString() === mId)) ||
                     (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)));
@@ -298,13 +301,20 @@ export const getMemberById = async (req: AuthRequest, res: Response, next: NextF
         const memberPayments = feePayments.filter(p => p.memberId.toString() === mId);
         const totalPaid = memberPayments.reduce((sum, p) => sum + p.amount, 0);
 
+        // get active latest nextPaymentDate
+        const paymentsWithNextDate = memberPayments
+            .filter(p => p.nextPaymentDate)
+            .sort((a, b) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime());
+        const nextPaymentDate = paymentsWithNextDate[0]?.nextPaymentDate || null;
+
         const memberStats = {
             ...m,
             groupName,
             addonNames,
             totalFee,
             totalPaid,
-            pendingAmount: totalFee - totalPaid
+            pendingAmount: totalFee - totalPaid,
+            nextPaymentDate
         };
 
         res.status(HTTP_STATUS.OK).json(memberStats);

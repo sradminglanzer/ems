@@ -538,11 +538,30 @@ fun MemberDetailScreen(
                 // Financial overview (non-teacher admins)
                 if (session?.isTeacher != true) {
                     val totalPaid = payments.sumOf { it.amount }
-                    val latestPayment = payments.maxByOrNull { it.paymentDate }
+                    val isSchool = session?.isSchool ?: true
+                    val primaryStruct = feeStructures.find { it._id == m.feeStructureId }
+                        ?: feeStructures.find { it.feeGroupId == m.feeGroupId && !it.isAddon }
+                    val addonStructs = feeStructures.filter { it._id in (m.addonFeeIds ?: emptyList()) }
+                    val calculatedMonthlyRent = (primaryStruct?.amount ?: 0.0) + addonStructs.sumOf { it.amount }
+                    val monthlyRent = if (calculatedMonthlyRent > 0) calculatedMonthlyRent else m.totalFee
+
+                    val depositPaid = payments.filter { p ->
+                        val st = feeStructures.find { it._id == p.feeStructureId }
+                        st?.frequency == "one-time" || st?.name?.contains("deposit", ignoreCase = true) == true
+                    }.sumOf { it.amount }
+
+                    val latestPayment = payments.filter { p ->
+                        feeStructures.find { it._id == p.feeStructureId }?.frequency != "one-time"
+                    }.maxByOrNull { it.paymentDate } ?: payments.maxByOrNull { it.paymentDate }
+
                     item {
                         SCard {
                             FinancialOverview(
+                                isSchool          = isSchool,
+                                isGym             = session?.isGym ?: false,
                                 totalFee          = m.totalFee,
+                                monthlyRent       = monthlyRent,
+                                depositPaid       = depositPaid,
                                 totalPaid         = totalPaid,
                                 latestPayment     = latestPayment,
                                 isAdmin           = session?.isAdmin ?: false,
@@ -1000,30 +1019,83 @@ private fun PersonalDetails(
 // ── Financial overview ────────────────────────────────────────────────────────
 @Composable
 private fun FinancialOverview(
+    isSchool: Boolean,
+    isGym: Boolean = false,
     totalFee: Double,
+    monthlyRent: Double,
+    depositPaid: Double,
     totalPaid: Double,
     latestPayment: FeePaymentDto? = null,
     isAdmin: Boolean = false,
     onEditRenewalDate: ((FeePaymentDto) -> Unit)? = null
 ) {
-    val pending = maxOf(0.0, totalFee - totalPaid)
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("💰", fontSize = 18.sp); Spacer(Modifier.width(8.dp))
         Text("Financial Overview", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
     }
     Spacer(Modifier.height(12.dp))
-    Row(Modifier.fillMaxWidth()) {
-        FeeStatCell("Total Fee", inrFmt(totalFee), TextPrimary, Modifier.weight(1f))
-        FeeStatCell("Paid", inrFmt(totalPaid), Success, Modifier.weight(1f))
-        FeeStatCell("Pending", inrFmt(pending), if (pending > 0) Danger else TextPrimary, Modifier.weight(1f))
+
+    if (isSchool) {
+        val pending = maxOf(0.0, totalFee - totalPaid)
+        Row(Modifier.fillMaxWidth()) {
+            FeeStatCell("Total Fee", inrFmt(totalFee), TextPrimary, Modifier.weight(1f))
+            FeeStatCell("Paid", inrFmt(totalPaid), Success, Modifier.weight(1f))
+            FeeStatCell("Pending", inrFmt(pending), if (pending > 0) Danger else TextPrimary, Modifier.weight(1f))
+        }
+    } else {
+        val rentLabel = if (isGym) "Plan Fee" else "Monthly Rent"
+        Row(Modifier.fillMaxWidth()) {
+            FeeStatCell(rentLabel, inrFmt(monthlyRent), Primary, Modifier.weight(1f))
+            FeeStatCell("Deposit", if (depositPaid > 0) inrFmt(depositPaid) else "₹0", TextSecondary, Modifier.weight(1f))
+            FeeStatCell("Total Paid", inrFmt(totalPaid), Success, Modifier.weight(1f))
+        }
     }
 
     // Active Next Renewal Date Banner
     if (latestPayment != null && !latestPayment.nextPaymentDate.isNullOrEmpty()) {
+        val (isOverdue, isDueSoon, formattedDate) = remember(latestPayment.nextPaymentDate) {
+            var date: java.util.Date? = null
+            for (fmt in listOf("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", "yyyy-MM-dd'T'HH:mm:ss'Z'", "yyyy-MM-dd")) {
+                try { date = java.text.SimpleDateFormat(fmt, java.util.Locale.US).parse(latestPayment.nextPaymentDate); break } catch (_: Exception) {}
+            }
+            if (date == null) {
+                Triple(false, false, latestPayment.nextPaymentDate)
+            } else {
+                val todayCal = java.util.Calendar.getInstance().apply {
+                    set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+                }
+                val today = todayCal.time
+                val fiveDaysLater = java.util.Calendar.getInstance().apply {
+                    time = today; add(java.util.Calendar.DAY_OF_YEAR, 5); set(java.util.Calendar.HOUR_OF_DAY, 23); set(java.util.Calendar.MINUTE, 59)
+                }.time
+
+                val overdue = date.before(today)
+                val dueSoon = !overdue && !date.after(fiveDaysLater)
+                val displayStr = java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.ENGLISH).format(date)
+                Triple(overdue, dueSoon, displayStr)
+            }
+        }
+
+        val bannerBg = when {
+            isOverdue -> Danger.copy(alpha = 0.09f)
+            isDueSoon -> Warning.copy(alpha = 0.12f)
+            else      -> Success.copy(alpha = 0.08f)
+        }
+        val bannerText = when {
+            isOverdue -> "🔴 Overdue since ${formattedDate ?: fmtDate(latestPayment.nextPaymentDate)}"
+            isDueSoon -> "⚠️ Renewal Due on ${formattedDate ?: fmtDate(latestPayment.nextPaymentDate)}"
+            else      -> "✅ Paid up to ${formattedDate ?: fmtDate(latestPayment.nextPaymentDate)}"
+        }
+        val bannerTextColor = when {
+            isOverdue -> Danger
+            isDueSoon -> Color(0xFFD97706)
+            else      -> Success
+        }
+
         Spacer(Modifier.height(10.dp))
         Surface(
             shape = RoundedCornerShape(8.dp),
-            color = Primary.copy(alpha = 0.07f),
+            color = bannerBg,
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(
@@ -1031,15 +1103,12 @@ private fun FinancialOverview(
                 Arrangement.SpaceBetween,
                 Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("⏰ Next Renewal: ", fontSize = 12.sp, color = TextSecondary)
-                    Text(
-                        fmtDate(latestPayment.nextPaymentDate),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Primary
-                    )
-                }
+                Text(
+                    bannerText,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = bannerTextColor
+                )
                 if (isAdmin && onEditRenewalDate != null) {
                     TextButton(
                         onClick = { onEditRenewalDate(latestPayment) },
