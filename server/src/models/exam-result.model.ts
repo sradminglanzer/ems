@@ -21,11 +21,12 @@ export class ExamResult {
         this.entityId = new ObjectId(data.entityId);
         this.examId = new ObjectId(data.examId);
         this.memberId = new ObjectId(data.memberId);
-        this.marks = Array.isArray(data.marks) ? data.marks.map((m: any) => ({
-            subjectName: m.subjectName,
-            score: Number(m.score),
-            maxScore: Number(m.maxScore)
-        })) : [];
+        const rawMarks = Array.isArray(data.marks) ? data.marks : (Array.isArray(data.subjectScores) ? data.subjectScores : []);
+        this.marks = rawMarks.map((m: any) => ({
+            subjectName: m.subjectName || m.subject || '',
+            score: Number(m.score !== undefined ? m.score : (m.marks !== undefined ? m.marks : 0)),
+            maxScore: Number(m.maxScore !== undefined ? m.maxScore : (m.maxMarks !== undefined ? m.maxMarks : 100))
+        }));
         this.remarks = data.remarks;
         this.createdAt = data.createdAt || new Date();
         this.updatedAt = data.updatedAt || new Date();

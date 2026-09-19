@@ -37,7 +37,7 @@ class ExamRepository(context: Context) {
     suspend fun getRankSheet(examId: String): List<RankSheetEntryDto> {
         return try {
             val response = api.getRankSheet(examId)
-            if (response.isSuccessful) response.body() ?: emptyList() else emptyList()
+            if (response.isSuccessful) response.body()?.ranked ?: emptyList() else emptyList()
         } catch (e: Exception) {
             emptyList()
         }

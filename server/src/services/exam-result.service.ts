@@ -17,7 +17,13 @@ class ExamResultService extends BaseService<ExamResult> {
 
     async saveBulk(examId: string, entityId: string, results: any[]) {
         const bulkOps = results.map(r => {
-            const payload = new ExamResult({ examId, entityId, memberId: r.memberId, marks: r.marks, remarks: r.remarks });
+            const payload = new ExamResult({
+                examId,
+                entityId,
+                memberId: r.memberId,
+                marks: r.marks || r.subjectScores,
+                remarks: r.remarks
+            });
             const setValues: any = { marks: payload.marks, updatedAt: new Date() };
             if (payload.remarks) {
                 setValues.remarks = payload.remarks;

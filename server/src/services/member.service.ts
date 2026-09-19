@@ -39,7 +39,7 @@ class MemberService extends BaseService<Member> {
         return collection.aggregate([
             { $match: matchStage },
 
-            // 1. Join Room / Class name from fee_groups
+            // 1. Join Room / Class name from fee_groups (supports direct feeGroupId, members[], and school yearlyRosters)
             {
                 $lookup: {
                     from: 'fee_groups',
@@ -50,7 +50,19 @@ class MemberService extends BaseService<Member> {
                                 $expr: {
                                     $or: [
                                         { $and: [{ $ne: ['$$feeGrpId', null] }, { $eq: ['$_id', '$$feeGrpId'] }] },
-                                        { $in: ['$$memberId', { $ifNull: ['$members', []] }] }
+                                        { $in: ['$$memberId', { $ifNull: ['$members', []] }] },
+                                        {
+                                            $in: [
+                                                '$$memberId',
+                                                {
+                                                    $reduce: {
+                                                        input: { $ifNull: ['$yearlyRosters.members', []] },
+                                                        initialValue: [],
+                                                        in: { $concatArrays: ['$$value', '$$this'] }
+                                                    }
+                                                }
+                                            ]
+                                        }
                                     ]
                                 }
                             }
@@ -141,7 +153,7 @@ class MemberService extends BaseService<Member> {
         const results = await collection.aggregate([
             { $match: { _id: objectId, entityId: new ObjectId(entityId) } },
 
-            // 1. Join Room / Class name from fee_groups
+            // 1. Join Room / Class name from fee_groups (supports direct feeGroupId, members[], and school yearlyRosters)
             {
                 $lookup: {
                     from: 'fee_groups',
@@ -152,7 +164,19 @@ class MemberService extends BaseService<Member> {
                                 $expr: {
                                     $or: [
                                         { $and: [{ $ne: ['$$feeGrpId', null] }, { $eq: ['$_id', '$$feeGrpId'] }] },
-                                        { $in: ['$$memberId', { $ifNull: ['$members', []] }] }
+                                        { $in: ['$$memberId', { $ifNull: ['$members', []] }] },
+                                        {
+                                            $in: [
+                                                '$$memberId',
+                                                {
+                                                    $reduce: {
+                                                        input: { $ifNull: ['$yearlyRosters.members', []] },
+                                                        initialValue: [],
+                                                        in: { $concatArrays: ['$$value', '$$this'] }
+                                                    }
+                                                }
+                                            ]
+                                        }
                                     ]
                                 }
                             }

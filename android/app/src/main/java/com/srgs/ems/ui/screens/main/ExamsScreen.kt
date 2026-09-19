@@ -16,16 +16,20 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -61,7 +65,7 @@ fun ExamsScreen(vm: ExamsViewModel = viewModel()) {
     val snackbar       = remember { SnackbarHostState() }
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
     var showCreateSheet by remember { mutableStateOf(false) }
-    var showEnterMarksSheet by remember { mutableStateOf(false) }
+    var isGradingMode   by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         vm.snackbarEvent.collect {
@@ -75,34 +79,36 @@ fun ExamsScreen(vm: ExamsViewModel = viewModel()) {
         StudentReportCardDialog(
             result     = result,
             exam       = selectedExam,
-            schoolName = session?.name ?: "School",
+            schoolName = session?.entityName?.takeIf { it.isNotBlank() } ?: session?.name ?: "School",
             onDismiss  = { vm.closeReportCard() }
         )
     }
 
-    // ── Detail view (exam selected) ───────────────────────────────────────────
+    // ── Detail view or Full-Screen Grading view (exam selected) ───────────────
     if (selectedExam != null) {
-        ExamDetailPane(
-            exam         = selectedExam!!,
-            results      = results,
-            rankSheet    = rankSheet,
-            isLoading    = isLoadingRes,
-            canManage    = canManage,
-            onBack       = { vm.clearSelectedExam() },
-            onEnterMarks = {
-                vm.loadMarksEntry(selectedExam!!)
-                showEnterMarksSheet = true
-            },
-            onNotifyTimetable = { vm.notifyTimetable(selectedExam!!._id) },
-            onPublishResults = { vm.publishResults(selectedExam!!._id) },
-            onViewReport = { vm.openReportCard(it) }
-        )
-
-        if (showEnterMarksSheet) {
-            EnterMarksBottomSheet(
-                exam      = selectedExam!!,
-                vm        = vm,
-                onDismiss = { showEnterMarksSheet = false }
+        if (isGradingMode) {
+            EnterMarksScreen(
+                exam     = selectedExam!!,
+                vm       = vm,
+                snackbar = snackbar,
+                onBack   = { isGradingMode = false }
+            )
+        } else {
+            ExamDetailPane(
+                exam         = selectedExam!!,
+                results      = results,
+                rankSheet    = rankSheet,
+                isLoading    = isLoadingRes,
+                canManage    = canManage,
+                snackbar     = snackbar,
+                onBack       = { vm.clearSelectedExam() },
+                onEnterMarks = {
+                    vm.loadMarksEntry(selectedExam!!)
+                    isGradingMode = true
+                },
+                onNotifyTimetable = { vm.notifyTimetable(selectedExam!!._id) },
+                onPublishResults = { vm.publishResults(selectedExam!!._id) },
+                onViewReport = { vm.openReportCard(it) }
             )
         }
         return
@@ -235,6 +241,7 @@ private fun ExamDetailPane(
     rankSheet: List<RankSheetEntryDto>,
     isLoading: Boolean,
     canManage: Boolean,
+    snackbar: SnackbarHostState,
     onBack: () -> Unit,
     onEnterMarks: () -> Unit,
     onNotifyTimetable: () -> Unit,
@@ -299,6 +306,7 @@ private fun ExamDetailPane(
     }
 
     Scaffold(
+        snackbarHost   = { SnackbarHost(snackbar) },
         containerColor = Background,
         topBar = {
             TopAppBar(
@@ -549,6 +557,7 @@ private fun ScorePill(label: String, value: String, vc: Color, modifier: Modifie
 }
 
 // ── Rank Sheet Tab ────────────────────────────────────────────────────────────
+// ── Rank Sheet Tab ────────────────────────────────────────────────────────────
 @Composable
 private fun RankSheetTab(
     rankSheet: List<RankSheetEntryDto>,
@@ -560,197 +569,303 @@ private fun RankSheetTab(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("🏆", fontSize = 48.sp)
                 Spacer(Modifier.height(8.dp))
-                Text("Rank sheet not available yet.", color = TextSecondary)
+                Text("Rank sheet not available yet.", color = TextSecondary, fontSize = 14.sp)
+                Text("Enter student marks to generate the leaderboard.", color = TextMuted, fontSize = 12.sp)
             }
         }
         return
     }
+
+    var searchQuery by remember { mutableStateOf("") }
+
+    val filteredRanks = remember(rankSheet, searchQuery) {
+        if (searchQuery.isBlank()) rankSheet
+        else {
+            val q = searchQuery.trim().lowercase()
+            rankSheet.filter {
+                it.displayName.lowercase().contains(q) ||
+                (it.knownId ?: "").lowercase().contains(q)
+            }
+        }
+    }
+
+    val totalStudents = rankSheet.size
+    val avgPct = remember(rankSheet) {
+        if (rankSheet.isNotEmpty()) rankSheet.map { it.percentage }.average() else 0.0
+    }
+    val topScorer = rankSheet.firstOrNull()
+
     LazyColumn(
         contentPadding      = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier            = Modifier.fillMaxSize()
     ) {
+        // ── Summary KPI Cards ─────────────────────────────────────────────────
         item {
-            // Table header
-            Row(
-                Modifier.fillMaxWidth()
-                    .background(Primary.copy(.08f), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("#", Modifier.width(32.dp), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Primary)
-                Text("Student", Modifier.weight(1f), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Primary)
-                Text("Marks", Modifier.width(60.dp), fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                    color = Primary, textAlign = TextAlign.End)
-                Text("%", Modifier.width(48.dp), fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                    color = Primary, textAlign = TextAlign.End)
-                Text("Grade", Modifier.width(44.dp), fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                    color = Primary, textAlign = TextAlign.Center)
-            }
-        }
-        items(rankSheet, key = { it.memberId }) { e ->
-            val matchingResult = results.find { it.memberId == e.memberId }
-            RankRow(e, onClick = { matchingResult?.let { onViewReport(it) } })
-        }
-    }
-}
-
-@Composable
-private fun RankRow(e: RankSheetEntryDto, onClick: () -> Unit) {
-    val medalEmoji = when (e.rank) { 1 -> "🥇"; 2 -> "🥈"; 3 -> "🥉"; else -> null }
-    val gradeColor = when (e.grade) {
-        "A+" -> Color(0xFF059669); "A" -> Color(0xFF10B981); "B" -> Color(0xFF3B82F6)
-        "C"  -> Color(0xFFF59E0B); "D" -> Color(0xFFEF4444); else -> Color(0xFF6B7280)
-    }
-    Card(
-        Modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape     = RoundedCornerShape(10.dp),
-        colors    = CardDefaults.cardColors(if (e.rank <= 3) Primary.copy(.04f) else Surface),
-        elevation = CardDefaults.cardElevation(if (e.rank <= 3) 2.dp else 0.dp),
-        border    = BorderStroke(1.dp, Border)
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(Modifier.width(32.dp), contentAlignment = Alignment.Center) {
-                if (medalEmoji != null) Text(medalEmoji, fontSize = 18.sp)
-                else Text("${e.rank}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
-            }
-            Column(Modifier.weight(1f)) {
-                Text(e.memberName, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                e.knownId?.let { Text("ID: $it", fontSize = 11.sp, color = TextMuted) }
-            }
-            Text(
-                "${e.totalMarks.toInt()}/${e.maxMarks.toInt()}",
-                Modifier.width(60.dp), fontSize = 12.sp, color = TextPrimary,
-                fontWeight = FontWeight.SemiBold, textAlign = TextAlign.End
-            )
-            Text(
-                "${"%.1f".format(e.percentage)}%",
-                Modifier.width(48.dp), fontSize = 12.sp, color = TextPrimary,
-                textAlign = TextAlign.End
-            )
-            Box(Modifier.width(44.dp), contentAlignment = Alignment.Center) {
-                Surface(shape = RoundedCornerShape(6.dp), color = gradeColor.copy(.15f)) {
-                    Text(e.grade, Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = gradeColor,
-                        textAlign = TextAlign.Center)
-                }
-            }
-        }
-    }
-}
-
-// ── Enter Marks Bottom Sheet ──────────────────────────────────────────────────
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun EnterMarksBottomSheet(
-    exam: ExamDto,
-    vm: ExamsViewModel,
-    onDismiss: () -> Unit
-) {
-    val roster        by vm.classRoster.collectAsState()
-    val marksMap      by vm.marksEntryMap.collectAsState()
-    val isLoadingRost by vm.isLoadingRoster.collectAsState()
-    val isSavingMarks by vm.isSavingMarks.collectAsState()
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor   = Surface
-    ) {
-        Column(
-            Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)
-        ) {
             Row(
                 Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Column {
-                    Text("📝 Enter Student Marks", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
-                    Text("${exam.name} • ${exam.feeGroupName ?: "Class Roster"}", fontSize = 12.sp, color = TextSecondary)
-                }
-                Button(
-                    onClick = { vm.saveAllMarks(exam, onDone = onDismiss) },
-                    enabled = !isSavingMarks && roster.isNotEmpty(),
-                    shape   = RoundedCornerShape(8.dp),
-                    colors  = ButtonDefaults.buttonColors(containerColor = Primary)
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Surface,
+                    border = BorderStroke(1.dp, Border),
+                    shadowElevation = 1.dp,
+                    modifier = Modifier.weight(1f)
                 ) {
-                    if (isSavingMarks) CircularProgressIndicator(Modifier.size(16.dp), Color.White, 2.dp)
-                    else Text("💾 Save All", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("STUDENTS", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 0.5.sp)
+                        Spacer(Modifier.height(2.dp))
+                        Text("$totalStudents", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Primary)
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Surface,
+                    border = BorderStroke(1.dp, Border),
+                    shadowElevation = 1.dp,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("CLASS AVG", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 0.5.sp)
+                        Spacer(Modifier.height(2.dp))
+                        Text("${"%.1f".format(avgPct)}%", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF059669))
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Surface,
+                    border = BorderStroke(1.dp, Border),
+                    shadowElevation = 1.dp,
+                    modifier = Modifier.weight(1.2f)
+                ) {
+                    Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("TOP SCORE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 0.5.sp)
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "${topScorer?.displayTotalMarks?.toInt() ?: 0}/${topScorer?.displayMaxMarks?.toInt() ?: 0} (${"%.0f".format(topScorer?.percentage ?: 0.0)}%)",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFFD97706),
+                            maxLines = 1
+                        )
+                    }
                 }
             }
-            Spacer(Modifier.height(12.dp))
+        }
 
-            if (isLoadingRost) {
-                Box(Modifier.fillMaxWidth().height(200.dp), Alignment.Center) {
-                    CircularProgressIndicator(color = Primary)
-                }
-            } else if (roster.isEmpty()) {
-                Box(Modifier.fillMaxWidth().height(150.dp), Alignment.Center) {
-                    Text("No students enrolled in this class roster.", color = TextSecondary)
-                }
-            } else {
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier            = Modifier.fillMaxWidth().weight(1f, fill = false)
+        // ── Top 3 Podium Cards (when no search active) ────────────────────────
+        if (searchQuery.isBlank() && rankSheet.size >= 3) {
+            item {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.Bottom
                 ) {
-                    items(roster, key = { it._id }) { student ->
-                        Card(
-                            Modifier.fillMaxWidth(),
-                            shape  = RoundedCornerShape(10.dp),
-                            colors = CardDefaults.cardColors(Background),
-                            border = BorderStroke(1.dp, Border)
-                        ) {
-                            Column(Modifier.padding(12.dp)) {
+                    // 2nd Place
+                    val r2 = rankSheet.getOrNull(1)
+                    if (r2 != null) {
+                        val res2 = results.find { it.memberId == r2.memberId }
+                        PodiumCard(
+                            rank = 2,
+                            entry = r2,
+                            badgeColor = Color(0xFF64748B),
+                            bgColor = Color(0xFFF8FAFC),
+                            borderColor = Color(0xFFCBD5E1),
+                            modifier = Modifier.weight(1f).clickable { res2?.let { onViewReport(it) } }
+                        )
+                    }
+
+                    // 1st Place (Taller / Highlighted)
+                    val r1 = rankSheet.firstOrNull()
+                    if (r1 != null) {
+                        val res1 = results.find { it.memberId == r1.memberId }
+                        PodiumCard(
+                            rank = 1,
+                            entry = r1,
+                            badgeColor = Color(0xFFD97706),
+                            bgColor = Color(0xFFFFFBEB),
+                            borderColor = Color(0xFFFDE68A),
+                            isFirst = true,
+                            modifier = Modifier.weight(1.1f).clickable { res1?.let { onViewReport(it) } }
+                        )
+                    }
+
+                    // 3rd Place
+                    val r3 = rankSheet.getOrNull(2)
+                    if (r3 != null) {
+                        val res3 = results.find { it.memberId == r3.memberId }
+                        PodiumCard(
+                            rank = 3,
+                            entry = r3,
+                            badgeColor = Color(0xFFB45309),
+                            bgColor = Color(0xFFFFF7ED),
+                            borderColor = Color(0xFFFED7AA),
+                            modifier = Modifier.weight(1f).clickable { res3?.let { onViewReport(it) } }
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── Search Input ──────────────────────────────────────────────────────
+        item {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("🔍 Search leaderboard by name, ID...", fontSize = 12.sp) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = RoundedCornerShape(10.dp),
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Text("✕", fontSize = 13.sp, color = TextMuted)
+                        }
+                    }
+                },
+                colors = OutlinedTextFieldDefaults.colors(
+                    unfocusedContainerColor = Surface,
+                    focusedContainerColor = Surface,
+                    unfocusedBorderColor = Border,
+                    focusedBorderColor = Primary
+                )
+            )
+        }
+
+        // ── Unified White Table Card ──────────────────────────────────────────
+        item {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Surface,
+                border = BorderStroke(1.dp, Border),
+                shadowElevation = 2.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.fillMaxWidth()) {
+                    // Table Header
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFF8FAFC))
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("#", Modifier.width(36.dp), fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextSecondary)
+                        Text("STUDENT", Modifier.weight(1f), fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextSecondary)
+                        Text("MARKS", Modifier.width(56.dp), fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextSecondary, textAlign = TextAlign.End)
+                        Text("%", Modifier.width(46.dp), fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextSecondary, textAlign = TextAlign.End)
+                        Text("GRADE", Modifier.width(48.dp), fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextSecondary, textAlign = TextAlign.Center)
+                    }
+
+                    HorizontalDivider(color = Border, thickness = 1.dp)
+
+                    if (filteredRanks.isEmpty()) {
+                        Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) {
+                            Text("No students match \"$searchQuery\"", color = TextSecondary, fontSize = 13.sp)
+                        }
+                    } else {
+                        filteredRanks.forEachIndexed { index, entry ->
+                            val matchingResult = results.find { it.memberId == entry.memberId }
+                            val isEven = index % 2 == 0
+
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .background(if (isEven) Surface else Color(0xFFFAFAFA))
+                                    .clickable { matchingResult?.let { onViewReport(it) } }
+                            ) {
                                 Row(
-                                    Modifier.fillMaxWidth(),
-                                    Arrangement.SpaceBetween,
-                                    Alignment.CenterVertically
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    // Rank Badge
+                                    Box(Modifier.width(36.dp), contentAlignment = Alignment.CenterStart) {
+                                        when (entry.rank) {
+                                            1 -> Text("🥇", fontSize = 17.sp)
+                                            2 -> Text("🥈", fontSize = 17.sp)
+                                            3 -> Text("🥉", fontSize = 17.sp)
+                                            else -> {
+                                                Surface(
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    color = Primary.copy(0.08f),
+                                                    modifier = Modifier.size(24.dp)
+                                                ) {
+                                                    Box(contentAlignment = Alignment.Center) {
+                                                        Text(
+                                                            "${entry.rank}",
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Primary
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Student Name & ID
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            entry.displayName,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = TextPrimary,
+                                            maxLines = 1
+                                        )
+                                        if (!entry.knownId.isNullOrBlank()) {
+                                            Text("ID: ${entry.knownId}", fontSize = 10.sp, color = TextMuted)
+                                        }
+                                    }
+
+                                    // Marks Total
                                     Text(
-                                        student.fullName,
-                                        fontSize = 14.sp,
+                                        "${entry.displayTotalMarks.toInt()}/${entry.displayMaxMarks.toInt()}",
+                                        Modifier.width(56.dp),
+                                        fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = TextPrimary
+                                        color = TextPrimary,
+                                        textAlign = TextAlign.End
                                     )
-                                    val idStr = student.rollNo ?: student.knownId ?: student.admissionNo
-                                    if (!idStr.isNullOrBlank()) {
-                                        Text("Roll #$idStr", fontSize = 11.sp, color = TextMuted)
+
+                                    // Percentage
+                                    Text(
+                                        "${"%.1f".format(entry.percentage)}%",
+                                        Modifier.width(46.dp),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (entry.percentage >= 75) Color(0xFF059669) else if (entry.percentage >= 33) TextPrimary else Color(0xFFEF4444),
+                                        textAlign = TextAlign.End
+                                    )
+
+                                    // Grade Pill
+                                    val gradeColor = when (entry.grade) {
+                                        "A+" -> Color(0xFF059669); "A" -> Color(0xFF10B981); "B" -> Color(0xFF3B82F6)
+                                        "C"  -> Color(0xFFF59E0B); "D" -> Color(0xFFEF4444); else -> Color(0xFF6B7280)
+                                    }
+                                    Box(Modifier.width(48.dp), contentAlignment = Alignment.Center) {
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = gradeColor.copy(0.12f)
+                                        ) {
+                                            Text(
+                                                entry.grade,
+                                                Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = gradeColor,
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
                                     }
                                 }
-                                Spacer(Modifier.height(8.dp))
 
-                                // Subject input rows
-                                exam.subjects.forEach { subject ->
-                                    val currentScore = marksMap[student._id]?.get(subject.name) ?: ""
-                                    val isOverMax = (currentScore.toDoubleOrNull() ?: 0.0) > subject.maxMarks
-
-                                    Row(
-                                        Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                        Arrangement.SpaceBetween,
-                                        Alignment.CenterVertically
-                                    ) {
-                                        Column(Modifier.weight(1f)) {
-                                            Text(subject.name, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
-                                            Text("Max: ${subject.maxMarks.toInt()}", fontSize = 10.sp, color = TextSecondary)
-                                        }
-                                        OutlinedTextField(
-                                            value         = currentScore,
-                                            onValueChange = { vm.updateStudentScore(student._id, subject.name, it.filter { c -> c.isDigit() || c == '.' }) },
-                                            placeholder   = { Text("0", fontSize = 12.sp) },
-                                            singleLine    = true,
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                            isError       = isOverMax,
-                                            modifier      = Modifier.width(90.dp).height(50.dp),
-                                            shape         = RoundedCornerShape(8.dp),
-                                            colors        = OutlinedTextFieldDefaults.colors(
-                                                unfocusedContainerColor = Surface,
-                                                focusedContainerColor   = Surface
-                                            )
-                                        )
-                                    }
+                                if (index < filteredRanks.size - 1) {
+                                    HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 1.dp)
                                 }
                             }
                         }
@@ -761,6 +876,439 @@ private fun EnterMarksBottomSheet(
     }
 }
 
+// ── Top Podium Card ───────────────────────────────────────────────────────────
+@Composable
+private fun PodiumCard(
+    rank: Int,
+    entry: RankSheetEntryDto,
+    badgeColor: Color,
+    bgColor: Color,
+    borderColor: Color,
+    isFirst: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    val medalEmoji = when (rank) { 1 -> "🥇"; 2 -> "🥈"; 3 -> "🥉"; else -> "#$rank" }
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = bgColor,
+        border = BorderStroke(1.dp, borderColor),
+        shadowElevation = if (isFirst) 3.dp else 1.dp,
+        modifier = modifier
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = if (isFirst) 14.dp else 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(medalEmoji, fontSize = if (isFirst) 24.sp else 20.sp)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                entry.displayName,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+                maxLines = 1,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(2.dp))
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = badgeColor.copy(0.15f)
+            ) {
+                Text(
+                    "${"%.1f".format(entry.percentage)}% (${entry.grade})",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = badgeColor,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+        }
+    }
+}
+
+// ── Full-Screen Marks Entry Screen ────────────────────────────────────────────
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EnterMarksScreen(
+    exam: ExamDto,
+    vm: ExamsViewModel,
+    snackbar: SnackbarHostState,
+    onBack: () -> Unit
+) {
+    val roster             by vm.classRoster.collectAsState()
+    val marksMap           by vm.marksEntryMap.collectAsState()
+    val selectedSubjectIdx by vm.selectedSubjectIndex.collectAsState()
+    val selectedClassId    by vm.selectedMarksClassId.collectAsState()
+    val searchQuery        by vm.marksSearchQuery.collectAsState()
+    val feeGroups          by vm.feeGroups.collectAsState()
+    val isLoadingRost      by vm.isLoadingRoster.collectAsState()
+    val isSavingMarks      by vm.isSavingMarks.collectAsState()
+
+    val focusManager = LocalFocusManager.current
+
+    // Active Subject
+    val currentSubject = exam.subjects.getOrNull(selectedSubjectIdx) ?: exam.subjects.firstOrNull()
+    val currentSubName = currentSubject?.name ?: ""
+    val currentMaxMarks = currentSubject?.maxMarks ?: 100.0
+
+    // Filtered roster based on search query
+    val filteredRoster = remember(roster, searchQuery) {
+        if (searchQuery.isBlank()) roster
+        else {
+            val q = searchQuery.trim().lowercase()
+            roster.filter { s ->
+                s.fullName.lowercase().contains(q) ||
+                (s.rollNo ?: "").lowercase().contains(q) ||
+                (s.knownId ?: "").lowercase().contains(q) ||
+                (s.admissionNo ?: "").lowercase().contains(q)
+            }
+        }
+    }
+
+    // Stats for active subject
+    val totalStudents = roster.size
+    val gradedCount = remember(roster, marksMap, currentSubName) {
+        roster.count { s ->
+            val score = marksMap[s._id]?.get(currentSubName)?.trim()
+            !score.isNullOrEmpty()
+        }
+    }
+    val progressPct = if (totalStudents > 0) (gradedCount.toFloat() / totalStudents.toFloat()) else 0f
+
+    Scaffold(
+        snackbarHost   = { SnackbarHost(snackbar) },
+        containerColor = Background,
+        topBar = {
+            TopAppBar(
+                title = {
+                    Column {
+                        Text(
+                            "📝 Grade: ${exam.name}",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary,
+                            maxLines = 1
+                        )
+                        Text(
+                            exam.feeGroupName ?: (feeGroups.find { it._id == selectedClassId }?.name ?: "All Classes"),
+                            fontSize = 12.sp,
+                            color = TextSecondary,
+                            maxLines = 1
+                        )
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Text("←", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    }
+                },
+                actions = {
+                    Button(
+                        onClick = { vm.saveAllMarks(exam, onDone = onBack) },
+                        enabled = !isSavingMarks && roster.isNotEmpty(),
+                        shape   = RoundedCornerShape(8.dp),
+                        colors  = ButtonDefaults.buttonColors(containerColor = Primary),
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        if (isSavingMarks) {
+                            CircularProgressIndicator(Modifier.size(16.dp), Color.White, 2.dp)
+                        } else {
+                            Text("💾 Save All", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Surface)
+            )
+        }
+    ) { padding ->
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            // Class Selector (if school-wide or multi-class exam)
+            if (exam.feeGroupId.isNullOrEmpty() && feeGroups.isNotEmpty()) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Class:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextSecondary)
+                    feeGroups.forEach { g ->
+                        val isSelected = g._id == selectedClassId
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { vm.selectMarksClass(g._id) },
+                            label = {
+                                Text(
+                                    g.name,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Primary,
+                                selectedLabelColor = Color.White
+                            )
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+            }
+
+            // Subject Selector Pills (Horizontal Scroll)
+            if (exam.subjects.isNotEmpty()) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    exam.subjects.forEachIndexed { idx, sub ->
+                        val isSelected = idx == selectedSubjectIdx
+                        val subGraded = roster.count { !marksMap[it._id]?.get(sub.name).isNullOrBlank() }
+                        val isAllGraded = roster.isNotEmpty() && subGraded == roster.size
+
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = if (isSelected) Primary else Surface,
+                            border = BorderStroke(1.dp, if (isSelected) Primary else Border),
+                            modifier = Modifier.clickable { vm.selectSubjectIndex(idx) }
+                        ) {
+                            Row(
+                                Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    sub.name,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) Color.White else TextPrimary
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isSelected) Color.White.copy(0.25f) else (if (isAllGraded) Color(0xFF10B981).copy(0.15f) else Border)
+                                ) {
+                                    Text(
+                                        "${subGraded}/${roster.size}",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSelected) Color.White else (if (isAllGraded) Color(0xFF059669) else TextSecondary),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(6.dp))
+
+            // Grading progress bar
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Grading $currentSubName (Max: ${currentMaxMarks.toInt()})",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Primary
+                )
+                Text(
+                    "$gradedCount / $totalStudents Graded (${(progressPct * 100).toInt()}%)",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (gradedCount == totalStudents && totalStudents > 0) Color(0xFF059669) else TextSecondary
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            LinearProgressIndicator(
+                progress = { progressPct },
+                modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
+                color = if (gradedCount == totalStudents && totalStudents > 0) Color(0xFF059669) else Primary,
+                trackColor = Border
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            // Search Bar
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { vm.setMarksSearchQuery(it) },
+                placeholder = { Text("🔍 Search student by name, roll no...", fontSize = 12.sp) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = RoundedCornerShape(8.dp),
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { vm.setMarksSearchQuery("") }) {
+                            Text("✕", fontSize = 13.sp, color = TextMuted)
+                        }
+                    }
+                },
+                colors = OutlinedTextFieldDefaults.colors(
+                    unfocusedContainerColor = Surface,
+                    focusedContainerColor = Surface,
+                    unfocusedBorderColor = Border,
+                    focusedBorderColor = Primary
+                )
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            // Student Roster
+            if (isLoadingRost) {
+                Box(Modifier.fillMaxWidth().weight(1f), Alignment.Center) {
+                    CircularProgressIndicator(color = Primary)
+                }
+            } else if (roster.isEmpty()) {
+                Box(Modifier.fillMaxWidth().weight(1f), Alignment.Center) {
+                    Text("No students enrolled in this class roster.", color = TextSecondary)
+                }
+            } else if (filteredRoster.isEmpty()) {
+                Box(Modifier.fillMaxWidth().weight(1f), Alignment.Center) {
+                    Text("No students match \"$searchQuery\"", color = TextSecondary)
+                }
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(bottom = 24.dp),
+                    modifier = Modifier.fillMaxWidth().weight(1f)
+                ) {
+                    items(filteredRoster, key = { it._id }) { student ->
+                        val currentScore = marksMap[student._id]?.get(currentSubName) ?: ""
+                        val isAbsent = currentScore.equals("AB", ignoreCase = true)
+                        val numScore = currentScore.toDoubleOrNull()
+                        val isOverMax = numScore != null && numScore > currentMaxMarks
+
+                        Card(
+                            Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(if (isAbsent) Color(0xFFFEF2F2) else (if (currentScore.isNotBlank()) Primary.copy(0.03f) else Surface)),
+                            border = BorderStroke(1.dp, if (isAbsent) Color(0xFFFCA5A5) else (if (isOverMax) Color(0xFFEF4444) else Border))
+                        ) {
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Roll No badge
+                                val rollDisplay = student.rollNo ?: student.knownId ?: student.admissionNo ?: "-"
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isAbsent) Color(0xFFFEE2E2) else Primary.copy(0.1f),
+                                    modifier = Modifier.width(36.dp).height(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            rollDisplay,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (isAbsent) Color(0xFFDC2626) else Primary,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+
+                                Spacer(Modifier.width(10.dp))
+
+                                // Student Name & Info
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        student.fullName,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextPrimary,
+                                        maxLines = 1
+                                    )
+                                    val subInfo = student.admissionNo ?: student.knownId
+                                    if (!subInfo.isNullOrBlank() && subInfo != rollDisplay) {
+                                        Text("Adm: $subInfo", fontSize = 11.sp, color = TextMuted)
+                                    }
+                                }
+
+                                Spacer(Modifier.width(8.dp))
+
+                                // Absent Button
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (isAbsent) Color(0xFFDC2626) else Border.copy(0.5f),
+                                    border = BorderStroke(1.dp, if (isAbsent) Color(0xFFDC2626) else Border),
+                                    modifier = Modifier.clickable { vm.toggleStudentAbsent(student._id, currentSubName) }
+                                ) {
+                                    Text(
+                                        text = "AB",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (isAbsent) Color.White else TextSecondary,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                                    )
+                                }
+
+                                Spacer(Modifier.width(8.dp))
+
+                                // Marks Input Box
+                                OutlinedTextField(
+                                    value = if (isAbsent) "AB" else currentScore,
+                                    onValueChange = {
+                                        if (!isAbsent) {
+                                            vm.updateStudentScore(
+                                                student._id,
+                                                currentSubName,
+                                                it.filter { c -> c.isDigit() || c == '.' }
+                                            )
+                                        }
+                                    },
+                                    placeholder = { Text("0", fontSize = 12.sp, color = TextMuted) },
+                                    singleLine = true,
+                                    enabled = !isAbsent,
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Number,
+                                        imeAction = ImeAction.Next
+                                    ),
+                                    keyboardActions = KeyboardActions(
+                                        onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                                    ),
+                                    isError = isOverMax,
+                                    textStyle = androidx.compose.ui.text.TextStyle(
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        textAlign = TextAlign.Center,
+                                        color = if (isAbsent) Color(0xFFDC2626) else TextPrimary
+                                    ),
+                                    modifier = Modifier.width(72.dp).height(46.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        unfocusedContainerColor = Background,
+                                        focusedContainerColor = Background,
+                                        disabledContainerColor = Color(0xFFFEE2E2),
+                                        disabledTextColor = Color(0xFFDC2626),
+                                        disabledBorderColor = Color(0xFFFCA5A5)
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── Official Student Report Card Dialog ───────────────────────────────────────
 // ── Official Student Report Card Dialog ───────────────────────────────────────
 @Composable
 private fun StudentReportCardDialog(
@@ -775,96 +1323,290 @@ private fun StudentReportCardDialog(
         "C"  -> Color(0xFFF59E0B); "D" -> Color(0xFFEF4444); else -> Color(0xFF6B7280)
     }
 
+    val isPassed = result.percentage >= 33.0
+    val resultStatus = when {
+        result.percentage >= 75.0 -> "PASSED WITH DISTINCTION"
+        result.percentage >= 60.0 -> "FIRST CLASS"
+        result.percentage >= 50.0 -> "SECOND CLASS"
+        result.percentage >= 33.0 -> "PASSED"
+        else -> "NEEDS IMPROVEMENT"
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("🏫 $schoolName", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Primary, textAlign = TextAlign.Center)
-                Text("STUDENT REPORT CARD", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextSecondary, letterSpacing = 1.sp)
-                Text(exam?.name ?: "Academic Examination", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+            Column(
+                Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // School Header
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text("🏫", fontSize = 20.sp)
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        schoolName.trim().ifEmpty { "School" },
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Primary,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2
+                    )
+                }
+                Text(
+                    "OFFICIAL REPORT CARD",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TextSecondary,
+                    letterSpacing = 1.5.sp,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                // Prominent Exam Banner
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Primary.copy(alpha = 0.1f),
+                    border = BorderStroke(1.dp, Primary.copy(alpha = 0.25f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        Modifier.padding(vertical = 8.dp, horizontal = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            "🎓 ${exam?.name ?: "Academic Examination"}",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Primary,
+                            textAlign = TextAlign.Center
+                        )
+                        if (!exam?.feeGroupName.isNullOrBlank()) {
+                            Text(
+                                "Class: ${exam?.feeGroupName}",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
             }
         },
         text = {
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                // Student info card
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Student Profile Card
                 Surface(
-                    shape  = RoundedCornerShape(8.dp),
-                    color  = Background,
-                    border = BorderStroke(1.dp, Border),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(Modifier.padding(10.dp)) {
-                        Text("Student: ${result.memberName ?: "Student"}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                        if (!result.knownId.isNullOrBlank()) Text("Roll / Adm ID: ${result.knownId}", fontSize = 12.sp, color = TextSecondary)
-                        if (!exam?.feeGroupName.isNullOrBlank()) Text("Class: ${exam?.feeGroupName}", fontSize = 12.sp, color = TextSecondary)
-                    }
-                }
-
-                // Marks Table
-                Surface(
-                    shape  = RoundedCornerShape(8.dp),
+                    shape  = RoundedCornerShape(12.dp),
                     color  = Surface,
                     border = BorderStroke(1.dp, Border),
+                    shadowElevation = 1.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(Modifier.padding(8.dp)) {
-                        Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), Arrangement.SpaceBetween) {
-                            Text("Subject", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Primary)
-                            Text("Score / Max", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Primary)
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Student Initial Circle
+                        val initials = (result.memberName ?: "S").split(" ")
+                            .take(2).mapNotNull { it.firstOrNull()?.uppercaseChar() }.joinToString("")
+                        Surface(
+                            shape = CircleShape,
+                            color = Primary.copy(0.12f),
+                            modifier = Modifier.size(42.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    initials.ifEmpty { "S" },
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 15.sp,
+                                    color = Primary
+                                )
+                            }
                         }
-                        HorizontalDivider(color = Border)
-                        result.subjectScores.forEach { s ->
-                            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), Arrangement.SpaceBetween) {
-                                Text(s.subject, fontSize = 12.sp, color = TextPrimary)
-                                Text("${s.marks.toInt()} / ${s.maxMarks.toInt()}", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+
+                        Spacer(Modifier.width(12.dp))
+
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                result.memberName ?: "Student",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                            val idDisplay = result.rollNo ?: result.knownId
+                            if (!idDisplay.isNullOrBlank()) {
+                                Text("Roll / Adm ID: $idDisplay", fontSize = 12.sp, color = TextMuted)
                             }
                         }
                     }
                 }
 
-                // Cumulative Performance
+                // Subject-wise Marks Table
                 Surface(
-                    shape  = RoundedCornerShape(8.dp),
-                    color  = Primary.copy(alpha = 0.07f),
-                    border = BorderStroke(1.dp, Primary.copy(alpha = 0.2f)),
+                    shape  = RoundedCornerShape(12.dp),
+                    color  = Surface,
+                    border = BorderStroke(1.dp, Border),
+                    shadowElevation = 1.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(10.dp),
-                        Arrangement.SpaceBetween,
-                        Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("Total: ${result.totalMarks.toInt()}/${result.maxMarks.toInt()} (${"%.1f".format(result.percentage)}%)",
-                                fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                            Text("Result: ${if (result.percentage >= 33) "PASSED" else "NEEDS IMPROVEMENT"}",
-                                fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
-                                color = if (result.percentage >= 33) Success else Danger)
+                    Column(Modifier.fillMaxWidth()) {
+                        // Table Header
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFFF8FAFC))
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("SUBJECT", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextSecondary)
+                            Text("SCORE / MAX", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextSecondary)
                         }
-                        Surface(shape = RoundedCornerShape(8.dp), color = gradeColor) {
-                            Text(
-                                "Grade ${result.grade}",
-                                Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = Color.White
-                            )
+                        HorizontalDivider(color = Border, thickness = 1.dp)
+
+                        if (result.subjectScores.isEmpty()) {
+                            Box(Modifier.fillMaxWidth().padding(16.dp), Alignment.Center) {
+                                Text("No subject scores recorded.", color = TextMuted, fontSize = 12.sp)
+                            }
+                        } else {
+                            result.subjectScores.forEachIndexed { idx, s ->
+                                val isEven = idx % 2 == 0
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .background(if (isEven) Surface else Color(0xFFFAFAFA))
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(s.subject, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                                        val pct = if (s.maxMarks > 0) (s.marks / s.maxMarks) * 100 else 0.0
+                                        Text("${"%.0f".format(pct)}%", fontSize = 10.sp, color = if (pct >= 33) Color(0xFF059669) else Color(0xFFEF4444))
+                                    }
+                                    Text(
+                                        "${s.marks.toInt()} / ${s.maxMarks.toInt()}",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextPrimary
+                                    )
+                                }
+                                if (idx < result.subjectScores.size - 1) {
+                                    HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 1.dp)
+                                }
+                            }
                         }
                     }
                 }
 
-                // WhatsApp share preview button
-                OutlinedButton(
+                // Cumulative Performance Summary
+                Surface(
+                    shape  = RoundedCornerShape(12.dp),
+                    color  = if (isPassed) Color(0xFFF0FDF4) else Color(0xFFFEF2F2),
+                    border = BorderStroke(1.dp, if (isPassed) Color(0xFFBBF7D0) else Color(0xFFFECACA)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    "Total: ${result.totalMarks.toInt()} / ${result.maxMarks.toInt()}",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = TextPrimary
+                                )
+                                Text(
+                                    "Percentage: ${"%.1f".format(result.percentage)}%",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isPassed) Color(0xFF059669) else Color(0xFFDC2626)
+                                )
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = gradeColor
+                            ) {
+                                Text(
+                                    "Grade ${result.grade}",
+                                    Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Status: $resultStatus",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isPassed) Color(0xFF059669) else Color(0xFFDC2626),
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+                }
+
+                // Remarks section (if available)
+                if (!result.remarks.isNullOrBlank()) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Surface,
+                        border = BorderStroke(1.dp, Border),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(Modifier.padding(10.dp)) {
+                            Text("Teacher Remarks:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                            Text(result.remarks, fontSize = 12.sp, color = TextPrimary, modifier = Modifier.padding(top = 2.dp))
+                        }
+                    }
+                }
+
+                // Dual Signature Block
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 6.dp, bottom = 2.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("_______________", fontSize = 10.sp, color = TextMuted)
+                        Text("Class Teacher", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = TextSecondary)
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("_______________", fontSize = 10.sp, color = TextMuted)
+                        Text("Principal", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = TextSecondary)
+                    }
+                }
+
+                // WhatsApp share button
+                Button(
                     onClick = { shareReportCardOnWhatsApp(context, schoolName, exam?.name, result) },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(1.dp, Color(0xFF25D366))
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366))
                 ) {
-                    Text("💬 Share Report Card on WhatsApp", color = Color(0xFF128C7E), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("💬 Share Report Card on WhatsApp", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Close", fontWeight = FontWeight.Bold, color = Primary)
+                Text("Close", fontWeight = FontWeight.Bold, color = Primary, fontSize = 14.sp)
             }
         }
     )

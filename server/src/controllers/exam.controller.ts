@@ -46,8 +46,43 @@ export const createExam = async (req: AuthRequest, res: Response, next: NextFunc
 export const getResults = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
         const examId = req.params.examId as string;
-        const results = await examResultService.getByExam(examId);
-        res.status(HTTP_STATUS.OK).json(results);
+        const entityId = req.user!.entityId.toString();
+
+        const [results, allMembers] = await Promise.all([
+            examResultService.getByExam(examId),
+            memberService.getByEntity(entityId)
+        ]);
+
+        const memberMap = new Map(allMembers.map((m: any) => [m._id.toString(), m]));
+
+        const enriched = results.map((r: any) => {
+            const rawMarks = Array.isArray(r.marks) ? r.marks : [];
+            const subjectScores = rawMarks.map((m: any) => ({
+                subject: m.subjectName || m.subject || '',
+                marks: m.score !== undefined ? m.score : m.marks,
+                maxMarks: m.maxScore !== undefined ? m.maxScore : m.maxMarks || 100
+            }));
+
+            const totalMarks = subjectScores.reduce((sum: number, m: any) => sum + (Number(m.marks) || 0), 0);
+            const maxMarks = subjectScores.reduce((sum: number, m: any) => sum + (Number(m.maxMarks) || 0), 0);
+            const percentage = maxMarks > 0 ? Math.round((totalMarks / maxMarks) * 100) : 0;
+
+            const member = memberMap.get(r.memberId.toString());
+
+            return {
+                ...r,
+                memberName: member ? `${member.firstName || ''} ${member.lastName || ''}`.trim() : 'Unknown',
+                knownId: member?.knownId || '',
+                rollNo: member?.rollNo || '',
+                subjectScores,
+                totalMarks,
+                maxMarks,
+                percentage,
+                grade: getGrade(percentage)
+            };
+        });
+
+        res.status(HTTP_STATUS.OK).json(enriched);
     } catch (error) {
         next(error);
     }
@@ -112,14 +147,18 @@ export const getClassRankSheet = async (req: AuthRequest, res: Response, next: N
                 const percentage = totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : 0;
                 const grade = getGrade(percentage);
                 const member = memberMap.get(r.memberId.toString());
+                const memberName = member ? `${member.firstName} ${member.lastName}` : 'Unknown';
                 return {
                     memberId: r.memberId,
-                    name: member ? `${member.firstName} ${member.lastName}` : 'Unknown',
+                    name: memberName,
+                    memberName,
                     knownId: member?.knownId || '',
                     marks: r.marks,
                     remarks: r.remarks,
                     totalScore,
+                    totalMarks: totalScore,
                     totalMax,
+                    maxMarks: totalMax,
                     percentage,
                     grade,
                     passed: percentage >= 33

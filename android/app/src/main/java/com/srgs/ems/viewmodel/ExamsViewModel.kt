@@ -41,10 +41,13 @@ class ExamsViewModel(application: Application) : AndroidViewModel(application) {
     )
 
     // ── Marks Entry State ─────────────────────────────────────────────────────
-    val classRoster      = MutableStateFlow<List<MemberDto>>(emptyList())
-    val marksEntryMap    = MutableStateFlow<Map<String, Map<String, String>>>(emptyMap()) // memberId -> (subjectName -> score)
-    val isLoadingRoster  = MutableStateFlow(false)
-    val isSavingMarks    = MutableStateFlow(false)
+    val classRoster          = MutableStateFlow<List<MemberDto>>(emptyList())
+    val marksEntryMap        = MutableStateFlow<Map<String, Map<String, String>>>(emptyMap()) // memberId -> (subjectName -> score)
+    val selectedSubjectIndex = MutableStateFlow(0)
+    val selectedMarksClassId = MutableStateFlow<String?>(null)
+    val marksSearchQuery     = MutableStateFlow("")
+    val isLoadingRoster      = MutableStateFlow(false)
+    val isSavingMarks        = MutableStateFlow(false)
 
     // ── Report Card Modal ─────────────────────────────────────────────────────
     val activeReportCard = MutableStateFlow<ExamResultDto?>(null)
@@ -163,6 +166,8 @@ class ExamsViewModel(application: Application) : AndroidViewModel(application) {
     fun loadMarksEntry(exam: ExamDto) {
         viewModelScope.launch {
             isLoadingRoster.value = true
+            selectedSubjectIndex.value = 0
+            marksSearchQuery.value = ""
             val yearId = AcademicYearManager.selectedYearId
             val existingResults = repo.getExamResults(exam._id)
 
@@ -174,32 +179,84 @@ class ExamsViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 initialMap[r.memberId] = subMap
             }
+            marksEntryMap.value = initialMap
 
-            if (!exam.feeGroupId.isNullOrEmpty()) {
-                val groupDetails = repo.getFeeGroupDetails(exam.feeGroupId, yearId)
-                classRoster.value = groupDetails?.members ?: emptyList()
+            val targetClassId = exam.feeGroupId ?: feeGroups.value.firstOrNull()?._id
+            selectedMarksClassId.value = targetClassId
+
+            if (!targetClassId.isNullOrEmpty()) {
+                val groupDetails = repo.getFeeGroupDetails(targetClassId, yearId)
+                classRoster.value = (groupDetails?.members ?: emptyList()).sortedWith(::compareStudents)
             } else {
-                // If no class filter, use members from results
                 val allGroups = repo.getFeeGroups()
                 val membersList = mutableListOf<MemberDto>()
                 allGroups.forEach { g ->
                     val det = repo.getFeeGroupDetails(g._id, yearId)
                     det?.members?.let { membersList.addAll(it) }
                 }
-                classRoster.value = membersList.distinctBy { it._id }
+                classRoster.value = membersList.distinctBy { it._id }.sortedWith(::compareStudents)
             }
 
-            marksEntryMap.value = initialMap
             isLoadingRoster.value = false
         }
+    }
+
+    fun selectMarksClass(classId: String) {
+        viewModelScope.launch {
+            selectedMarksClassId.value = classId
+            isLoadingRoster.value = true
+            val yearId = AcademicYearManager.selectedYearId
+            val groupDetails = repo.getFeeGroupDetails(classId, yearId)
+            classRoster.value = (groupDetails?.members ?: emptyList()).sortedWith(::compareStudents)
+            isLoadingRoster.value = false
+        }
+    }
+
+    fun selectSubjectIndex(index: Int) {
+        selectedSubjectIndex.value = index
+    }
+
+    fun setMarksSearchQuery(query: String) {
+        marksSearchQuery.value = query
+    }
+
+    fun toggleStudentAbsent(memberId: String, subjectName: String) {
+        val current = marksEntryMap.value.toMutableMap()
+        val studentMap = current[memberId]?.toMutableMap() ?: mutableMapOf()
+        val currentScore = studentMap[subjectName] ?: ""
+        if (currentScore == "AB") {
+            studentMap.remove(subjectName)
+        } else {
+            studentMap[subjectName] = "AB"
+        }
+        current[memberId] = studentMap
+        marksEntryMap.value = current
     }
 
     fun updateStudentScore(memberId: String, subjectName: String, scoreStr: String) {
         val current = marksEntryMap.value.toMutableMap()
         val studentMap = current[memberId]?.toMutableMap() ?: mutableMapOf()
-        studentMap[subjectName] = scoreStr
+        val cleanStr = scoreStr.trim()
+        if (cleanStr.isEmpty()) {
+            studentMap.remove(subjectName)
+        } else {
+            studentMap[subjectName] = cleanStr
+        }
         current[memberId] = studentMap
         marksEntryMap.value = current
+    }
+
+    private fun compareStudents(a: MemberDto, b: MemberDto): Int {
+        val rollA = a.rollNo?.toIntOrNull()
+        val rollB = b.rollNo?.toIntOrNull()
+        if (rollA != null && rollB != null) return rollA.compareTo(rollB)
+        if (rollA != null) return -1
+        if (rollB != null) return 1
+        val idA = a.knownId ?: a.admissionNo ?: ""
+        val idB = b.knownId ?: b.admissionNo ?: ""
+        val cmpId = idA.compareTo(idB, ignoreCase = true)
+        if (cmpId != 0 && idA.isNotEmpty() && idB.isNotEmpty()) return cmpId
+        return a.fullName.compareTo(b.fullName, ignoreCase = true)
     }
 
     fun saveAllMarks(exam: ExamDto, onDone: () -> Unit) {
@@ -209,13 +266,16 @@ class ExamsViewModel(application: Application) : AndroidViewModel(application) {
 
             marksEntryMap.value.forEach { (memberId, subjectScoresMap) ->
                 val scores = exam.subjects.mapNotNull { sub ->
-                    val entered = subjectScoresMap[sub.name]?.toDoubleOrNull()
-                    if (entered != null) {
-                        SubjectScoreDto(
-                            subject  = sub.name,
-                            marks    = entered,
-                            maxMarks = if (sub.maxMarks > 0) sub.maxMarks else 100.0
-                        )
+                    val entered = subjectScoresMap[sub.name]?.trim()
+                    if (entered != null && entered.isNotEmpty()) {
+                        val scoreVal = if (entered.equals("AB", ignoreCase = true)) 0.0 else entered.toDoubleOrNull()
+                        if (scoreVal != null) {
+                            SubjectScoreDto(
+                                subject  = sub.name,
+                                marks    = scoreVal,
+                                maxMarks = if (sub.maxMarks > 0) sub.maxMarks else 100.0
+                            )
+                        } else null
                     } else null
                 }
                 if (scores.isNotEmpty()) {

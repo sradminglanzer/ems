@@ -307,12 +307,12 @@ interface ApiService {
     suspend fun addExamResults(
         @Path("examId") examId: String,
         @Body request: AddResultsRequest
-    ): Response<Unit>
+    ): Response<Any>
 
     @GET("exams/{examId}/rank-sheet")
     suspend fun getRankSheet(
         @Path("examId") examId: String
-    ): Response<List<RankSheetEntryDto>>
+    ): Response<RankSheetResponseDto>
 
     // ── File Uploads ──────────────────────────────────────────────────────────
     @GET("upload/presigned-url")
@@ -1247,16 +1247,29 @@ data class SubjectScoreDto(
     val maxMarks: Double = 100.0
 )
 
+data class RankSheetResponseDto(
+    val exam: ExamDto? = null,
+    val ranked: List<RankSheetEntryDto> = emptyList()
+)
+
 data class RankSheetEntryDto(
     val memberId: String = "",
     val memberName: String = "",
+    val name: String? = null,
     val knownId: String? = null,
     val totalMarks: Double = 0.0,
+    val totalScore: Double = 0.0,
     val maxMarks: Double = 0.0,
+    val totalMax: Double = 0.0,
     val percentage: Double = 0.0,
     val grade: String = "",
-    val rank: Int = 0
-)
+    val rank: Int = 0,
+    val passed: Boolean = true
+) {
+    val displayName: String get() = if (memberName.isNotBlank()) memberName else name ?: "Unknown"
+    val displayTotalMarks: Double get() = if (totalMarks > 0.0) totalMarks else totalScore
+    val displayMaxMarks: Double get() = if (maxMarks > 0.0) maxMarks else totalMax
+}
 
 data class AddResultsRequest(
     val results: List<MemberResultInput>
