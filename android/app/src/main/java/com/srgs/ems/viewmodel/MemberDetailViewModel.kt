@@ -230,8 +230,11 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
         val items = cartItems.filter { it.checked && (it.amount.toDoubleOrNull() ?: 0.0) > 0 }
         if (items.isEmpty()) return
 
-        val checkedStructureIds = cartItems.filter { it.checked }.map { it.feeStructureId }
         val checkedPrimary = cartItems.firstOrNull { it.checked && !it.isAddon }
+        val primaryPlanId  = checkedPrimary?.feeStructureId ?: _member.value?.feeStructureId
+        val checkedAddonIds = cartItems
+            .filter { it.checked && it.isAddon && it.feeStructureId != primaryPlanId }
+            .map { it.feeStructureId }
 
         viewModelScope.launch {
             _isSaving.value = true
@@ -249,9 +252,9 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
             val result = repository.collectFee(
                 memberId          = memberId,
                 items             = collectItems,
-                activeAddonFeeIds = checkedStructureIds,
+                activeAddonFeeIds = checkedAddonIds,
                 newFeeGroupId     = selectedFeeGroupId,
-                newFeeStructureId = checkedPrimary?.feeStructureId
+                newFeeStructureId = primaryPlanId
             )
             collectResult.emit(result)
             if (result.success) loadData()

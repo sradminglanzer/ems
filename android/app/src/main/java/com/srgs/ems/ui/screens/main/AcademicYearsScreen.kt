@@ -54,8 +54,8 @@ fun AcademicYearsScreen(vm: AcademicYearsViewModel = viewModel()) {
 
     LaunchedEffect(Unit) {
         vm.snackbarEvent.collect { msg ->
-            snackbar.showSnackbar(msg)
             if (showSheet && msg.startsWith("✅")) showSheet = false
+            snackbar.showSnackbar(msg)
         }
     }
 

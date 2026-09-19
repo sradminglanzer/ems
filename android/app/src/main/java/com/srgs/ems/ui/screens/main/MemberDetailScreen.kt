@@ -288,12 +288,18 @@ fun MemberDetailScreen(
     val feeGroups     by vm.feeGroups.collectAsState()
 
     if (showCheckoutSheet && member != null) {
+        val depositPaid = payments.filter { p ->
+            val st = feeStructures.find { it._id == p.feeStructureId }
+            st?.frequency == "one-time" || st?.name?.contains("deposit", ignoreCase = true) == true
+        }.sumOf { it.amount }
+
         ModalBottomSheet(
             onDismissRequest = { showCheckoutSheet = false },
             containerColor = Surface
         ) {
             CheckoutSheet(
                 member = member!!,
+                recordedDeposit = depositPaid,
                 isSaving = isSaving,
                 onDismiss = { showCheckoutSheet = false },
                 onConfirmCheckout = { req: CheckoutMemberRequest ->
@@ -536,12 +542,12 @@ fun MemberDetailScreen(
                 item { SCard { PersonalDetails(m, session?.isGym ?: false, session?.isSchool ?: true) } }
 
                 // Financial overview (non-teacher admins)
+                val totalPaid = payments.sumOf { it.amount }
                 if (session?.isTeacher != true) {
-                    val totalPaid = payments.sumOf { it.amount }
                     val isSchool = session?.isSchool ?: true
                     val primaryStruct = feeStructures.find { it._id == m.feeStructureId }
                         ?: feeStructures.find { it.feeGroupId == m.feeGroupId && !it.isAddon }
-                    val addonStructs = feeStructures.filter { it._id in (m.addonFeeIds ?: emptyList()) }
+                    val addonStructs = feeStructures.filter { it._id in (m.addonFeeIds ?: emptyList()) && it._id != primaryStruct?._id && it.isAddon }
                     val calculatedMonthlyRent = (primaryStruct?.amount ?: 0.0) + addonStructs.sumOf { it.amount }
                     val monthlyRent = if (calculatedMonthlyRent > 0) calculatedMonthlyRent else m.totalFee
 
@@ -563,6 +569,7 @@ fun MemberDetailScreen(
                                 monthlyRent       = monthlyRent,
                                 depositPaid       = depositPaid,
                                 totalPaid         = totalPaid,
+                                lastPayment       = payments.maxByOrNull { it.paymentDate },
                                 latestPayment     = latestPayment,
                                 isAdmin           = session?.isAdmin ?: false,
                                 onEditRenewalDate = { paymentToEditDate = it }
@@ -574,10 +581,26 @@ fun MemberDetailScreen(
                 // Payment history
                 if (session?.isTeacher != true) {
                     item {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                            Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                            Arrangement.SpaceBetween,
+                            Alignment.CenterVertically
+                        ) {
                             Text("💳 Payment History", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                            Text("${payments.size} records", fontSize = 12.sp, color = TextSecondary)
+                            if (payments.isNotEmpty()) {
+                                Surface(
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = Primary.copy(alpha = 0.08f)
+                                ) {
+                                    Text(
+                                        "${payments.size} payments • Total Paid: ${inrFmt(totalPaid)}",
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Primary
+                                    )
+                                }
+                            }
                         }
                     }
                     if (payments.isEmpty()) {
@@ -1025,6 +1048,7 @@ private fun FinancialOverview(
     monthlyRent: Double,
     depositPaid: Double,
     totalPaid: Double,
+    lastPayment: FeePaymentDto? = null,
     latestPayment: FeePaymentDto? = null,
     isAdmin: Boolean = false,
     onEditRenewalDate: ((FeePaymentDto) -> Unit)? = null
@@ -1044,10 +1068,24 @@ private fun FinancialOverview(
         }
     } else {
         val rentLabel = if (isGym) "Plan Fee" else "Monthly Rent"
-        Row(Modifier.fillMaxWidth()) {
+        val lastPayAmt = lastPayment?.amount ?: 0.0
+        val lastPayDateStr = lastPayment?.paymentDate?.let { fmtDate(it) }
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FeeStatCell(rentLabel, inrFmt(monthlyRent), Primary, Modifier.weight(1f))
-            FeeStatCell("Deposit", if (depositPaid > 0) inrFmt(depositPaid) else "₹0", TextSecondary, Modifier.weight(1f))
-            FeeStatCell("Total Paid", inrFmt(totalPaid), Success, Modifier.weight(1f))
+            if (depositPaid > 0) {
+                FeeStatCell("Deposit", inrFmt(depositPaid), TextSecondary, Modifier.weight(1f))
+            }
+            if (lastPayAmt > 0) {
+                FeeStatCell(
+                    label = if (lastPayDateStr != null) "Last Paid ($lastPayDateStr)" else "Last Paid",
+                    value = inrFmt(lastPayAmt),
+                    vc = Success,
+                    modifier = Modifier.weight(1f)
+                )
+            } else {
+                FeeStatCell("Last Paid", "₹0", TextSecondary, Modifier.weight(1f))
+            }
         }
     }
 
@@ -1761,13 +1799,14 @@ private fun AddonRow(
 @Composable
 private fun CheckoutSheet(
     member: MemberDetailDto,
+    recordedDeposit: Double = 0.0,
     isSaving: Boolean,
     onDismiss: () -> Unit,
     onConfirmCheckout: (CheckoutMemberRequest) -> Unit
 ) {
     val todayStr = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
     var checkoutDate by remember { mutableStateOf(todayStr) }
-    var depositAmountStr by remember { mutableStateOf("5000") }
+    var depositAmountStr by remember { mutableStateOf(if (recordedDeposit > 0) String.format(Locale.US, "%.0f", recordedDeposit) else "0") }
     var pendingDuesStr by remember { mutableStateOf(String.format(Locale.US, "%.0f", member.pendingAmount ?: 0.0)) }
     var deductionsStr by remember { mutableStateOf("0") }
     var deductionReason by remember { mutableStateOf("") }

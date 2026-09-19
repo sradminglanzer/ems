@@ -65,8 +65,8 @@ fun StaffScreen(vm: StaffViewModel = viewModel()) {
     // Collect snackbar events
     LaunchedEffect(Unit) {
         vm.snackbarEvent.collect { msg ->
-            snackbar.showSnackbar(msg)
             if (showFormSheet && msg.startsWith("✅")) showFormSheet = false
+            snackbar.showSnackbar(msg)
         }
     }
 

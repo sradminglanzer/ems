@@ -297,11 +297,6 @@ export const StudentEnrollment: React.FC<StudentEnrollmentProps> = ({
       alert('First Name is required');
       return;
     }
-    if (!lastName.trim()) {
-      setActiveStep('identity');
-      alert('Last Name is required');
-      return;
-    }
 
     const cleanedFatherPhone = fatherPhone.replace(/\D/g, '').slice(0, 10);
     const cleanedMotherPhone = motherPhone.replace(/\D/g, '').slice(0, 10);
@@ -476,7 +471,7 @@ export const StudentEnrollment: React.FC<StudentEnrollmentProps> = ({
       title: 'Identity & Demographics',
       subtitle: 'Name, SR No, Aadhaar, DOB, Caste',
       icon: <User size={18} />,
-      isComplete: Boolean(firstName.trim() && lastName.trim() && admissionNo.trim()),
+      isComplete: Boolean(firstName.trim() && admissionNo.trim()),
     },
     {
       id: 'parents',
@@ -751,14 +746,13 @@ export const StudentEnrollment: React.FC<StudentEnrollmentProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="field-label">Last Name *</label>
+                    <label className="field-label">Last Name</label>
                     <input
                       type="text"
                       className="input-field"
                       placeholder="e.g. Sharma"
                       value={lastName}
                       onChange={(e) => setLastName(e.target.value)}
-                      required
                     />
                   </div>
                 </div>

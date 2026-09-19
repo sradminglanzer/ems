@@ -761,7 +761,7 @@ data class FeeStructureDto(
     val groupDetails: GroupDetailsDto? = null,
     val groupNames: List<String>? = null
 ) {
-    val isAddon: Boolean get() = type == "FeeStructureAddon" || (feeGroupId == null && (feeGroupIds == null || feeGroupIds.isEmpty()))
+    val isAddon: Boolean get() = type == "FeeStructureAddon"
 }
 
 data class CreateFeeStructureRequest(

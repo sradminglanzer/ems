@@ -80,6 +80,20 @@ fun ReportsScreen(
         vm.fetchActiveTabData(academicYearId)
     }
 
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                vm.fetchSummary(academicYearId)
+                vm.fetchActiveTabData(academicYearId)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     val netBalance = summary?.netBalance  ?: 0.0
     val totalColl  = summary?.collections ?: 0.0
     val totalExp   = summary?.expenses    ?: 0.0

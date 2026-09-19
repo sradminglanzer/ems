@@ -149,94 +149,17 @@ export const getNextRollNo = async (req: AuthRequest, res: Response, next: NextF
 export const getMembers = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
         const entityId = req.user!.entityId.toString();
+        const parentPhone = req.user!.role === 'parent'
+            ? req.user!.userId.replace('parent_', '')
+            : undefined;
+        const academicYearId = req.query.academicYearId as string | undefined;
 
-        let members = await memberService.getByEntity(entityId);
-        console.log('members', members);
-        if (req.user!.role === 'parent') {
-            const parentPhone = req.user!.userId.replace('parent_', '');
-            members = members.filter(m =>
-                m.contact === parentPhone ||
-                m.fatherPhone === parentPhone ||
-                m.motherPhone === parentPhone ||
-                m.altContact === parentPhone ||
-                m.emergencyContactPhone === parentPhone
-            );
-        }
-
-        const [feeGroups, feeStructures, feePayments] = await Promise.all([
-            feeGroupService.getByEntity(entityId),
-            feeStructureService.getByEntity(entityId),
-            feePaymentService.getByEntity(entityId)
-        ]);
-
-        const academicYearIdStr = req.query.academicYearId as string;
-
-        // Calculate total structural fees per group
-        const groupTotalFees: Record<string, number> = {};
-        feeGroups.forEach(g => {
-            const groupStructures = feeStructures.filter(s => s.feeGroupId && s.feeGroupId.toString() === g._id!.toString());
-            const totalFee = groupStructures.reduce((sum, s) => sum + s.amount, 0);
-            groupTotalFees[g._id!.toString()] = totalFee;
+        const members = await memberService.getMembersWithDetails(entityId, {
+            parentPhone,
+            academicYearId
         });
 
-        // Enrich members with group and fee stats
-        const memberStats = members.map(m => {
-            const mId = m._id!.toString();
-
-            // find group based on direct feeGroupId or roster
-            let group;
-            if (m.feeGroupId) {
-                group = feeGroups.find(g => g._id!.toString() === m.feeGroupId!.toString());
-            }
-            if (!group && academicYearIdStr) {
-                group = feeGroups.find(g => {
-                    const roster = g.yearlyRosters?.find((r: any) => r.academicYearId.toString() === academicYearIdStr);
-                    return roster && roster.members && roster.members.some((id: any) => id.toString() === mId);
-                });
-            } else if (!group) {
-                group = feeGroups.find(g => {
-                    return (g.members && g.members.some((id: any) => id.toString() === mId)) ||
-                        (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)));
-                });
-            }
-
-            let totalFee = 0;
-            let groupName = 'Unassigned';
-
-            if (group) {
-                totalFee = groupTotalFees[group._id!.toString()] || 0;
-                groupName = group.name;
-            }
-
-            let addonNames: string[] = [];
-            if (m.addonFeeIds && m.addonFeeIds.length > 0) {
-                const addons = feeStructures.filter(s => m.addonFeeIds!.some((id: any) => id.toString() === s._id!.toString()));
-                totalFee += addons.reduce((sum, s) => sum + s.amount, 0);
-                addonNames = addons.map(s => s.name);
-            }
-
-            // find payments
-            const memberPayments = feePayments.filter(p => p.memberId.toString() === mId);
-            const totalPaid = memberPayments.reduce((sum, p) => sum + p.amount, 0);
-
-            // get active latest nextPaymentDate
-            const paymentsWithNextDate = memberPayments
-                .filter(p => p.nextPaymentDate)
-                .sort((a, b) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime());
-            const nextPaymentDate = paymentsWithNextDate[0]?.nextPaymentDate || null;
-
-            return {
-                ...m,
-                groupName,
-                addonNames,
-                totalFee,
-                totalPaid,
-                pendingAmount: totalFee - totalPaid,
-                nextPaymentDate
-            };
-        });
-
-        res.status(HTTP_STATUS.OK).json(memberStats);
+        res.status(HTTP_STATUS.OK).json(members);
     } catch (error) {
         next(error);
     }
@@ -245,79 +168,15 @@ export const getMembers = async (req: AuthRequest, res: Response, next: NextFunc
 export const getMemberById = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
         const entityId = req.user!.entityId.toString();
-        const id = req.params.id;
-        const academicYearIdStr = req.query.academicYearId as string;
+        const id = req.params.id as string;
+        const academicYearIdStr = req.query.academicYearId as string | undefined;
 
-        const m = await memberService.getOne({ _id: new ObjectId(id as string), entityId: new ObjectId(entityId) });
-        if (!m) {
+        const member = await memberService.getMemberDetailById(id, entityId, academicYearIdStr);
+        if (!member) {
             return res.status(HTTP_STATUS.NOT_FOUND).json({ message: 'Member not found' });
         }
 
-        const [feeGroups, feeStructures, feePayments] = await Promise.all([
-            feeGroupService.getByEntity(entityId),
-            feeStructureService.getByEntity(entityId),
-            feePaymentService.getByEntity(entityId)
-        ]);
-
-        const groupTotalFees: Record<string, number> = {};
-        feeGroups.forEach(g => {
-            const groupStructures = feeStructures.filter(s => s.feeGroupId && s.feeGroupId.toString() === g._id!.toString());
-            const totalFee = groupStructures.reduce((sum, s) => sum + s.amount, 0);
-            groupTotalFees[g._id!.toString()] = totalFee;
-        });
-
-        const mId = m._id!.toString();
-        let group;
-        if (m.feeGroupId) {
-            group = feeGroups.find(g => g._id!.toString() === m.feeGroupId!.toString());
-        }
-        if (!group && academicYearIdStr) {
-            group = feeGroups.find(g => {
-                const roster = g.yearlyRosters?.find((r: any) => r.academicYearId.toString() === academicYearIdStr);
-                return roster && roster.members && roster.members.some((id: any) => id.toString() === mId);
-            });
-        } else if (!group) {
-            group = feeGroups.find(g => {
-                return (g.members && g.members.some((id: any) => id.toString() === mId)) ||
-                    (g.yearlyRosters?.some((r: any) => r.members && r.members.some((id: any) => id.toString() === mId)));
-            });
-        }
-
-        let totalFee = 0;
-        let groupName = 'Unassigned';
-
-        if (group) {
-            totalFee = groupTotalFees[group._id!.toString()] || 0;
-            groupName = group.name;
-        }
-
-        let addonNames: string[] = [];
-        if (m.addonFeeIds && m.addonFeeIds.length > 0) {
-            const addons = feeStructures.filter(s => m.addonFeeIds!.some((id: any) => id.toString() === s._id!.toString()));
-            totalFee += addons.reduce((sum, s) => sum + s.amount, 0);
-            addonNames = addons.map(s => s.name);
-        }
-
-        const memberPayments = feePayments.filter(p => p.memberId.toString() === mId);
-        const totalPaid = memberPayments.reduce((sum, p) => sum + p.amount, 0);
-
-        // get active latest nextPaymentDate
-        const paymentsWithNextDate = memberPayments
-            .filter(p => p.nextPaymentDate)
-            .sort((a, b) => new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime());
-        const nextPaymentDate = paymentsWithNextDate[0]?.nextPaymentDate || null;
-
-        const memberStats = {
-            ...m,
-            groupName,
-            addonNames,
-            totalFee,
-            totalPaid,
-            pendingAmount: totalFee - totalPaid,
-            nextPaymentDate
-        };
-
-        res.status(HTTP_STATUS.OK).json(memberStats);
+        res.status(HTTP_STATUS.OK).json(member);
     } catch (error) {
         next(error);
     }
@@ -329,7 +188,7 @@ export const createMember = async (req: AuthRequest, res: Response, next: NextFu
         const member = new Member({ ...req.body, entityId: req.user!.entityId });
 
         if (!member.valid) {
-            throw new AppError('Invalid member data. First Name, Last Name and Known ID are required.', HTTP_STATUS.BAD_REQUEST);
+            throw new AppError('Invalid member data. First Name is required.', HTTP_STATUS.BAD_REQUEST);
         }
 
         // Check uniqueness of admissionNo / knownId within the entity
@@ -512,7 +371,10 @@ export const updateMember = async (req: AuthRequest, res: Response, next: NextFu
                 if (field === 'feeGroupId' || field === 'feeStructureId' || field === 'academicYearId') {
                     updateData.$set[field] = req.body[field] ? new ObjectId(req.body[field] as string) : null;
                 } else if (field === 'addonFeeIds' && Array.isArray(req.body[field])) {
-                    updateData.$set[field] = req.body[field].map((id: any) => new ObjectId(id));
+                    const primaryIdStr = req.body.feeStructureId?.toString();
+                    updateData.$set[field] = req.body[field]
+                        .filter((id: any) => id && (!primaryIdStr || id.toString() !== primaryIdStr))
+                        .map((id: any) => new ObjectId(id));
                 } else {
                     updateData.$set[field] = req.body[field];
                 }
@@ -616,7 +478,7 @@ export const updateMemberFeeDetails = async (req: AuthRequest, res: Response, ne
     try {
         const id = req.params.id;
         const { feeGroupId, feeStructureId, addonFeeIds } = req.body;
-
+        console.log("Updating member ---- ", req.body);
         const entityIdObj = new ObjectId(req.user!.entityId);
         const memberIdObj = new ObjectId(id as string);
 
@@ -655,7 +517,10 @@ export const updateMemberFeeDetails = async (req: AuthRequest, res: Response, ne
             updateData.$set.feeStructureId = feeStructureId ? new ObjectId(feeStructureId as string) : null;
         }
         if (addonFeeIds !== undefined && Array.isArray(addonFeeIds)) {
-            updateData.$set.addonFeeIds = addonFeeIds.map((aid: any) => new ObjectId(aid));
+            const primaryIdStr = (feeStructureId !== undefined ? feeStructureId : null)?.toString();
+            updateData.$set.addonFeeIds = addonFeeIds
+                .filter((aid: any) => aid && (!primaryIdStr || aid.toString() !== primaryIdStr))
+                .map((aid: any) => new ObjectId(aid));
         }
 
         if (Object.keys(updateData.$set).length > 0) {

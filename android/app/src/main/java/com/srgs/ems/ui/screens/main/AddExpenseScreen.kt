@@ -59,10 +59,7 @@ fun AddExpenseScreen(
     LaunchedEffect(Unit) {
         vm.saveResult.collect { res ->
             when (res) {
-                is SaveResult.Success -> {
-                    snackbar.showSnackbar("✅ Saved successfully!")
-                    onBack()
-                }
+                is SaveResult.Success -> onBack()
                 is SaveResult.Error -> snackbar.showSnackbar("❌ ${res.message}")
             }
         }

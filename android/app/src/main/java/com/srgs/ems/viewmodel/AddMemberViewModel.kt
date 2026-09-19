@@ -411,8 +411,8 @@ class AddMemberViewModel(application: Application) : AndroidViewModel(applicatio
         val isSchool   = session?.isSchool ?: true
         val isBusiness = session?.isBusinessMode ?: true
 
-        if (fn.isEmpty() || ln.isEmpty()) {
-            viewModelScope.launch { saveResult.emit(SaveResult.Error("First Name and Last Name are required")) }
+        if (fn.isEmpty()) {
+            viewModelScope.launch { saveResult.emit(SaveResult.Error("First Name is required")) }
             return
         }
 

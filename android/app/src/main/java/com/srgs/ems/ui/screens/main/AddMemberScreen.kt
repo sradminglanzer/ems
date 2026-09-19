@@ -147,7 +147,7 @@ fun AddMemberScreen(
     LaunchedEffect(Unit) {
         vm.saveResult.collect { res ->
             when (res) {
-                is SaveResult.Success -> { snackbar.showSnackbar("✅ Student saved successfully!"); onBack() }
+                is SaveResult.Success -> onBack()
                 is SaveResult.Error   -> snackbar.showSnackbar("❌ ${res.message}")
             }
         }
@@ -298,7 +298,7 @@ fun AddMemberScreen(
 
                             TField("First Name *", fName, { vm.firstName.value = it })
                             TField("Middle Name", mName, { vm.middleName.value = it })
-                            TField("Last Name *", lName, { vm.lastName.value = it })
+                            TField("Last Name", lName, { vm.lastName.value = it })
 
                             if (isSchool) {
                                 TField("Admission / SR No *", admNo, { vm.admissionNo.value = it }, "e.g. ADM-2025-0042")

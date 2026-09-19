@@ -64,7 +64,10 @@ fun ExamsScreen(vm: ExamsViewModel = viewModel()) {
     var showEnterMarksSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        vm.snackbarEvent.collect { snackbar.showSnackbar(it) }
+        vm.snackbarEvent.collect {
+            if (it.startsWith("✅")) showCreateSheet = false
+            snackbar.showSnackbar(it)
+        }
     }
 
     // ── Report Card Dialog ────────────────────────────────────────────────────
