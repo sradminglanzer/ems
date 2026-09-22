@@ -30,6 +30,12 @@ interface ApiService {
     @GET("members/{id}")
     suspend fun getMemberDetail(@Path("id") id: String): Response<MemberDetailDto>
 
+    @GET("members/{id}/fee-ledger")
+    suspend fun getStudentFeeLedger(
+        @Path("id") id: String,
+        @Query("academicYearId") academicYearId: String? = null
+    ): Response<StudentFeeLedgerDto>
+
     @GET("members/{id}/dashboard")
     suspend fun getStudentDashboard(@Path("id") id: String): Response<ParentDashboardDto>
 
@@ -749,6 +755,13 @@ data class GroupDetailsDto(
     val name: String = ""
 )
 
+data class FeeInstallmentDto(
+    @SerializedName("_id") val _id: String? = null,
+    val name: String = "",
+    val amount: Double = 0.0,
+    val dueDate: String? = null
+)
+
 data class FeeStructureDto(
     @SerializedName("_id") val _id: String = "",
     val name: String = "",
@@ -758,6 +771,7 @@ data class FeeStructureDto(
     val feeGroupId: String? = null,
     val feeGroupIds: List<String>? = null,
     val type: String = "FeeStructure", // "FeeStructure" | "FeeStructureAddon"
+    val installments: List<FeeInstallmentDto>? = null,
     val groupDetails: GroupDetailsDto? = null,
     val groupNames: List<String>? = null
 ) {
@@ -771,17 +785,20 @@ data class CreateFeeStructureRequest(
     val academicYearId: String? = null,
     val feeGroupId: String? = null,
     val feeGroupIds: List<String>? = null,
-    val type: String = "FeeStructure"
+    val type: String = "FeeStructure",
+    val installments: List<FeeInstallmentDto>? = null
 )
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  FEE PAYMENTS
+//  FEE PAYMENTS & REAL-TIME LEDGER
 // ═══════════════════════════════════════════════════════════════════════════════
 
 data class FeePaymentDto(
     @SerializedName("_id") val _id: String = "",
     val feeStructureId: String?  = null,
     val feeGroupId: String?      = null,
+    val installmentId: String?   = null,
+    val installmentName: String? = null,
     val amount: Double           = 0.0,
     val paymentDate: String      = "",
     val paymentMethod: String    = "cash",
@@ -802,6 +819,8 @@ data class FeePaymentItemDto(
     val memberId: String,
     val feeStructureId: String,
     val feeGroupId: String?       = null,
+    val installmentId: String?    = null,
+    val installmentName: String?  = null,
     val amount: Double,
     val notes: String?            = null,
     val paymentMethod: String     = "cash",
@@ -812,6 +831,48 @@ data class FeePaymentItemDto(
 data class FeePaymentResponseDto(
     @SerializedName("_id") val _id: String = "",
     val receiptNo: String? = null
+)
+
+data class StudentInstallmentLedgerDto(
+    val id: String = "",
+    val feeStructureId: String? = null,
+    val feeStructureName: String? = null,
+    val name: String = "",
+    val grossAmount: Double = 0.0,
+    val concessionDeducted: Double = 0.0,
+    val amount: Double = 0.0,
+    val dueDate: String? = null,
+    val paidAmount: Double = 0.0,
+    val pendingAmount: Double = 0.0,
+    val status: String = "UPCOMING" // "PAID", "PARTIAL", "OVERDUE", "UPCOMING"
+)
+
+data class StudentPaymentLedgerDto(
+    @SerializedName("_id") val _id: String? = null,
+    val receiptNo: String = "",
+    val amount: Double = 0.0,
+    val paymentDate: String = "",
+    val paymentMethod: String = "cash",
+    val installmentName: String? = null,
+    val notes: String? = null,
+    val referenceDocumentUrl: String? = null
+)
+
+data class StudentFeeLedgerDto(
+    val memberId: String = "",
+    val studentName: String = "",
+    val rollNo: String = "",
+    val admissionNo: String = "",
+    val grossFee: Double = 0.0,
+    val concessionType: String? = null,
+    val concessionMode: String? = null,
+    val concessionValue: Double = 0.0,
+    val concessionAmount: Double = 0.0,
+    val netPayable: Double = 0.0,
+    val totalPaid: Double = 0.0,
+    val totalPending: Double = 0.0,
+    val installments: List<StudentInstallmentLedgerDto> = emptyList(),
+    val payments: List<StudentPaymentLedgerDto> = emptyList()
 )
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1482,10 +1543,15 @@ data class ParentPaymentReceiptDto(
 
 data class ParentFeesDto(
     val planName: String = "Annual Tuition Fee",
+    val grossPlanAmount: Double = 0.0,
+    val concessionAmount: Double = 0.0,
+    val concessionType: String? = null,
+    val concessionReason: String? = null,
     val totalPlanAmount: Double = 0.0,
     val totalPaid: Double = 0.0,
     val pendingDues: Double = 0.0,
     val nextPaymentDate: String? = null,
+    val installments: List<StudentInstallmentLedgerDto> = emptyList(),
     val payments: List<ParentPaymentReceiptDto> = emptyList()
 )
 

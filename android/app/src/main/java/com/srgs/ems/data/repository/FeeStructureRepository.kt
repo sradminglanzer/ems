@@ -22,11 +22,12 @@ class FeeStructureRepository(context: Context) {
         academicYearId: String? = null,
         feeGroupId: String? = null,
         feeGroupIds: List<String>? = null,
-        type: String = "FeeStructure"
+        type: String = "FeeStructure",
+        installments: List<com.srgs.ems.data.api.FeeInstallmentDto>? = null
     ): SaveResult {
         return try {
             val res = api.createFeeStructure(
-                CreateFeeStructureRequest(name, amount, frequency, academicYearId, feeGroupId, feeGroupIds, type)
+                CreateFeeStructureRequest(name, amount, frequency, academicYearId, feeGroupId, feeGroupIds, type, installments)
             )
             if (res.isSuccessful) SaveResult.Success
             else SaveResult.Error(res.errorBody()?.string() ?: "Failed to create structure")
@@ -41,11 +42,12 @@ class FeeStructureRepository(context: Context) {
         academicYearId: String? = null,
         feeGroupId: String? = null,
         feeGroupIds: List<String>? = null,
-        type: String = "FeeStructure"
+        type: String = "FeeStructure",
+        installments: List<com.srgs.ems.data.api.FeeInstallmentDto>? = null
     ): SaveResult {
         return try {
             val res = api.updateFeeStructure(
-                id, CreateFeeStructureRequest(name, amount, frequency, academicYearId, feeGroupId, feeGroupIds, type)
+                id, CreateFeeStructureRequest(name, amount, frequency, academicYearId, feeGroupId, feeGroupIds, type, installments)
             )
             if (res.isSuccessful) SaveResult.Success
             else SaveResult.Error(res.errorBody()?.string() ?: "Failed to update structure")

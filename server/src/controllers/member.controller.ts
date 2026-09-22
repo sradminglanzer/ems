@@ -736,7 +736,6 @@ export const getStudentDashboard = async (req: AuthRequest, res: Response, next:
             todayAttendance,
             monthlyAttendanceList,
             todayDiary,
-            recentExams,
             allResults,
             feePayments,
             feeStructures
@@ -756,7 +755,6 @@ export const getStudentDashboard = async (req: AuthRequest, res: Response, next:
                 entityId: new ObjectId(entityId),
                 ...(student.feeGroupId && { classId: new ObjectId(student.feeGroupId) })
             }),
-            examService.getByEntity(entityId, student.academicYearId?.toString()),
             examResultService.getByMember(memberId),
             feePaymentService.getByMember(memberId, entityId, student.academicYearId?.toString()),
             feeStructureService.getByEntity(entityId, student.academicYearId?.toString())
@@ -815,41 +813,105 @@ export const getStudentDashboard = async (req: AuthRequest, res: Response, next:
             authorName: d.createdBy?.name || 'Class Teacher'
         }));
 
+        // Exam query (support academicYearId fallback and entity-wide exams)
+        const examConditions: any[] = [{ entityId: new ObjectId(entityId) }];
+        if (student.academicYearId) {
+            try {
+                const ayId = new ObjectId(student.academicYearId);
+                examConditions.push({
+                    $or: [
+                        { academicYearId: ayId },
+                        { academicYearId: null },
+                        { academicYearId: { $exists: false } }
+                    ]
+                });
+            } catch (_e) { /* ignore */ }
+        }
+        const recentExams = await examService.get({ $and: examConditions });
+
+        // Ensure all exams referenced in results are retrieved
+        const resultExamIds = (allResults || []).map((r: any) => r.examId?.toString()).filter(Boolean);
+        const missingExamIds = resultExamIds.filter((id: string) => !(recentExams || []).some((e: any) => e._id?.toString() === id));
+        let additionalExams: any[] = [];
+        if (missingExamIds.length > 0) {
+            try {
+                additionalExams = await examService.get({
+                    _id: { $in: missingExamIds.map((id: string) => new ObjectId(id)) }
+                });
+            } catch (_e) { /* ignore */ }
+        }
+        const combinedExams = [...(recentExams || []), ...additionalExams];
+
+        // Grading Helper
+        const calculateGrade = (pct: number): string => {
+            if (pct >= 90) return 'A+';
+            if (pct >= 75) return 'A';
+            if (pct >= 60) return 'B';
+            if (pct >= 45) return 'C';
+            if (pct >= 33) return 'D';
+            return 'F';
+        };
+
         // Exam results formatting
         const results = (allResults || []).map((r: any) => {
-            const ex = (recentExams || []).find((e: any) => e._id?.toString() === r.examId?.toString());
+            const ex = combinedExams.find((e: any) => e._id?.toString() === r.examId?.toString());
+            const rawMarks = Array.isArray(r.marks)
+                ? r.marks
+                : (Array.isArray(r.subjectScores) ? r.subjectScores : (Array.isArray(r.subjects) ? r.subjects : []));
+
+            const subjectScores = rawMarks.map((m: any) => {
+                const subject = m.subjectName || m.subject || m.name || 'Subject';
+                const marks = Number(m.score !== undefined ? m.score : (m.marks !== undefined ? m.marks : (m.obtainedMarks !== undefined ? m.obtainedMarks : 0)));
+                const maxMarks = Number(m.maxScore !== undefined ? m.maxScore : (m.maxMarks !== undefined ? m.maxMarks : 100));
+                return { subject, marks, maxMarks };
+            });
+
+            const totalMarks = subjectScores.reduce((sum: number, s: any) => sum + s.marks, 0);
+            const maxMarks = subjectScores.reduce((sum: number, s: any) => sum + s.maxMarks, 0) || 100;
+            const percentage = maxMarks > 0 ? Math.round((totalMarks / maxMarks) * 100 * 10) / 10 : 0;
+            const grade = r.grade || calculateGrade(percentage);
+
             return {
                 examId: r.examId?.toString() || '',
                 examName: ex?.name || 'Term Exam',
-                subjectScores: (r.subjectScores || []).map((s: any) => ({
-                    subject: s.subject || 'Subject',
-                    marks: Number(s.marks) || 0,
-                    maxMarks: Number(s.maxMarks) || 100
-                })),
-                totalMarks: Number(r.totalMarks) || 0,
-                maxMarks: Number(r.maxMarks) || 100,
-                percentage: Number(r.percentage) || 0,
-                grade: r.grade || 'A',
+                subjectScores,
+                totalMarks,
+                maxMarks,
+                percentage,
+                grade,
                 remarks: r.remarks || null
             };
         });
 
-        const upcomingExams = (recentExams || []).slice(0, 5).map((e: any) => ({
-            _id: e._id?.toString() || '',
-            name: e.name || '',
-            startDate: e.startDate || '',
-            endDate: e.endDate || '',
-            feeGroupId: e.feeGroupId?.toString() || null,
-            feeGroupName: group?.name || '',
-            subjects: e.subjects || []
-        }));
+        const upcomingExams = (recentExams || [])
+            .filter((e: any) => {
+                if (e.feeGroupId && student.feeGroupId && e.feeGroupId.toString() !== student.feeGroupId.toString()) {
+                    return false;
+                }
+                return true;
+            })
+            .slice(0, 5)
+            .map((e: any) => ({
+                _id: e._id?.toString() || '',
+                name: e.name || '',
+                startDate: e.startDate || '',
+                endDate: e.endDate || '',
+                feeGroupId: e.feeGroupId?.toString() || null,
+                feeGroupName: group?.name || '',
+                subjects: e.subjects || []
+            }));
 
-        // Fee calculations
-        const totalPlanAmount = (feeStructures || []).reduce((sum: number, s: any) => sum + (Number(s.amount) || 0), 0);
-        const totalPaid = (feePayments || []).reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
-        const pendingDues = Math.max(0, totalPlanAmount - totalPaid);
+        // Fee ledger calculations (with installments & concessions)
+        let feeLedger: any = null;
+        try {
+            feeLedger = await memberService.calculateFeeLedger(memberId, entityId, student.academicYearId?.toString());
+        } catch (_err) { /* fallback to basic calculation */ }
 
-        const payments = (feePayments || []).map((p: any) => ({
+        const totalPlanAmount = feeLedger ? feeLedger.netPayable : (feeStructures || []).reduce((sum: number, s: any) => sum + (Number(s.amount) || 0), 0);
+        const totalPaid = feeLedger ? feeLedger.totalPaid : (feePayments || []).reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+        const pendingDues = feeLedger ? feeLedger.totalPending : Math.max(0, totalPlanAmount - totalPaid);
+
+        const payments = feeLedger ? feeLedger.payments : (feePayments || []).map((p: any) => ({
             _id: p._id?.toString() || '',
             receiptNo: p.receiptNo || 'REC-' + (p._id?.toString() || '').slice(-4).toUpperCase(),
             amount: Number(p.amount) || 0,
@@ -937,10 +999,15 @@ export const getStudentDashboard = async (req: AuthRequest, res: Response, next:
             },
             fees: {
                 planName: group?.name ? `${group.name} Annual Fee` : 'Annual Fee Plan',
+                grossPlanAmount: feeLedger ? feeLedger.grossFee : totalPlanAmount,
+                concessionAmount: feeLedger ? feeLedger.concessionAmount : 0,
+                concessionType: feeLedger ? feeLedger.concessionType : (student.concessionType || null),
+                concessionReason: feeLedger ? feeLedger.concessionReason : (student.concessionReason || null),
                 totalPlanAmount,
                 totalPaid,
                 pendingDues,
-                nextPaymentDate: null,
+                nextPaymentDate: feeLedger?.installments?.find((i: any) => i.status !== 'PAID')?.dueDate || null,
+                installments: feeLedger ? feeLedger.installments : [],
                 payments
             },
             notices
@@ -949,3 +1016,21 @@ export const getStudentDashboard = async (req: AuthRequest, res: Response, next:
         next(error);
     }
 };
+
+export const getMemberFeeLedger = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const entityId = req.user!.entityId.toString();
+        const memberId = req.params.id as string;
+        const academicYearId = req.query.academicYearId as string | undefined;
+
+        const ledger = await memberService.calculateFeeLedger(memberId, entityId, academicYearId);
+        if (!ledger) {
+            return res.status(HTTP_STATUS.NOT_FOUND).json({ message: 'Member or fee structure not found' });
+        }
+
+        res.status(HTTP_STATUS.OK).json(ledger);
+    } catch (error) {
+        next(error);
+    }
+};
+

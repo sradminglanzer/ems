@@ -42,6 +42,7 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
     private val _payments        = MutableStateFlow<List<FeePaymentDto>>(emptyList())
     private val _feeStructures   = MutableStateFlow<List<FeeStructureDto>>(emptyList())
     private val _feeGroups       = MutableStateFlow<List<FeeGroupDto>>(emptyList())
+    private val _feeLedger       = MutableStateFlow<com.srgs.ems.data.api.StudentFeeLedgerDto?>(null)
     private val _isLoading       = MutableStateFlow(true)
     private val _memberStatus    = MutableStateFlow("active")
     private val _isSaving        = MutableStateFlow(false)
@@ -50,6 +51,7 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
     val payments:      StateFlow<List<FeePaymentDto>> = _payments.asStateFlow()
     val feeStructures: StateFlow<List<FeeStructureDto>> = _feeStructures.asStateFlow()
     val feeGroups:     StateFlow<List<FeeGroupDto>>   = _feeGroups.asStateFlow()
+    val feeLedger:     StateFlow<com.srgs.ems.data.api.StudentFeeLedgerDto?> = _feeLedger.asStateFlow()
     val isLoading:     StateFlow<Boolean>             = _isLoading.asStateFlow()
     val memberStatus:  StateFlow<String>              = _memberStatus.asStateFlow()
     val isSaving:      StateFlow<Boolean>             = _isSaving.asStateFlow()
@@ -79,15 +81,18 @@ class MemberDetailViewModel(application: Application) : AndroidViewModel(applica
         viewModelScope.launch {
             _isLoading.value = true
             coroutineScope {
+                val yearId = com.srgs.ems.data.AcademicYearManager.selectedYearId
                 val memberJob     = async { repository.getMember(memberId) }
                 val paymentsJob   = async { repository.getPayments(memberId) }
                 val structuresJob = async { repository.getFeeStructures() }
                 val groupsJob     = async { repository.getFeeGroups() }
+                val ledgerJob     = async { repository.getStudentFeeLedger(memberId, yearId) }
                 _member.value       = memberJob.await()
                 _memberStatus.value = _member.value?.status ?: "active"
                 _payments.value     = paymentsJob.await()
                 _feeStructures.value = structuresJob.await()
                 _feeGroups.value     = groupsJob.await()
+                _feeLedger.value     = ledgerJob.await()
             }
             _isLoading.value = false
         }

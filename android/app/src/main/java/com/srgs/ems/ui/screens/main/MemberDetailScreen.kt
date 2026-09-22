@@ -174,6 +174,7 @@ fun MemberDetailScreen(
     val member        by vm.member.collectAsState()
     val payments      by vm.payments.collectAsState()
     val feeStructures by vm.feeStructures.collectAsState()
+    val feeLedger     by vm.feeLedger.collectAsState()
     val isLoading     by vm.isLoading.collectAsState()
     val memberStatus  by vm.memberStatus.collectAsState()
     val isSaving      by vm.isSaving.collectAsState()
@@ -541,39 +542,48 @@ fun MemberDetailScreen(
                 // Personal details
                 item { SCard { PersonalDetails(m, session?.isGym ?: false, session?.isSchool ?: true) } }
 
-                // Financial overview (non-teacher admins)
+                // Financial overview / Fee Ledger (non-teacher admins)
                 val totalPaid = payments.sumOf { it.amount }
                 if (session?.isTeacher != true) {
                     val isSchool = session?.isSchool ?: true
-                    val primaryStruct = feeStructures.find { it._id == m.feeStructureId }
-                        ?: feeStructures.find { it.feeGroupId == m.feeGroupId && !it.isAddon }
-                    val addonStructs = feeStructures.filter { it._id in (m.addonFeeIds ?: emptyList()) && it._id != primaryStruct?._id && it.isAddon }
-                    val calculatedMonthlyRent = (primaryStruct?.amount ?: 0.0) + addonStructs.sumOf { it.amount }
-                    val monthlyRent = if (calculatedMonthlyRent > 0) calculatedMonthlyRent else m.totalFee
 
-                    val depositPaid = payments.filter { p ->
-                        val st = feeStructures.find { it._id == p.feeStructureId }
-                        st?.frequency == "one-time" || st?.name?.contains("deposit", ignoreCase = true) == true
-                    }.sumOf { it.amount }
+                    if (isSchool && feeLedger != null && (feeLedger!!.netPayable > 0 || feeLedger!!.installments.isNotEmpty())) {
+                        item {
+                            SCard {
+                                StudentFeeLedgerCard(ledger = feeLedger!!)
+                            }
+                        }
+                    } else {
+                        val primaryStruct = feeStructures.find { it._id == m.feeStructureId }
+                            ?: feeStructures.find { it.feeGroupId == m.feeGroupId && !it.isAddon }
+                        val addonStructs = feeStructures.filter { it._id in (m.addonFeeIds ?: emptyList()) && it._id != primaryStruct?._id && it.isAddon }
+                        val calculatedMonthlyRent = (primaryStruct?.amount ?: 0.0) + addonStructs.sumOf { it.amount }
+                        val monthlyRent = if (calculatedMonthlyRent > 0) calculatedMonthlyRent else m.totalFee
 
-                    val latestPayment = payments.filter { p ->
-                        feeStructures.find { it._id == p.feeStructureId }?.frequency != "one-time"
-                    }.maxByOrNull { it.paymentDate } ?: payments.maxByOrNull { it.paymentDate }
+                        val depositPaid = payments.filter { p ->
+                            val st = feeStructures.find { it._id == p.feeStructureId }
+                            st?.frequency == "one-time" || st?.name?.contains("deposit", ignoreCase = true) == true
+                        }.sumOf { it.amount }
 
-                    item {
-                        SCard {
-                            FinancialOverview(
-                                isSchool          = isSchool,
-                                isGym             = session?.isGym ?: false,
-                                totalFee          = m.totalFee,
-                                monthlyRent       = monthlyRent,
-                                depositPaid       = depositPaid,
-                                totalPaid         = totalPaid,
-                                lastPayment       = payments.maxByOrNull { it.paymentDate },
-                                latestPayment     = latestPayment,
-                                isAdmin           = session?.isAdmin ?: false,
-                                onEditRenewalDate = { paymentToEditDate = it }
-                            )
+                        val latestPayment = payments.filter { p ->
+                            feeStructures.find { it._id == p.feeStructureId }?.frequency != "one-time"
+                        }.maxByOrNull { it.paymentDate } ?: payments.maxByOrNull { it.paymentDate }
+
+                        item {
+                            SCard {
+                                FinancialOverview(
+                                    isSchool          = isSchool,
+                                    isGym             = session?.isGym ?: false,
+                                    totalFee          = m.totalFee,
+                                    monthlyRent       = monthlyRent,
+                                    depositPaid       = depositPaid,
+                                    totalPaid         = totalPaid,
+                                    lastPayment       = payments.maxByOrNull { it.paymentDate },
+                                    latestPayment     = latestPayment,
+                                    isAdmin           = session?.isAdmin ?: false,
+                                    onEditRenewalDate = { paymentToEditDate = it }
+                                )
+                            }
                         }
                     }
                 }
@@ -1035,6 +1045,161 @@ private fun PersonalDetails(
                 Text(value, Modifier.weight(0.6f), fontSize = 14.sp, color = TextPrimary, fontWeight = FontWeight.SemiBold)
             }
             if (i < items.lastIndex) HorizontalDivider(color = Border)
+        }
+    }
+}
+
+// ── Student Fee Ledger & Installments ──────────────────────────────────────────
+@Composable
+private fun StudentFeeLedgerCard(ledger: StudentFeeLedgerDto) {
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("📊", fontSize = 18.sp)
+                Spacer(Modifier.width(8.dp))
+                Text("Fee Ledger & Installments", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            }
+            if (ledger.netPayable > 0) {
+                val progressPct = ((ledger.totalPaid / ledger.netPayable) * 100).coerceIn(0.0, 100.0)
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (progressPct >= 100) Success.copy(alpha = 0.12f) else Primary.copy(alpha = 0.1f)
+                ) {
+                    Text(
+                        "${progressPct.toInt()}% Paid",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (progressPct >= 100) Success else Primary
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+
+        // Concession notice if active
+        if (ledger.concessionAmount > 0) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = Color(0xFFF3E8FF),
+                border = BorderStroke(1.dp, Color(0xFFD8B4FE)),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("🏷️", fontSize = 13.sp)
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "Concession (${ledger.concessionType ?: "Discount"}): -${inrFmt(ledger.concessionAmount)} (Gross: ${inrFmt(ledger.grossFee)})",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF7E22CE)
+                    )
+                }
+            }
+        }
+
+        // Summary Metric Cells
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FeeStatCell("Net Fee", inrFmt(ledger.netPayable), TextPrimary, Modifier.weight(1f))
+            FeeStatCell("Total Paid", inrFmt(ledger.totalPaid), Success, Modifier.weight(1f))
+            FeeStatCell(
+                "Pending Due",
+                inrFmt(ledger.totalPending),
+                if (ledger.totalPending > 0) Danger else Success,
+                Modifier.weight(1f)
+            )
+        }
+
+        // Progress bar
+        if (ledger.netPayable > 0) {
+            Spacer(Modifier.height(10.dp))
+            val progressFraction = (ledger.totalPaid / ledger.netPayable).toFloat().coerceIn(0f, 1f)
+            LinearProgressIndicator(
+                progress = { progressFraction },
+                modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                color = if (progressFraction >= 1f) Success else Primary,
+                trackColor = Border
+            )
+        }
+
+        // Installment Breakdown Table/List
+        if (ledger.installments.isNotEmpty()) {
+            Spacer(Modifier.height(14.dp))
+            Text("Installment Schedule", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+            Spacer(Modifier.height(6.dp))
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Background, RoundedCornerShape(10.dp))
+                    .border(1.dp, Border, RoundedCornerShape(10.dp))
+            ) {
+                ledger.installments.forEachIndexed { idx, inst ->
+                    val (statusColor, statusBg, statusIcon) = when (inst.status) {
+                        "PAID" -> Triple(Success, Success.copy(alpha = 0.12f), "✓")
+                        "PARTIAL" -> Triple(Warning, Warning.copy(alpha = 0.12f), "◐")
+                        "OVERDUE" -> Triple(Danger, Danger.copy(alpha = 0.12f), "!")
+                        else -> Triple(Primary, Primary.copy(alpha = 0.08f), "•")
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(inst.name, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                                    Spacer(Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = statusBg
+                                    ) {
+                                        Text(
+                                            "$statusIcon ${inst.status}",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = statusColor,
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                                if (!inst.dueDate.isNullOrEmpty()) {
+                                    Spacer(Modifier.height(2.dp))
+                                    Text("Due: ${fmtDate(inst.dueDate)}", fontSize = 11.sp, color = if (inst.status == "OVERDUE") Danger else TextMuted)
+                                }
+                            }
+
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(inrFmt(inst.amount), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                                if (inst.paidAmount > 0 && inst.pendingAmount > 0) {
+                                    Text("Paid: ${inrFmt(inst.paidAmount)} • Due: ${inrFmt(inst.pendingAmount)}", fontSize = 10.sp, color = Warning, fontWeight = FontWeight.Medium)
+                                } else if (inst.paidAmount > 0) {
+                                    Text("Paid: ${inrFmt(inst.paidAmount)}", fontSize = 10.sp, color = Success, fontWeight = FontWeight.Medium)
+                                } else {
+                                    Text("Due: ${inrFmt(inst.amount)}", fontSize = 10.sp, color = TextMuted)
+                                }
+                            }
+                        }
+                    }
+
+                    if (idx < ledger.installments.size - 1) {
+                        HorizontalDivider(thickness = 0.5.dp, color = Border)
+                    }
+                }
+            }
         }
     }
 }

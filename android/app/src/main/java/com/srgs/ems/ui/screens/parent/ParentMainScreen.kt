@@ -225,7 +225,8 @@ fun ParentMainScreen(
                         },
                         onNavigateToDiary = { currentTab = ParentTab.DIARY },
                         onNavigateToAcademics = { currentTab = ParentTab.ACADEMICS },
-                        onNavigateToFees = { currentTab = ParentTab.FEES }
+                        onNavigateToFees = { currentTab = ParentTab.FEES },
+                        onViewReportCard = { viewModel.showReportCard(it) }
                     )
                     ParentTab.DIARY -> ParentDiaryTab(
                         diaryItems = data.diary,
@@ -311,7 +312,8 @@ fun ParentHomeTab(
     onCallTeacher: (String?) -> Unit,
     onNavigateToDiary: () -> Unit,
     onNavigateToAcademics: () -> Unit,
-    onNavigateToFees: () -> Unit
+    onNavigateToFees: () -> Unit,
+    onViewReportCard: (ParentExamResultDto) -> Unit = {}
 ) {
     val student = data.student
     val attendance = data.attendance
@@ -601,7 +603,68 @@ fun ParentHomeTab(
             }
         }
 
-        // 5. 💳 PENDING FEE ALERT (High-Impact Banner if dues > 0)
+        // 5. 🌟 LATEST REPORT CARD / ACADEMIC PERFORMANCE (High-Visibility for parents)
+        if (data.exams.results.isNotEmpty()) {
+            val latestResult = data.exams.results.first()
+            item {
+                Card(
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = Surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("📊", fontSize = 18.sp)
+                                Spacer(Modifier.width(8.dp))
+                                Column {
+                                    Text("ACADEMIC REPORT CARD", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 0.6.sp)
+                                    Text(latestResult.examName, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
+                                }
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = PrimaryLight.copy(alpha = 0.2f)
+                            ) {
+                                Text(
+                                    "Grade: ${latestResult.grade}",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = PrimaryDark,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Score: ${"%.0f".format(latestResult.totalMarks)} / ${"%.0f".format(latestResult.maxMarks)}", fontSize = 13.sp, color = TextSecondary)
+                            Text("Percentage: ${"%.1f".format(latestResult.percentage)}%", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Success)
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        Button(
+                            onClick = { onViewReportCard(latestResult) },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Filled.Info, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("📄 View Official Report Card", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        // 6. 💳 PENDING FEE ALERT (High-Impact Banner if dues > 0)
         if (fees.pendingDues > 0) {
             item {
                 Surface(
@@ -1330,7 +1393,7 @@ fun ParentAcademicsTab(
             contentColor = Primary
         ) {
             Tab(selected = subTab == 0, onClick = { subTab = 0 }, text = { Text("Attendance", fontWeight = FontWeight.Bold) })
-            Tab(selected = subTab == 1, onClick = { subTab = 1 }, text = { Text("Report Cards", fontWeight = FontWeight.Bold) })
+            Tab(selected = subTab == 1, onClick = { subTab = 1 }, text = { Text(if (exams.results.isNotEmpty()) "Report Cards (${exams.results.size})" else "Report Cards", fontWeight = FontWeight.Bold) })
             Tab(selected = subTab == 2, onClick = { subTab = 2 }, text = { Text("Timetable", fontWeight = FontWeight.Bold) })
         }
         Spacer(Modifier.height(16.dp))
@@ -1398,8 +1461,27 @@ fun ParentAcademicsTab(
             1 -> {
                 // Exam Results & Report Cards
                 if (exams.results.isEmpty()) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No exam results published yet", color = TextSecondary, fontSize = 14.sp)
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(containerColor = Surface),
+                        elevation = CardDefaults.cardElevation(2.dp),
+                        modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("📄", fontSize = 36.sp)
+                            Spacer(Modifier.height(10.dp))
+                            Text("No Report Cards Published Yet", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "Your student's exam marks and report cards will appear here once published by the teachers.",
+                                fontSize = 13.sp,
+                                color = TextSecondary,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
                 } else {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -1416,7 +1498,12 @@ fun ParentAcademicsTab(
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(res.examName, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(res.examName, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
+                                            if (res.subjectScores.isNotEmpty()) {
+                                                Text("${res.subjectScores.size} Subjects Evaluated", fontSize = 11.sp, color = TextSecondary)
+                                            }
+                                        }
                                         Surface(
                                             shape = RoundedCornerShape(8.dp),
                                             color = PrimaryLight.copy(alpha = 0.2f)
@@ -1425,13 +1512,19 @@ fun ParentAcademicsTab(
                                                 "Grade: ${res.grade}",
                                                 fontSize = 13.sp,
                                                 fontWeight = FontWeight.ExtraBold,
-                                                color = Primary,
+                                                color = PrimaryDark,
                                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                             )
                                         }
                                     }
-                                    Spacer(Modifier.height(8.dp))
-                                    Text("Score: ${"%.0f".format(res.totalMarks)} / ${"%.0f".format(res.maxMarks)} (${"%.1f".format(res.percentage)}%)", fontSize = 14.sp, color = TextSecondary)
+                                    Spacer(Modifier.height(10.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text("Score: ${"%.0f".format(res.totalMarks)} / ${"%.0f".format(res.maxMarks)}", fontSize = 14.sp, color = TextSecondary)
+                                        Text("Percentage: ${"%.1f".format(res.percentage)}%", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Success)
+                                    }
                                     Spacer(Modifier.height(14.dp))
                                     Button(
                                         onClick = { onViewReportCard(res) },
@@ -1526,7 +1619,12 @@ fun ParentFeesTab(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(fees.planName.ifBlank { "Academic Fee Plan" }, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
+                        Text(
+                            fees.planName.ifBlank { "Academic Fee Plan" },
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = TextPrimary
+                        )
                         Surface(
                             shape = RoundedCornerShape(6.dp),
                             color = if (fees.pendingDues > 0) WarningLight else SuccessLight
@@ -1540,15 +1638,73 @@ fun ParentFeesTab(
                             )
                         }
                     }
-                    Spacer(Modifier.height(18.dp))
+
+                    // Concession / Discount Callout if student was granted a concession
+                    if (fees.concessionAmount > 0) {
+                        Spacer(Modifier.height(10.dp))
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFF0FDF4),
+                            border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("🏷️", fontSize = 14.sp)
+                                Spacer(Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        "Concession Applied: ₹${"%.0f".format(fees.concessionAmount)} off",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF15803D)
+                                    )
+                                    if (!fees.concessionReason.isNullOrBlank()) {
+                                        Text(
+                                            fees.concessionReason,
+                                            fontSize = 11.sp,
+                                            color = Color(0xFF166534)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        StatBox("Total Fee", "₹${"%.0f".format(fees.totalPlanAmount)}", TextPrimary)
+                        StatBox("Net Fee", "₹${"%.0f".format(fees.totalPlanAmount)}", TextPrimary)
                         StatBox("Total Paid", "₹${"%.0f".format(fees.totalPaid)}", Success)
                         StatBox("Remaining", "₹${"%.0f".format(fees.pendingDues)}", if (fees.pendingDues > 0) Danger else Success)
                     }
+
+                    // Payment Progress Indicator
+                    if (fees.totalPlanAmount > 0) {
+                        Spacer(Modifier.height(14.dp))
+                        val progress = (fees.totalPaid / fees.totalPlanAmount).toFloat().coerceIn(0f, 1f)
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Payment Progress", fontSize = 11.sp, color = TextMuted)
+                                Text("${(progress * 100).toInt()}%", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = PrimaryDark)
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            LinearProgressIndicator(
+                                progress = { progress },
+                                modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
+                                color = if (progress >= 1f) Success else Primary,
+                                trackColor = Color(0xFFE2E8F0)
+                            )
+                        }
+                    }
+
                     if (!fees.nextPaymentDate.isNullOrBlank()) {
                         Spacer(Modifier.height(14.dp))
                         Surface(
@@ -1575,8 +1731,123 @@ fun ParentFeesTab(
             }
         }
 
+        // Installment Schedule Breakdown Section
+        if (fees.installments.isNotEmpty()) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "📅 Installment Schedule",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                    Text(
+                        "${fees.installments.size} Terms / Cycles",
+                        fontSize = 12.sp,
+                        color = TextMuted
+                    )
+                }
+            }
+
+            items(fees.installments) { inst ->
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Surface),
+                    elevation = CardDefaults.cardElevation(2.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    inst.name.ifBlank { "Installment" },
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                                if (!inst.dueDate.isNullOrBlank()) {
+                                    Text(
+                                        "Due: ${inst.dueDate}",
+                                        fontSize = 12.sp,
+                                        color = TextSecondary
+                                    )
+                                }
+                            }
+
+                            // Status Badge
+                            val (badgeBg, badgeText, badgeLabel) = when (inst.status.uppercase()) {
+                                "PAID" -> Triple(SuccessLight, Success, "PAID")
+                                "PARTIAL" -> Triple(WarningLight, Warning, "PARTIAL")
+                                "OVERDUE" -> Triple(DangerLight, Danger, "OVERDUE")
+                                else -> Triple(Color(0xFFEFF6FF), PrimaryDark, "UPCOMING")
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = badgeBg
+                            ) {
+                                Text(
+                                    badgeLabel,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = badgeText,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+
+                        if (inst.concessionDeducted > 0) {
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "Gross ₹${"%.0f".format(inst.grossAmount)} • Concession -₹${"%.0f".format(inst.concessionDeducted)}",
+                                fontSize = 11.sp,
+                                color = Color(0xFF15803D),
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+                        Divider(color = Color(0xFFF1F5F9))
+                        Spacer(Modifier.height(10.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text("Amount", fontSize = 11.sp, color = TextMuted)
+                                Text("₹${"%.0f".format(inst.amount)}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                            }
+                            Column {
+                                Text("Paid", fontSize = 11.sp, color = TextMuted)
+                                Text("₹${"%.0f".format(inst.paidAmount)}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Success)
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text("Balance Due", fontSize = 11.sp, color = TextMuted)
+                                Text(
+                                    "₹${"%.0f".format(inst.pendingAmount)}",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (inst.pendingAmount > 0) Danger else Success
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Past Payment Receipts
         item {
+            Spacer(Modifier.height(4.dp))
             Text("🧾 Past Payment Receipts", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
         }
 
@@ -1685,16 +1956,25 @@ fun ReportCardDialog(
                     border = BorderStroke(1.dp, Border)
                 ) {
                     Column(Modifier.padding(10.dp)) {
-                        Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Subject", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = TextSecondary, modifier = Modifier.weight(2f))
-                            Text("Max", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = TextSecondary, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
-                            Text("Scored", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = TextSecondary, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
-                        }
-                        reportCard.subjectScores.forEach { sc ->
-                            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(sc.subject.ifBlank { "Subject" }, fontSize = 12.sp, color = TextPrimary, modifier = Modifier.weight(2f))
-                                Text("${sc.maxMarks.toInt()}", fontSize = 12.sp, color = TextSecondary, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
-                                Text("${sc.marks.toInt()}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = PrimaryDark, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+                        if (reportCard.subjectScores.isEmpty()) {
+                            Text(
+                                "Consolidated exam evaluation",
+                                fontSize = 12.sp,
+                                color = TextSecondary,
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+                        } else {
+                            Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Subject", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = TextSecondary, modifier = Modifier.weight(2f))
+                                Text("Max", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = TextSecondary, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+                                Text("Scored", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = TextSecondary, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+                            }
+                            reportCard.subjectScores.forEach { sc ->
+                                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(sc.subject.ifBlank { "Subject" }, fontSize = 12.sp, color = TextPrimary, modifier = Modifier.weight(2f))
+                                    Text("${sc.maxMarks.toInt()}", fontSize = 12.sp, color = TextSecondary, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+                                    Text("${sc.marks.toInt()}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = PrimaryDark, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+                                }
                             }
                         }
                     }

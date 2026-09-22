@@ -37,6 +37,13 @@ class MemberDetailRepository(context: Context) {
         } catch (_: Exception) { emptyList() }
     }
 
+    suspend fun getStudentFeeLedger(memberId: String, academicYearId: String? = null): StudentFeeLedgerDto? {
+        return try {
+            val r = api.getStudentFeeLedger(memberId, academicYearId)
+            if (r.isSuccessful) r.body() else null
+        } catch (_: Exception) { null }
+    }
+
     suspend fun getFeeGroups(): List<FeeGroupDto> {
         return try {
             val r = api.getFeeGroups()

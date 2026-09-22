@@ -7,6 +7,8 @@ export class FeePayment {
     academicYearId?: ObjectId;
     feeGroupId?: ObjectId;
     feeStructureId?: ObjectId;
+    installmentId?: ObjectId;
+    installmentName?: string;
     amount: number;
     notes?: string;
     paymentMethod?: string;
@@ -24,6 +26,8 @@ export class FeePayment {
         if (data.academicYearId) this.academicYearId = new ObjectId(data.academicYearId);
         if (data.feeGroupId) this.feeGroupId = new ObjectId(data.feeGroupId);
         if (data.feeStructureId) this.feeStructureId = new ObjectId(data.feeStructureId);
+        if (data.installmentId) this.installmentId = new ObjectId(data.installmentId);
+        if (data.installmentName) this.installmentName = data.installmentName;
         this.amount = Number(data.amount);
         this.notes = data.notes;
         this.paymentMethod = data.paymentMethod || 'cash';

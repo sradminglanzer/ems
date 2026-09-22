@@ -8,11 +8,29 @@ class ExamResultService extends BaseService<ExamResult> {
     }
 
     async getByExam(examId: string) {
-        return await this.get({ examId: new ObjectId(examId) });
+        let examObjId: ObjectId | null = null;
+        try {
+            examObjId = new ObjectId(examId);
+        } catch {
+            examObjId = null;
+        }
+        const query: any = examObjId
+            ? { $or: [{ examId: examObjId }, { examId }] }
+            : { examId };
+        return await this.get(query);
     }
 
     async getByMember(memberId: string) {
-        return await this.get({ memberId: new ObjectId(memberId) });
+        let memberObjId: ObjectId | null = null;
+        try {
+            memberObjId = new ObjectId(memberId);
+        } catch {
+            memberObjId = null;
+        }
+        const query: any = memberObjId
+            ? { $or: [{ memberId: memberObjId }, { memberId }] }
+            : { memberId };
+        return await this.get(query);
     }
 
     async saveBulk(examId: string, entityId: string, results: any[]) {
